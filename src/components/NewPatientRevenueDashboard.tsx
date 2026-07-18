@@ -63,20 +63,34 @@ export function NewPatientRevenueDashboard({ records }: { records: SaleRecord[] 
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Print-only report header; the on-screen header/nav is hidden when printing. */}
+      <div className="hidden print:block">
+        <h1 className="text-xl font-semibold text-zinc-900">Patient Matrix — New Patient Revenue Report</h1>
+        <p className="text-xs text-zinc-500">Generated {new Date().toLocaleString('en-GB')}</p>
+      </div>
+
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">New Patient Revenue</h2>
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 print:hidden">New Patient Revenue</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
             Showing {periodLabel}. Data as of {asOfISO}.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <PeriodPresetSelect
-            preset={preset}
-            onPresetChange={setPreset}
-            customRange={customRange}
-            onCustomRangeChange={setCustomRange}
-          />
+        <div className="flex flex-wrap items-end gap-3 print:hidden">
+          <div className="flex flex-wrap items-end gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <PeriodPresetSelect
+              preset={preset}
+              onPresetChange={setPreset}
+              customRange={customRange}
+              onCustomRangeChange={setCustomRange}
+            />
+          </div>
+          <button
+            onClick={() => window.print()}
+            className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          >
+            Export / Print Dashboard
+          </button>
         </div>
       </div>
 
