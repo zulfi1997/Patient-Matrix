@@ -116,9 +116,11 @@ export function computeKpis(
   const retentionRate = prevActiveSet.size > 0 ? (retained / prevActiveSet.size) * 100 : null;
   const turnoverRate = prevActiveSet.size > 0 ? ((prevActiveSet.size - retained) / prevActiveSet.size) * 100 : null;
 
+  // Matches computeAtRiskPatients exactly (as-of-today, not period-scoped) so this
+  // number always agrees with the "Patients Who Stopped Visiting" table below it.
   let stoppedVisiting = 0;
   for (const s of patients.values()) {
-    if (s.lastVisit <= range.end && daysBetween(s.lastVisit, asOfISO) >= inactivityThresholdDays) {
+    if (daysBetween(s.lastVisit, asOfISO) >= inactivityThresholdDays) {
       stoppedVisiting++;
     }
   }

@@ -122,14 +122,20 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
         <KpiCard
           label="Retention Rate"
           value={formatPercent(kpis.retentionRate)}
-          hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} prior-period patients returned`}
+          hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} prior-period patients returned - a fixed period-over-period comparison, not affected by the inactivity threshold below`}
           tone={kpis.retentionRate != null && kpis.retentionRate < 50 ? 'bad' : 'good'}
         />
         <KpiCard
           label="Turnover Rate"
           value={formatPercent(kpis.turnoverRate)}
-          hint="Prior-period patients who did not return"
+          hint="Prior-period patients who did not return - also not affected by the inactivity threshold"
           tone={kpis.turnoverRate != null && kpis.turnoverRate > 50 ? 'bad' : 'neutral'}
+        />
+        <KpiCard
+          label="Stopped Visiting"
+          value={formatNumber(kpis.stoppedVisiting)}
+          hint={`As of today, inactive ${inactivityDays}+ days - this is the number that responds to the threshold above`}
+          tone="bad"
         />
       </div>
 
