@@ -112,7 +112,8 @@ export function DataPage({ records, batches, importFile, removeBatch, clearAllDa
         />
         <p className="mt-3 text-xs text-zinc-400">
           Upload the full history once, then just the latest export each day — records already imported are
-          detected automatically and skipped, so it's safe to re-upload overlapping data.
+          detected automatically and refreshed in place (not duplicated), so it's always safe to re-upload
+          overlapping data, and doing so also re-applies any dashboard fixes/improvements to that data.
         </p>
       </div>
 
@@ -126,7 +127,7 @@ export function DataPage({ records, batches, importFile, removeBatch, clearAllDa
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
           <p>
             <strong>{result.fileName}</strong>: {formatNumber(result.added)} new row(s) added,{' '}
-            {formatNumber(result.duplicates)} already-imported row(s) skipped
+            {formatNumber(result.refreshed)} already-imported row(s) refreshed with current values
             {result.skipped > 0 && `, ${formatNumber(result.skipped)} row(s) skipped (missing data)`}.
           </p>
           {result.warnings.length > 0 && (
@@ -185,7 +186,7 @@ export function DataPage({ records, batches, importFile, removeBatch, clearAllDa
                 <th className="py-2 pr-2">Uploaded</th>
                 <th className="py-2 pr-2">Date Range Covered</th>
                 <th className="py-2 pr-2 text-right">Rows Added</th>
-                <th className="py-2 pr-2 text-right">Duplicates Skipped</th>
+                <th className="py-2 pr-2 text-right">Rows Refreshed</th>
                 <th className="py-2 pr-2" />
               </tr>
             </thead>
@@ -198,7 +199,7 @@ export function DataPage({ records, batches, importFile, removeBatch, clearAllDa
                     {b.dateRange ? `${formatDate(b.dateRange.min)} – ${formatDate(b.dateRange.max)}` : '—'}
                   </td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(b.addedCount)}</td>
-                  <td className="py-1.5 pr-2 text-right">{formatNumber(b.duplicateCount)}</td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(b.refreshedCount)}</td>
                   <td className="py-1.5 pr-2 text-right">
                     <button
                       onClick={() => {

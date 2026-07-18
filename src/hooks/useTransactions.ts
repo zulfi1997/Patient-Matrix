@@ -8,7 +8,7 @@ export interface ImportResult {
   fileName: string;
   totalRows: number;
   added: number;
-  duplicates: number;
+  refreshed: number;
   skipped: number;
   warnings: ImportWarning[];
 }
@@ -49,12 +49,12 @@ export function useTransactions() {
       uploadedAt: new Date().toISOString(),
       totalRows: rows.length,
       addedCount: 0,
-      duplicateCount: 0,
+      refreshedCount: 0,
       skippedCount: warnings.length,
       dateRange,
     };
 
-    const { added, duplicates } = await db.addBatch(batch, parsed);
+    const { added, refreshed } = await db.addBatch(batch, parsed);
 
     await refresh();
 
@@ -62,7 +62,7 @@ export function useTransactions() {
       fileName: file.name,
       totalRows: rows.length,
       added,
-      duplicates,
+      refreshed,
       skipped: warnings.length,
       warnings,
     };

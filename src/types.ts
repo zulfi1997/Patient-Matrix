@@ -54,7 +54,8 @@ export interface ImportBatch {
   uploadedAt: string; // ISO datetime
   totalRows: number;
   addedCount: number;
-  duplicateCount: number;
+  /** Rows that already existed (by content id) and were refreshed with newly parsed values rather than added again. */
+  refreshedCount: number;
   skippedCount: number;
   dateRange: { min: string; max: string } | null;
 }
