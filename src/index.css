@@ -27,3 +27,18 @@ body {
   background: light-dark(#cbd2d9, #3a3d46);
   border-radius: 4px;
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background: #fff;
+    color: #14161a;
+  }
+}

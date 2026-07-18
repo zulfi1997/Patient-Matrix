@@ -14,8 +14,8 @@ function App() {
   const analysisRecords = useMemo(() => toAnalysisRecords(records), [records]);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="min-h-screen bg-zinc-50 print:bg-white dark:bg-zinc-950">
+      <header className="border-b border-zinc-200 bg-white print:hidden dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
           <div>
             <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Patient Matrix</h1>
@@ -66,7 +66,7 @@ function App() {
         )}
       </main>
 
-      <footer className="mx-auto max-w-6xl px-4 py-6 text-center text-xs text-zinc-400">
+      <footer className="mx-auto max-w-6xl px-4 py-6 text-center text-xs text-zinc-400 print:hidden">
         All data is stored locally in this browser only (IndexedDB) — it is not uploaded anywhere. Use "Backup all
         data" on the Data tab periodically, and remember data won't carry over to another device or browser.
       </footer>

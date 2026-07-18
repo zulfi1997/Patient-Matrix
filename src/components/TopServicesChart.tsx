@@ -14,10 +14,12 @@ export function TopServicesChart({ data }: { data: ServiceStat[] }) {
   }));
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Top Selling Services</h3>
-        <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
+        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+          Top Selling Services <span className="font-normal text-zinc-500 dark:text-zinc-400">by {metric === 'revenue' ? 'revenue' : 'times sold'}</span>
+        </h3>
+        <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs print:hidden dark:border-zinc-700">
           <button
             onClick={() => setMetric('revenue')}
             className={`px-2.5 py-1 ${metric === 'revenue' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}

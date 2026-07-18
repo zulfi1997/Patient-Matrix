@@ -6,7 +6,7 @@ export function PatientTrendChart({ data }: { data: MonthlyTrendPoint[] }) {
   const chartData = data.map((d) => ({ ...d, label: formatMonthLabel(d.month) }));
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">New vs Returning Patients</h3>
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={chartData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>

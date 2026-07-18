@@ -3,7 +3,7 @@ import { formatCurrency, formatDate, formatNumber } from '../lib/format';
 
 export function DormantServicesTable({ data }: { data: DormantServiceStat[] }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Services Not Sold Recently</h3>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
         Services with a sales history that haven't been sold within the inactivity threshold, sorted by how long
@@ -15,9 +15,9 @@ export function DormantServicesTable({ data }: { data: DormantServiceStat[] }) {
           No dormant services for the selected category — everything has sold recently.
         </p>
       ) : (
-        <div className="max-h-96 overflow-auto">
+        <div className="max-h-96 overflow-auto print:max-h-none print:overflow-visible">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+            <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-500 print:static dark:bg-zinc-900 dark:text-zinc-400">
               <tr>
                 <th className="py-2 pr-2">Service</th>
                 <th className="py-2 pr-2">Category</th>
