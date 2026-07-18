@@ -198,21 +198,20 @@ export function rowsToRecords(
     const id = hashString(`${baseKey}|${occCount}`);
 
     const salesExcTax = parseNumber(get(row, headerMap, 'Sales (Exc. Tax)'));
-    const excRedemptionRaw = get(row, headerMap, 'Sales (Exc. Redemption)');
-    // Only fall back to Sales (Exc. Tax) when the column is genuinely absent from this export -
-    // a present-but-zero value (fully paid via redemption) must be kept as 0, not overwritten.
-    const amount = excRedemptionRaw != null ? parseNumber(excRedemptionRaw) : salesExcTax;
     const amountIncTax = parseNumber(get(row, headerMap, 'Sales(Inc. Tax)')) || salesExcTax;
     const tax = parseNumber(get(row, headerMap, 'Tax'));
     const qty = parseNumber(get(row, headerMap, 'Qty')) || 1;
 
     const paymentType = (get(row, headerMap, 'Payment Type') as string) || null;
-    // "Redeemed Revenue" is scoped specifically to package redemptions (Payment
-    // Type starting with "Package") rather than the broader Redeemed column,
-    // which also covers prepaid-card/gift-card redemptions.
+    // Only a previously-sold package's own sessions being consumed are excluded from
+    // revenue (that value was already recognized as revenue when the package itself
+    // was sold) - identified by Payment Type starting with "Package". Paying with a
+    // gift card or prepaid card still counts as revenue: the redemption happening
+    // right now (of a card bought earlier or even the same day) is the actual sale.
     const isPackageRedemption = !!paymentType && paymentType.trim().toLowerCase().startsWith('package');
     const packageName = isPackageRedemption ? extractPackageName(paymentType!) : null;
     const redeemedAmount = isPackageRedemption ? parseNumber(get(row, headerMap, 'Redeemed')) : 0;
+    const amount = salesExcTax - redeemedAmount;
 
     records.push({
       id,

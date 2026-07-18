@@ -29,14 +29,14 @@ export interface SaleRecord {
   invoiceStatus: string;
 
   /**
-   * Sales (Exc. Redemption) - net new revenue for this line, excluding any
-   * portion paid by redeeming a previously purchased package/prepaid/gift
-   * card. This is the primary revenue figure used across the dashboard, so
-   * a package's value isn't counted again each time a session from it is
-   * used. Falls back to Sales (Exc. Tax) if the export lacks that column.
+   * Sales (Exc. Tax) minus any portion redeemed from a previously sold package
+   * (redeemedAmount). This is the primary revenue figure used across the
+   * dashboard. Paying with a gift card or prepaid card still counts in full -
+   * only a package's own sessions being consumed is excluded, since that
+   * value was already recognized as revenue when the package itself was sold.
    */
   amount: number;
-  /** Portion of this line's value paid by redeeming a previously purchased package (0 unless `packageName` is set). */
+  /** Portion of this line's value redeemed from a previously sold package (0 unless `packageName` is set). */
   redeemedAmount: number;
   /** Normalized package name if this line's Payment Type starts with "Package", else null. */
   packageName: string | null;

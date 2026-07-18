@@ -98,9 +98,11 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Showing <strong>{PRESET_LABELS[preset]}</strong> ({range.start} to {range.end}), compared with the equivalent
         prior period, for category <strong>{serviceType}</strong>, with a {inactivityDays}-day inactivity threshold.
-        Data as of {asOfISO}. Gift card and prepaid card transactions are excluded from this analysis, and revenue
-        excludes value paid by redeeming a previously purchased package, prepaid card, or gift card. Package
-        redemptions specifically are broken out below (see "Redeemed Revenue" and "Redeemed Packages").
+        Data as of {asOfISO}. Gift card/prepaid card purchases themselves aren't revenue (that cash is only
+        recognized when redeemed), so those line items are excluded here - but paying for a package, service, or
+        product by redeeming a gift/prepaid card still counts as revenue. Only a previously sold package's own
+        sessions being consumed is excluded, since that value was already counted as revenue when the package
+        itself was sold; that portion is broken out below (see "Redeemed Revenue" and "Redeemed Packages").
       </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
