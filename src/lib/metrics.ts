@@ -349,21 +349,52 @@ export function computeAtRiskPatients(
   return result.sort((a, b) => b.daysSinceLastVisit - a.daysSinceLastVisit);
 }
 
-function monthsAgoStartISO(asOfISO: string, monthsBack: number): string {
-  const asOf = new Date(`${asOfISO}T00:00:00`);
-  return toISODate(new Date(asOf.getFullYear(), asOf.getMonth() - monthsBack + 1, 1));
-}
-
-/** Line items from each patient's first-ever visit, for patients whose first visit falls on/after windowStartISO. */
+/** Line items from each patient's first-ever visit, for patients whose first visit falls inside range. */
 function getNewPatientFirstVisitRecords(
   records: SaleRecord[],
   patients: Map<string, PatientVisitSummary>,
-  windowStartISO: string,
+  range: DateRange,
 ): SaleRecord[] {
   return records.filter((r) => {
     const s = patients.get(r.patientId);
-    return !!s && s.firstVisit >= windowStartISO && r.date === s.firstVisit;
+    return !!s && isInRange(s.firstVisit, range) && r.date === s.firstVisit;
   });
+}
+
+export interface NewPatientRevenueSummary {
+  newPatientRevenue: number;
+  returningPatientRevenue: number;
+  totalRevenue: number;
+  newPatients: number;
+}
+
+/** Revenue/new-patient split for an arbitrary period, mirroring computeKpis but focused on new vs returning revenue. */
+export function computeNewPatientRevenueSummary(
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  range: DateRange,
+): NewPatientRevenueSummary {
+  const periodRecords = records.filter((r) => isInRange(r.date, range));
+  let newPatientRevenue = 0;
+  let returningPatientRevenue = 0;
+  const newPatientIds = new Set<string>();
+
+  for (const r of periodRecords) {
+    const s = patients.get(r.patientId);
+    if (s && isInRange(s.firstVisit, range)) {
+      newPatientRevenue += r.amount;
+      newPatientIds.add(r.patientId);
+    } else {
+      returningPatientRevenue += r.amount;
+    }
+  }
+
+  return {
+    newPatientRevenue,
+    returningPatientRevenue,
+    totalRevenue: newPatientRevenue + returningPatientRevenue,
+    newPatients: newPatientIds.size,
+  };
 }
 
 export interface NewPatientDetail {
@@ -374,15 +405,13 @@ export interface NewPatientDetail {
   revenue: number;
 }
 
-/** One row per new patient (first visit within the last monthsBack months), with what they bought on that first visit. */
+/** One row per new patient (first visit within range), with what they bought on that first visit. */
 export function computeNewPatientDetails(
   records: SaleRecord[],
   patients: Map<string, PatientVisitSummary>,
-  monthsBack: number,
-  asOfISO: string,
+  range: DateRange,
 ): NewPatientDetail[] {
-  const windowStartISO = monthsAgoStartISO(asOfISO, monthsBack);
-  const firstVisitRecords = getNewPatientFirstVisitRecords(records, patients, windowStartISO);
+  const firstVisitRecords = getNewPatientFirstVisitRecords(records, patients, range);
 
   const map = new Map<string, NewPatientDetail>();
   for (const r of firstVisitRecords) {
@@ -405,15 +434,13 @@ export interface NewPatientServiceStat {
   revenue: number;
 }
 
-/** Which services new patients buy on their first visit, ranked by how many new patients bought each. */
+/** Which services new patients buy on their first visit (within range), ranked by how many new patients bought each. */
 export function computeNewPatientTopServices(
   records: SaleRecord[],
   patients: Map<string, PatientVisitSummary>,
-  monthsBack: number,
-  asOfISO: string,
+  range: DateRange,
 ): NewPatientServiceStat[] {
-  const windowStartISO = monthsAgoStartISO(asOfISO, monthsBack);
-  const firstVisitRecords = getNewPatientFirstVisitRecords(records, patients, windowStartISO);
+  const firstVisitRecords = getNewPatientFirstVisitRecords(records, patients, range);
 
   const map = new Map<string, { patients: Set<string>; revenue: number }>();
   for (const r of firstVisitRecords) {

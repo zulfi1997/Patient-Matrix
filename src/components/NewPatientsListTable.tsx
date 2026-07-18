@@ -21,7 +21,7 @@ function downloadCsv(rows: NewPatientDetail[]) {
   URL.revokeObjectURL(url);
 }
 
-export function NewPatientsListTable({ data, monthsBack }: { data: NewPatientDetail[]; monthsBack: number }) {
+export function NewPatientsListTable({ data, periodLabel }: { data: NewPatientDetail[]; periodLabel: string }) {
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(PAGE_SIZE);
 
@@ -62,9 +62,7 @@ export function NewPatientsListTable({ data, monthsBack }: { data: NewPatientDet
           Export CSV
         </button>
       </div>
-      <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-        Last {monthsBack} month{monthsBack === 1 ? '' : 's'}, most recent first visit first.
-      </p>
+      <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">{periodLabel}, most recent first visit first.</p>
       <input
         type="text"
         placeholder="Search by name, patient ID, or service…"

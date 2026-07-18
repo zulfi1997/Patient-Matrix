@@ -7,10 +7,10 @@ type Metric = 'patientCount' | 'revenue';
 
 export function NewPatientTopServicesChart({
   data,
-  monthsBack,
+  periodLabel,
 }: {
   data: NewPatientServiceStat[];
-  monthsBack: number;
+  periodLabel: string;
 }) {
   const [metric, setMetric] = useState<Metric>('patientCount');
   const top = [...data].sort((a, b) => b[metric] - a[metric]).slice(0, 10);
@@ -44,7 +44,7 @@ export function NewPatientTopServicesChart({
         </div>
       </div>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-        What new patients bought on their first-ever visit, last {monthsBack} month{monthsBack === 1 ? '' : 's'}.
+        What new patients bought on their first-ever visit, {periodLabel}.
         {top.length > 0 && (
           <>
             {' '}
