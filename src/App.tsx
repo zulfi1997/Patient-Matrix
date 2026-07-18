@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTransactions } from './hooks/useTransactions';
 import { Dashboard } from './components/Dashboard';
 import { DataPage } from './components/DataPage';
+import { toAnalysisRecords } from './lib/filters';
 
 type Tab = 'dashboard' | 'data';
 
 function App() {
   const { records, batches, loading, importFile, removeBatch, clearAllData } = useTransactions();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
+  // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
+  // the Data tab still shows true totals for every row that was imported.
+  const analysisRecords = useMemo(() => toAnalysisRecords(records), [records]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -50,7 +54,7 @@ function App() {
             </button>
           </div>
         ) : tab === 'dashboard' ? (
-          <Dashboard records={records} />
+          <Dashboard records={analysisRecords} />
         ) : (
           <DataPage
             records={records}

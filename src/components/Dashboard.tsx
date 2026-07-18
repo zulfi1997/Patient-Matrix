@@ -78,7 +78,7 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Showing <strong>{PRESET_LABELS[preset]}</strong> ({range.start} to {range.end}), compared with the equivalent
-        prior period. Data as of {asOfISO}.
+        prior period. Data as of {asOfISO}. Gift card and prepaid card transactions are excluded from this analysis.
       </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
