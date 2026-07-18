@@ -164,8 +164,13 @@ export function rowsToRecords(
     occurrence.set(baseKey, occCount);
     const id = hashString(`${baseKey}|${occCount}`);
 
-    const amount = parseNumber(get(row, headerMap, 'Sales (Exc. Tax)'));
-    const amountIncTax = parseNumber(get(row, headerMap, 'Sales(Inc. Tax)')) || amount;
+    const salesExcTax = parseNumber(get(row, headerMap, 'Sales (Exc. Tax)'));
+    const excRedemptionRaw = get(row, headerMap, 'Sales (Exc. Redemption)');
+    // Only fall back to Sales (Exc. Tax) when the column is genuinely absent from this export -
+    // a present-but-zero value (fully paid via redemption) must be kept as 0, not overwritten.
+    const amount = excRedemptionRaw != null ? parseNumber(excRedemptionRaw) : salesExcTax;
+    const redeemedAmount = parseNumber(get(row, headerMap, 'Redeemed'));
+    const amountIncTax = parseNumber(get(row, headerMap, 'Sales(Inc. Tax)')) || salesExcTax;
     const tax = parseNumber(get(row, headerMap, 'Tax'));
     const qty = parseNumber(get(row, headerMap, 'Qty')) || 1;
 
@@ -183,6 +188,7 @@ export function rowsToRecords(
       invoiceNo,
       invoiceStatus: String(get(row, headerMap, 'Invoice status') ?? '').trim() || 'Unknown',
       amount,
+      redeemedAmount,
       amountIncTax,
       tax,
       paymentType: (get(row, headerMap, 'Payment Type') as string) || null,

@@ -28,8 +28,16 @@ export interface SaleRecord {
   invoiceNo: string;
   invoiceStatus: string;
 
-  /** Sales (Exc. Tax) - the primary revenue figure used across the dashboard. */
+  /**
+   * Sales (Exc. Redemption) - net new revenue for this line, excluding any
+   * portion paid by redeeming a previously purchased package/prepaid/gift
+   * card. This is the primary revenue figure used across the dashboard, so
+   * a package's value isn't counted again each time a session from it is
+   * used. Falls back to Sales (Exc. Tax) if the export lacks that column.
+   */
   amount: number;
+  /** Portion of this line's value paid via redemption (see `amount`), tracked separately so it isn't silently dropped. */
+  redeemedAmount: number;
   amountIncTax: number;
   tax: number;
 

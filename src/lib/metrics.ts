@@ -72,6 +72,7 @@ export function summarizePatients(records: SaleRecord[]): Map<string, PatientVis
 
 export interface KpiResult {
   periodRevenue: number;
+  periodRedeemedRevenue: number;
   periodTransactions: number;
   activePatients: number;
   newPatients: number;
@@ -94,6 +95,7 @@ export function computeKpis(
 
   const periodRecords = records.filter((r) => isInRange(r.date, range));
   const periodRevenue = periodRecords.reduce((sum, r) => sum + r.amount, 0);
+  const periodRedeemedRevenue = periodRecords.reduce((sum, r) => sum + r.redeemedAmount, 0);
 
   const activeSet = new Set(periodRecords.map((r) => r.patientId));
   const prevActiveSet = new Set(
@@ -123,6 +125,7 @@ export function computeKpis(
 
   return {
     periodRevenue,
+    periodRedeemedRevenue,
     periodTransactions: periodRecords.length,
     activePatients: activeSet.size,
     newPatients,
@@ -137,8 +140,15 @@ export function computeKpis(
 
 export interface MonthlyTrendPoint {
   month: string; // ISO of first day of month
+  activePatients: number;
   newPatients: number;
+  /** Active this month with at least one prior visit (before this month). */
   returningPatients: number;
+  /** Of last month's active patients, how many also visited this month. */
+  retainedPatients: number;
+  prevMonthActivePatients: number;
+  /** retainedPatients / prevMonthActivePatients, null if the prior month had no activity. */
+  retentionRate: number | null;
   revenue: number;
   transactions: number;
 }
@@ -157,6 +167,10 @@ export function computeMonthlyTrend(
     const monthEnd = new Date(asOf.getFullYear(), asOf.getMonth() - i + 1, 0);
     const range: DateRange = { start: toISODate(monthStart), end: toISODate(monthEnd) };
 
+    const prevMonthStart = new Date(asOf.getFullYear(), asOf.getMonth() - i - 1, 1);
+    const prevMonthEnd = new Date(asOf.getFullYear(), asOf.getMonth() - i, 0);
+    const prevRange: DateRange = { start: toISODate(prevMonthStart), end: toISODate(prevMonthEnd) };
+
     const monthRecords = records.filter((r) => isInRange(r.date, range));
     const activeSet = new Set(monthRecords.map((r) => r.patientId));
     let newPatients = 0;
@@ -165,10 +179,23 @@ export function computeMonthlyTrend(
       if (s && isInRange(s.firstVisit, range)) newPatients++;
     }
 
+    // Computed against all records (not just the displayed window) so the earliest
+    // displayed month still gets a correct prior-month comparison.
+    const prevActiveSet = new Set(records.filter((r) => isInRange(r.date, prevRange)).map((r) => r.patientId));
+    let retainedPatients = 0;
+    for (const id of prevActiveSet) {
+      if (activeSet.has(id)) retainedPatients++;
+    }
+    const retentionRate = prevActiveSet.size > 0 ? (retainedPatients / prevActiveSet.size) * 100 : null;
+
     points.push({
       month: range.start,
+      activePatients: activeSet.size,
       newPatients,
       returningPatients: activeSet.size - newPatients,
+      retainedPatients,
+      prevMonthActivePatients: prevActiveSet.size,
+      retentionRate,
       revenue: monthRecords.reduce((sum, r) => sum + r.amount, 0),
       transactions: monthRecords.length,
     });

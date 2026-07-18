@@ -16,6 +16,7 @@ import { KpiCard } from './KpiCard';
 import { PeriodControls } from './PeriodControls';
 import { PatientTrendChart } from './PatientTrendChart';
 import { RevenueTrendChart } from './RevenueTrendChart';
+import { MonthlyPatientTable } from './MonthlyPatientTable';
 import { TopServicesChart } from './TopServicesChart';
 import { DormantServicesTable } from './DormantServicesTable';
 import { AtRiskPatientsTable } from './AtRiskPatientsTable';
@@ -93,14 +94,20 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Showing <strong>{PRESET_LABELS[preset]}</strong> ({range.start} to {range.end}), compared with the equivalent
         prior period, for category <strong>{serviceType}</strong>, with a {inactivityDays}-day inactivity threshold.
-        Data as of {asOfISO}. Gift card and prepaid card transactions are excluded from this analysis.
+        Data as of {asOfISO}. Gift card and prepaid card transactions are excluded from this analysis, and revenue
+        excludes value paid by redeeming a previously purchased package/prepaid/gift card (see "Redeemed Revenue").
       </p>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <KpiCard
           label="Revenue"
           value={formatCurrencyCompact(kpis.periodRevenue)}
           hint={`${formatCurrency(kpis.periodRevenue)} · ${formatNumber(kpis.periodTransactions)} line items`}
+        />
+        <KpiCard
+          label="Redeemed Revenue"
+          value={formatCurrencyCompact(kpis.periodRedeemedRevenue)}
+          hint={`${formatCurrency(kpis.periodRedeemedRevenue)} · value delivered via package/prepaid/gift card redemption, not new cash`}
         />
         <KpiCard label="Active Patients" value={formatNumber(kpis.activePatients)} />
         <KpiCard label="New Patients" value={formatNumber(kpis.newPatients)} tone="good" />
@@ -123,6 +130,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
         <PatientTrendChart data={trend} />
         <RevenueTrendChart data={trend} />
       </div>
+
+      <MonthlyPatientTable data={trend} />
 
       <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
         <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Category:</span>
