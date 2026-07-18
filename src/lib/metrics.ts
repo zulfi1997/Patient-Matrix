@@ -289,6 +289,28 @@ export function computeDormantServices(
     .sort((a, b) => b.daysInactive - a.daysInactive);
 }
 
+export interface RedeemedPackageStat {
+  packageName: string;
+  count: number;
+  redeemedAmount: number;
+}
+
+/** Breakdown of package-redemption value by package, for the given period. */
+export function computeRedeemedPackages(records: SaleRecord[], range: DateRange): RedeemedPackageStat[] {
+  const map = new Map<string, RedeemedPackageStat>();
+  for (const r of records) {
+    if (!r.packageName || !isInRange(r.date, range)) continue;
+    let s = map.get(r.packageName);
+    if (!s) {
+      s = { packageName: r.packageName, count: 0, redeemedAmount: 0 };
+      map.set(r.packageName, s);
+    }
+    s.count += 1;
+    s.redeemedAmount += r.redeemedAmount;
+  }
+  return [...map.values()].sort((a, b) => b.redeemedAmount - a.redeemedAmount);
+}
+
 export interface AtRiskPatient extends PatientVisitSummary {
   daysSinceLastVisit: number;
 }

@@ -36,8 +36,10 @@ export interface SaleRecord {
    * used. Falls back to Sales (Exc. Tax) if the export lacks that column.
    */
   amount: number;
-  /** Portion of this line's value paid via redemption (see `amount`), tracked separately so it isn't silently dropped. */
+  /** Portion of this line's value paid by redeeming a previously purchased package (0 unless `packageName` is set). */
   redeemedAmount: number;
+  /** Normalized package name if this line's Payment Type starts with "Package", else null. */
+  packageName: string | null;
   amountIncTax: number;
   tax: number;
 

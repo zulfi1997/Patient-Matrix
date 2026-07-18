@@ -95,10 +95,43 @@ function toISODate(year: number, month: number, day: number): string {
 
 function parseNumber(value: unknown): number {
   if (value == null || value === '') return 0;
-  if (typeof value === 'number') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   const cleaned = String(value).replace(/[^0-9.-]/g, '');
   const n = parseFloat(cleaned);
   return Number.isFinite(n) ? n : 0;
+}
+
+const PACKAGE_CATEGORY_ALIASES: Record<string, string> = {
+  iv: 'IV',
+  lhr: 'LHR',
+  derma: 'Derma',
+  wellness: 'Wellness',
+  wellnes: 'Wellness',
+  welness: 'Wellness',
+};
+
+/**
+ * Extracts a stable, human-readable package name from a "Package - ..."
+ * Payment Type value. Catalog packages look like "Package - LHR Beard Half
+ * (3 Sessions) - Original"; custom packages embed the patient's name and a
+ * timestamp (e.g. "Package - derma-Custom Package-Amal-20250324152258"),
+ * which are collapsed to a stable "<Category> Custom Package" label so they
+ * aggregate together instead of each becoming a one-off "package".
+ */
+function extractPackageName(paymentType: string): string {
+  let s = paymentType.trim().replace(/^package\s*-?\s*/i, '');
+
+  const customMatch = /^(.*?)custom package/i.exec(s);
+  if (customMatch) {
+    const prefix = customMatch[1].replace(/[-\s]+$/, '').trim();
+    if (!prefix) return 'Custom Package';
+    const lower = prefix.toLowerCase();
+    const alias = PACKAGE_CATEGORY_ALIASES[lower];
+    return `${alias ?? lower.charAt(0).toUpperCase() + lower.slice(1)} Custom Package`;
+  }
+
+  s = s.replace(/\s*-\s*original\s*$/i, '');
+  return s.trim() || 'Package';
 }
 
 function serviceGroupKey(itemType: ItemType, itemCode: unknown): string {
@@ -169,10 +202,17 @@ export function rowsToRecords(
     // Only fall back to Sales (Exc. Tax) when the column is genuinely absent from this export -
     // a present-but-zero value (fully paid via redemption) must be kept as 0, not overwritten.
     const amount = excRedemptionRaw != null ? parseNumber(excRedemptionRaw) : salesExcTax;
-    const redeemedAmount = parseNumber(get(row, headerMap, 'Redeemed'));
     const amountIncTax = parseNumber(get(row, headerMap, 'Sales(Inc. Tax)')) || salesExcTax;
     const tax = parseNumber(get(row, headerMap, 'Tax'));
     const qty = parseNumber(get(row, headerMap, 'Qty')) || 1;
+
+    const paymentType = (get(row, headerMap, 'Payment Type') as string) || null;
+    // "Redeemed Revenue" is scoped specifically to package redemptions (Payment
+    // Type starting with "Package") rather than the broader Redeemed column,
+    // which also covers prepaid-card/gift-card redemptions.
+    const isPackageRedemption = !!paymentType && paymentType.trim().toLowerCase().startsWith('package');
+    const packageName = isPackageRedemption ? extractPackageName(paymentType!) : null;
+    const redeemedAmount = isPackageRedemption ? parseNumber(get(row, headerMap, 'Redeemed')) : 0;
 
     records.push({
       id,
@@ -189,9 +229,10 @@ export function rowsToRecords(
       invoiceStatus: String(get(row, headerMap, 'Invoice status') ?? '').trim() || 'Unknown',
       amount,
       redeemedAmount,
+      packageName,
       amountIncTax,
       tax,
-      paymentType: (get(row, headerMap, 'Payment Type') as string) || null,
+      paymentType,
       staff: (get(row, headerMap, 'Sold By') as string) || (get(row, headerMap, 'Therapist') as string) || null,
       centerName: String(get(row, headerMap, 'Center Name') ?? '').trim() || 'Default',
     });

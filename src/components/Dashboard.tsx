@@ -6,6 +6,7 @@ import {
   computeDormantServices,
   computeKpis,
   computeMonthlyTrend,
+  computeRedeemedPackages,
   computeServiceStats,
   summarizePatients,
   type DateRange,
@@ -17,6 +18,7 @@ import { PeriodControls } from './PeriodControls';
 import { PatientTrendChart } from './PatientTrendChart';
 import { RevenueTrendChart } from './RevenueTrendChart';
 import { MonthlyPatientTable } from './MonthlyPatientTable';
+import { RedeemedPackagesTable } from './RedeemedPackagesTable';
 import { TopServicesChart } from './TopServicesChart';
 import { DormantServicesTable } from './DormantServicesTable';
 import { AtRiskPatientsTable } from './AtRiskPatientsTable';
@@ -66,6 +68,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
     [patients, asOfISO, inactivityDays],
   );
 
+  const redeemedPackages = useMemo(() => computeRedeemedPackages(records, range), [records, range]);
+
   return (
     <div className="flex flex-col gap-4">
       {/* Print-only report header; the on-screen header/nav is hidden when printing. */}
@@ -95,7 +99,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
         Showing <strong>{PRESET_LABELS[preset]}</strong> ({range.start} to {range.end}), compared with the equivalent
         prior period, for category <strong>{serviceType}</strong>, with a {inactivityDays}-day inactivity threshold.
         Data as of {asOfISO}. Gift card and prepaid card transactions are excluded from this analysis, and revenue
-        excludes value paid by redeeming a previously purchased package/prepaid/gift card (see "Redeemed Revenue").
+        excludes value paid by redeeming a previously purchased package, prepaid card, or gift card. Package
+        redemptions specifically are broken out below (see "Redeemed Revenue" and "Redeemed Packages").
       </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -107,7 +112,7 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
         <KpiCard
           label="Redeemed Revenue"
           value={formatCurrencyCompact(kpis.periodRedeemedRevenue)}
-          hint={`${formatCurrency(kpis.periodRedeemedRevenue)} · value delivered via package/prepaid/gift card redemption, not new cash`}
+          hint={`${formatCurrency(kpis.periodRedeemedRevenue)} · value delivered via package redemption, not new cash`}
         />
         <KpiCard label="Active Patients" value={formatNumber(kpis.activePatients)} />
         <KpiCard label="New Patients" value={formatNumber(kpis.newPatients)} tone="good" />
@@ -125,6 +130,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
           tone={kpis.turnoverRate != null && kpis.turnoverRate > 50 ? 'bad' : 'neutral'}
         />
       </div>
+
+      <RedeemedPackagesTable data={redeemedPackages} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
         <PatientTrendChart data={trend} />

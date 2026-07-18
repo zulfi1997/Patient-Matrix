@@ -6,7 +6,7 @@ const currencyFormatter = new Intl.NumberFormat('en-OM', {
 });
 
 export function formatCurrency(value: number): string {
-  return currencyFormatter.format(value);
+  return currencyFormatter.format(Number.isFinite(value) ? value : 0);
 }
 
 const compactCurrencyFormatter = new Intl.NumberFormat('en-OM', {
@@ -18,11 +18,11 @@ const compactCurrencyFormatter = new Intl.NumberFormat('en-OM', {
 
 /** Abbreviated formatting (e.g. "OMR 109.4K") for headline KPI tiles, so large totals don't overflow. */
 export function formatCurrencyCompact(value: number): string {
-  return compactCurrencyFormatter.format(value);
+  return compactCurrencyFormatter.format(Number.isFinite(value) ? value : 0);
 }
 
 export function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-US').format(value);
+  return new Intl.NumberFormat('en-US').format(Number.isFinite(value) ? value : 0);
 }
 
 export function formatPercent(value: number | null, digits = 0): string {
