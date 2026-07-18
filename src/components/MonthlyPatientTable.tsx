@@ -1,5 +1,5 @@
 import type { MonthlyTrendPoint } from '../lib/metrics';
-import { formatMonthLabel, formatNumber, formatPercent } from '../lib/format';
+import { formatCurrency, formatMonthLabel, formatNumber, formatPercent } from '../lib/format';
 
 export function MonthlyPatientTable({ data }: { data: MonthlyTrendPoint[] }) {
   return (
@@ -16,6 +16,7 @@ export function MonthlyPatientTable({ data }: { data: MonthlyTrendPoint[] }) {
             <tr>
               <th className="py-2 pr-2">Month</th>
               <th className="py-2 pr-2 text-right">New</th>
+              <th className="py-2 pr-2 text-right">New Patient Revenue</th>
               <th className="py-2 pr-2 text-right">Repeat</th>
               <th className="py-2 pr-2 text-right">Active</th>
               <th className="py-2 pr-2 text-right">Retained</th>
@@ -29,6 +30,7 @@ export function MonthlyPatientTable({ data }: { data: MonthlyTrendPoint[] }) {
                 <td className="py-1.5 pr-2 text-right text-emerald-600 dark:text-emerald-400">
                   {formatNumber(m.newPatients)}
                 </td>
+                <td className="py-1.5 pr-2 text-right">{formatCurrency(m.newPatientRevenue)}</td>
                 <td className="py-1.5 pr-2 text-right">{formatNumber(m.returningPatients)}</td>
                 <td className="py-1.5 pr-2 text-right">{formatNumber(m.activePatients)}</td>
                 <td className="py-1.5 pr-2 text-right">

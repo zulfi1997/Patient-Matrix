@@ -152,6 +152,10 @@ export interface MonthlyTrendPoint {
   /** retainedPatients / prevMonthActivePatients, null if the prior month had no activity. */
   retentionRate: number | null;
   revenue: number;
+  /** Revenue this month from patients whose first-ever visit was also this month. */
+  newPatientRevenue: number;
+  /** Revenue this month from patients who had already visited before this month. */
+  returningPatientRevenue: number;
   transactions: number;
 }
 
@@ -190,6 +194,17 @@ export function computeMonthlyTrend(
     }
     const retentionRate = prevActiveSet.size > 0 ? (retainedPatients / prevActiveSet.size) * 100 : null;
 
+    let newPatientRevenue = 0;
+    let returningPatientRevenue = 0;
+    for (const r of monthRecords) {
+      const s = patients.get(r.patientId);
+      if (s && isInRange(s.firstVisit, range)) {
+        newPatientRevenue += r.amount;
+      } else {
+        returningPatientRevenue += r.amount;
+      }
+    }
+
     points.push({
       month: range.start,
       activePatients: activeSet.size,
@@ -199,6 +214,8 @@ export function computeMonthlyTrend(
       prevMonthActivePatients: prevActiveSet.size,
       retentionRate,
       revenue: monthRecords.reduce((sum, r) => sum + r.amount, 0),
+      newPatientRevenue,
+      returningPatientRevenue,
       transactions: monthRecords.length,
     });
   }
