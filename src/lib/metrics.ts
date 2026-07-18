@@ -567,3 +567,38 @@ export function computeFlaggedMonthlyTrend(records: SaleRecord[], monthsBack: nu
 
   return points;
 }
+
+export interface FlaggedDueInvoice {
+  invoiceNo: string;
+  patientId: string;
+  patientName: string;
+  date: string;
+  services: string[];
+  dueAmount: number;
+  invoiceStatus: string;
+}
+
+/** Invoices (with at least one "YB111"-flagged line) that still have an outstanding balance, within range. */
+export function computeFlaggedDueInvoices(records: SaleRecord[], range: DateRange): FlaggedDueInvoice[] {
+  const map = new Map<string, FlaggedDueInvoice>();
+  for (const r of records) {
+    if (!hasFlaggedNote(r) || !isInRange(r.date, range) || r.dueAmount <= 0) continue;
+    let inv = map.get(r.invoiceNo);
+    if (!inv) {
+      inv = {
+        invoiceNo: r.invoiceNo,
+        patientId: r.patientId,
+        patientName: r.patientName,
+        date: r.date,
+        services: [],
+        dueAmount: 0,
+        invoiceStatus: r.invoiceStatus,
+      };
+      map.set(r.invoiceNo, inv);
+    }
+    if (!inv.services.includes(r.serviceName)) inv.services.push(r.serviceName);
+    inv.dueAmount += r.dueAmount;
+    if (r.date > inv.date) inv.date = r.date;
+  }
+  return [...map.values()].sort((a, b) => b.dueAmount - a.dueAmount);
+}

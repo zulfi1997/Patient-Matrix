@@ -15,12 +15,12 @@ interface DataPageProps {
 function exportAllCsv(records: SaleRecord[]) {
   const header = [
     'Patient ID', 'Patient Name', 'Date', 'Item Type', 'Service', 'Subcategory', 'Qty',
-    'Invoice No', 'Invoice Status', 'Net Revenue (Exc. Redemption)', 'Redeemed Package', 'Redeemed Amount', 'Amount (Inc. Tax)', 'Payment Type', 'Staff', 'Invoice Notes',
+    'Invoice No', 'Invoice Status', 'Net Revenue (Exc. Redemption)', 'Redeemed Package', 'Redeemed Amount', 'Amount (Inc. Tax)', 'Due Amount', 'Payment Type', 'Staff', 'Invoice Notes',
   ];
   const lines = records.map((r) =>
     [
       r.patientId, r.patientName, r.date, r.itemType, r.serviceName, r.subcategory, r.qty,
-      r.invoiceNo, r.invoiceStatus, r.amount.toFixed(3), r.packageName ?? '', r.redeemedAmount.toFixed(3), r.amountIncTax.toFixed(3), r.paymentType ?? '', r.staff ?? '', r.invoiceNotes ?? '',
+      r.invoiceNo, r.invoiceStatus, r.amount.toFixed(3), r.packageName ?? '', r.redeemedAmount.toFixed(3), r.amountIncTax.toFixed(3), r.dueAmount.toFixed(3), r.paymentType ?? '', r.staff ?? '', r.invoiceNotes ?? '',
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(','),

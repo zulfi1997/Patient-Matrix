@@ -47,6 +47,8 @@ export interface SaleRecord {
   staff: string | null;
   centerName: string;
   invoiceNotes: string | null;
+  /** Outstanding balance not yet collected for this line (0 once paid). */
+  dueAmount: number;
 }
 
 export interface ImportBatch {

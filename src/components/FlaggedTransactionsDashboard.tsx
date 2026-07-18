@@ -4,6 +4,7 @@ import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges'
 import {
   computeFlaggedByService,
   computeFlaggedByStaff,
+  computeFlaggedDueInvoices,
   computeFlaggedMonthlyTrend,
   computeFlaggedSummary,
   computeFlaggedTransactions,
@@ -16,6 +17,7 @@ import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { FlaggedTrendChart } from './FlaggedTrendChart';
 import { FlaggedBreakdownTable } from './FlaggedBreakdownTable';
 import { FlaggedTransactionsTable } from './FlaggedTransactionsTable';
+import { FlaggedDueInvoicesTable } from './FlaggedDueInvoicesTable';
 
 const TREND_MONTHS_BACK = 12;
 
@@ -41,6 +43,8 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
     () => computeFlaggedMonthlyTrend(records, TREND_MONTHS_BACK, asOfISO),
     [records, asOfISO],
   );
+  const dueInvoices = useMemo(() => computeFlaggedDueInvoices(records, range), [records, range]);
+  const totalDue = useMemo(() => dueInvoices.reduce((sum, i) => sum + i.dueAmount, 0), [dueInvoices]);
 
   const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
 
@@ -77,7 +81,7 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <KpiCard label="Flagged Transactions" value={formatNumber(summary.count)} tone="bad" />
         <KpiCard
           label="Flagged Value"
@@ -86,6 +90,12 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
         />
         <KpiCard label="Distinct Patients" value={formatNumber(summary.distinctPatients)} />
         <KpiCard label="Distinct Staff" value={formatNumber(summary.distinctStaff)} />
+        <KpiCard
+          label="Due to Be Settled"
+          value={formatCurrencyCompact(totalDue)}
+          hint={`${formatCurrency(totalDue)} · ${formatNumber(dueInvoices.length)} invoice(s)`}
+          tone={dueInvoices.length > 0 ? 'bad' : 'neutral'}
+        />
       </div>
 
       <FlaggedTrendChart data={trend} />
@@ -94,6 +104,8 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
         <FlaggedBreakdownTable title="By Staff" columnLabel="Staff" data={byStaff} />
         <FlaggedBreakdownTable title="By Service" columnLabel="Service" data={byService} />
       </div>
+
+      <FlaggedDueInvoicesTable data={dueInvoices} periodLabel={periodLabel} />
 
       <FlaggedTransactionsTable data={transactions} periodLabel={periodLabel} />
     </div>
