@@ -11,7 +11,6 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  administration: write # lets configure-pages enable Pages if it isn't already
 
 concurrency:
   group: pages
@@ -31,8 +30,6 @@ jobs:
         env:
           GITHUB_PAGES: 'true'
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
