@@ -1,5 +1,6 @@
 import type { ItemType, SaleRecord } from '../types';
 import { toISODate } from './format';
+import { hasFlaggedNote } from './filters';
 
 export interface DateRange {
   start: string; // ISO yyyy-mm-dd, inclusive
@@ -455,4 +456,114 @@ export function computeNewPatientTopServices(
   return [...map.entries()]
     .map(([serviceName, v]) => ({ serviceName, patientCount: v.patients.size, revenue: v.revenue }))
     .sort((a, b) => b.patientCount - a.patientCount);
+}
+
+export interface FlaggedSummary {
+  count: number;
+  amount: number;
+  distinctPatients: number;
+  distinctStaff: number;
+}
+
+/** Summary of "YB111"-flagged line items within range. */
+export function computeFlaggedSummary(records: SaleRecord[], range: DateRange): FlaggedSummary {
+  const flagged = records.filter((r) => hasFlaggedNote(r) && isInRange(r.date, range));
+  const patients = new Set(flagged.map((r) => r.patientId));
+  const staff = new Set(flagged.map((r) => r.staff ?? 'Unknown'));
+  return {
+    count: flagged.length,
+    amount: flagged.reduce((sum, r) => sum + r.amount, 0),
+    distinctPatients: patients.size,
+    distinctStaff: staff.size,
+  };
+}
+
+export interface FlaggedTransaction {
+  patientId: string;
+  patientName: string;
+  date: string;
+  serviceName: string;
+  itemType: ItemType;
+  amount: number;
+  staff: string | null;
+  invoiceNo: string;
+  notes: string;
+}
+
+/** Individual "YB111"-flagged line items within range, most recent first. */
+export function computeFlaggedTransactions(records: SaleRecord[], range: DateRange): FlaggedTransaction[] {
+  return records
+    .filter((r) => hasFlaggedNote(r) && isInRange(r.date, range))
+    .map((r) => ({
+      patientId: r.patientId,
+      patientName: r.patientName,
+      date: r.date,
+      serviceName: r.serviceName,
+      itemType: r.itemType,
+      amount: r.amount,
+      staff: r.staff,
+      invoiceNo: r.invoiceNo,
+      notes: r.invoiceNotes ?? '',
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export interface FlaggedBreakdownStat {
+  key: string;
+  count: number;
+  amount: number;
+}
+
+function computeFlaggedBreakdown(
+  records: SaleRecord[],
+  range: DateRange,
+  keyFn: (r: SaleRecord) => string,
+): FlaggedBreakdownStat[] {
+  const map = new Map<string, FlaggedBreakdownStat>();
+  for (const r of records) {
+    if (!hasFlaggedNote(r) || !isInRange(r.date, range)) continue;
+    const key = keyFn(r);
+    let s = map.get(key);
+    if (!s) {
+      s = { key, count: 0, amount: 0 };
+      map.set(key, s);
+    }
+    s.count += 1;
+    s.amount += r.amount;
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count);
+}
+
+export function computeFlaggedByStaff(records: SaleRecord[], range: DateRange): FlaggedBreakdownStat[] {
+  return computeFlaggedBreakdown(records, range, (r) => r.staff ?? 'Unknown');
+}
+
+export function computeFlaggedByService(records: SaleRecord[], range: DateRange): FlaggedBreakdownStat[] {
+  return computeFlaggedBreakdown(records, range, (r) => r.serviceName);
+}
+
+export interface FlaggedMonthlyPoint {
+  month: string;
+  count: number;
+  amount: number;
+}
+
+/** Monthly trend of flagged transaction count/value, over the last monthsBack months (independent of any period filter). */
+export function computeFlaggedMonthlyTrend(records: SaleRecord[], monthsBack: number, asOfISO: string): FlaggedMonthlyPoint[] {
+  const asOf = new Date(`${asOfISO}T00:00:00`);
+  const points: FlaggedMonthlyPoint[] = [];
+
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const monthStart = new Date(asOf.getFullYear(), asOf.getMonth() - i, 1);
+    const monthEnd = new Date(asOf.getFullYear(), asOf.getMonth() - i + 1, 0);
+    const range: DateRange = { start: toISODate(monthStart), end: toISODate(monthEnd) };
+    const flagged = records.filter((r) => hasFlaggedNote(r) && isInRange(r.date, range));
+    points.push({
+      month: range.start,
+      count: flagged.length,
+      amount: flagged.reduce((sum, r) => sum + r.amount, 0),
+    });
+  }
+
+  return points;
 }

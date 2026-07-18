@@ -3,11 +3,12 @@ import { useTransactions } from './hooks/useTransactions';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
+import { FlaggedTransactionsDashboard } from './components/FlaggedTransactionsDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, hasFlaggedNote, toAnalysisRecords } from './lib/filters';
 import { formatNumber } from './lib/format';
 
-type Tab = 'dashboard' | 'newPatientRevenue' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'yb111' | 'data';
 
 function App() {
   const { records, batches, loading, importFile, removeBatch, clearAllData } = useTransactions();
@@ -16,10 +17,14 @@ function App() {
 
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
   // the Data tab still shows true totals for every row that was imported.
-  const analysisRecords = useMemo(() => {
-    const base = toAnalysisRecords(records);
-    return excludeFlagged ? excludeFlaggedRecords(base) : base;
-  }, [records, excludeFlagged]);
+  const baseAnalysisRecords = useMemo(() => toAnalysisRecords(records), [records]);
+
+  // The "Exclude" toggle only affects the Dashboard/New Patient Revenue tabs - the YB111
+  // Analytics tab always shows flagged transactions regardless, since that's its purpose.
+  const analysisRecords = useMemo(
+    () => (excludeFlagged ? excludeFlaggedRecords(baseAnalysisRecords) : baseAnalysisRecords),
+    [baseAnalysisRecords, excludeFlagged],
+  );
 
   const flaggedCount = useMemo(() => records.filter(hasFlaggedNote).length, [records]);
 
@@ -45,6 +50,12 @@ function App() {
               New Patient Revenue
             </button>
             <button
+              onClick={() => setTab('yb111')}
+              className={`px-4 py-1.5 ${tab === 'yb111' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              "YB111" Analytics
+            </button>
+            <button
               onClick={() => setTab('data')}
               className={`px-4 py-1.5 ${tab === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
@@ -52,7 +63,7 @@ function App() {
             </button>
           </nav>
         </div>
-        {records.length > 0 && tab !== 'data' && (
+        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && (
           <div className="mx-auto flex max-w-6xl items-center justify-end px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
@@ -87,6 +98,8 @@ function App() {
           <Dashboard records={analysisRecords} />
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} />
+        ) : tab === 'yb111' ? (
+          <FlaggedTransactionsDashboard records={baseAnalysisRecords} />
         ) : (
           <DataPage
             records={records}
