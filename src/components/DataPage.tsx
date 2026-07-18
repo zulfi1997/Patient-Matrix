@@ -1,0 +1,220 @@
+import { useCallback, useRef, useState } from 'react';
+import type { ImportBatch, SaleRecord } from '../types';
+import type { ImportResult } from '../hooks/useTransactions';
+import { ImportSchemaError } from '../lib/excelParser';
+import { formatDate, formatNumber } from '../lib/format';
+
+interface DataPageProps {
+  records: SaleRecord[];
+  batches: ImportBatch[];
+  importFile: (file: File) => Promise<ImportResult>;
+  removeBatch: (id: string) => Promise<void>;
+  clearAllData: () => Promise<void>;
+}
+
+function exportAllCsv(records: SaleRecord[]) {
+  const header = [
+    'Patient ID', 'Patient Name', 'Date', 'Item Type', 'Service', 'Subcategory', 'Qty',
+    'Invoice No', 'Invoice Status', 'Amount (Exc. Tax)', 'Amount (Inc. Tax)', 'Payment Type', 'Staff',
+  ];
+  const lines = records.map((r) =>
+    [
+      r.patientId, r.patientName, r.date, r.itemType, r.serviceName, r.subcategory, r.qty,
+      r.invoiceNo, r.invoiceStatus, r.amount.toFixed(3), r.amountIncTax.toFixed(3), r.paymentType ?? '', r.staff ?? '',
+    ]
+      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+      .join(','),
+  );
+  const csv = [header.join(','), ...lines].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `patient-matrix-backup-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function DataPage({ records, batches, importFile, removeBatch, clearAllData }: DataPageProps) {
+  const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showWarnings, setShowWarnings] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      setError(null);
+      setResult(null);
+      try {
+        const res = await importFile(file);
+        setResult(res);
+      } catch (e) {
+        if (e instanceof ImportSchemaError) {
+          setError(e.message);
+        } else {
+          setError(e instanceof Error ? e.message : 'Failed to read this file.');
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [importFile],
+  );
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleFile(file);
+    },
+    [handleFile],
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+          dragOver
+            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30'
+            : 'border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900'
+        }`}
+      >
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+          Drag & drop the sales export (.xlsx) here, or
+        </p>
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+        >
+          {busy ? 'Importing…' : 'Choose file'}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+            e.target.value = '';
+          }}
+        />
+        <p className="mt-3 text-xs text-zinc-400">
+          Upload the full history once, then just the latest export each day — records already imported are
+          detected automatically and skipped, so it's safe to re-upload overlapping data.
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <p>
+            <strong>{result.fileName}</strong>: {formatNumber(result.added)} new row(s) added,{' '}
+            {formatNumber(result.duplicates)} already-imported row(s) skipped
+            {result.skipped > 0 && `, ${formatNumber(result.skipped)} row(s) skipped (missing data)`}.
+          </p>
+          {result.warnings.length > 0 && (
+            <>
+              <button onClick={() => setShowWarnings((v) => !v)} className="mt-1 text-xs underline">
+                {showWarnings ? 'Hide' : 'Show'} skipped-row details
+              </button>
+              {showWarnings && (
+                <ul className="mt-2 max-h-40 list-disc overflow-auto pl-5 text-xs">
+                  {result.warnings.slice(0, 200).map((w, i) => (
+                    <li key={i}>
+                      Row {w.rowNumber}: {w.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            Import History ({formatNumber(batches.length)} upload{batches.length === 1 ? '' : 's'}, {formatNumber(records.length)} total rows)
+          </h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => exportAllCsv(records)}
+              disabled={records.length === 0}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Backup all data (CSV)
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('This deletes ALL uploaded data from this browser. This cannot be undone. Continue?')) {
+                  clearAllData();
+                }
+              }}
+              disabled={records.length === 0}
+              className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
+            >
+              Clear all data
+            </button>
+          </div>
+        </div>
+
+        {batches.length === 0 ? (
+          <p className="py-6 text-center text-sm text-zinc-500">No uploads yet.</p>
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+              <tr>
+                <th className="py-2 pr-2">File</th>
+                <th className="py-2 pr-2">Uploaded</th>
+                <th className="py-2 pr-2">Date Range Covered</th>
+                <th className="py-2 pr-2 text-right">Rows Added</th>
+                <th className="py-2 pr-2 text-right">Duplicates Skipped</th>
+                <th className="py-2 pr-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {batches.map((b) => (
+                <tr key={b.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <td className="py-1.5 pr-2">{b.fileName}</td>
+                  <td className="py-1.5 pr-2">{new Date(b.uploadedAt).toLocaleString('en-GB')}</td>
+                  <td className="py-1.5 pr-2">
+                    {b.dateRange ? `${formatDate(b.dateRange.min)} – ${formatDate(b.dateRange.max)}` : '—'}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(b.addedCount)}</td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(b.duplicateCount)}</td>
+                  <td className="py-1.5 pr-2 text-right">
+                    <button
+                      onClick={() => {
+                        if (confirm(`Remove all rows imported from "${b.fileName}"?`)) removeBatch(b.id);
+                      }}
+                      className="text-xs text-rose-600 hover:underline dark:text-rose-400"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}

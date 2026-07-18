@@ -1,32 +1,48 @@
-# React + TypeScript + Vite
+# Patient Matrix — Clinic Performance Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A browser-only dashboard for tracking patient retention, turnover, new
+patients, and service performance from clinic sales exports (built for a
+Zenoti-based derma & wellness clinic). All data stays in your browser
+(IndexedDB) — nothing is uploaded to a server.
 
-Currently, two official plugins are available:
+## Using it
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Run the app (see below) and open the **Data** tab.
+2. Upload the full historical sales export (Excel `.xlsx`) once — this can
+   be a large "from inception to date" file.
+3. On subsequent days, export and upload just the latest data from your POS.
+   The importer detects rows it has already seen (by invoice + line item)
+   and skips them automatically, so it's safe to upload overlapping or
+   cumulative exports — you won't get duplicates.
+4. Switch to the **Dashboard** tab to see:
+   - KPIs: revenue, active/new/returning patients, retention rate, turnover
+     rate (all compared against the previous equivalent period).
+   - New vs returning patients and revenue trends over the last 12 months.
+   - Top selling services/products/packages, and which ones haven't sold
+     recently ("dormant" services), for a chosen category.
+   - A searchable, exportable list of patients who've stopped visiting
+     (configurable inactivity threshold).
 
-## React Compiler
+**Expected columns**: Sale Date, Guest Code, Guest Name, Item Type, Item
+Name, Invoice No, Sales (Exc. Tax) are required; Item Code, Item
+Subcategory, Qty, Sales(Inc. Tax), Tax, Invoice status, Payment Type, Sold
+By/Therapist, Center Name are used when present. This matches a standard
+Zenoti sales export.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Data lives in this browser only.** Use "Backup all data (CSV)" on the
+Data tab periodically, and note that data won't carry over to another
+device or browser — if that becomes a problem, this can be upgraded to a
+server + database backed version, e.g. once ready to connect the sales
+system directly via API.
 
-## Expanding the Oxlint configuration
+## Development
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # start dev server
+npm run build    # typecheck + production build
+npm run lint     # oxlint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Tech: Vite + React + TypeScript, Tailwind CSS, Recharts, SheetJS (`xlsx`)
+for parsing, `idb` for IndexedDB persistence.
