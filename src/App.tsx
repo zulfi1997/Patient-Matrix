@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useTransactions } from './hooks/useTransactions';
 import { Dashboard } from './components/Dashboard';
+import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
 import { DataPage } from './components/DataPage';
 import { toAnalysisRecords } from './lib/filters';
 
-type Tab = 'dashboard' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'data';
 
 function App() {
   const { records, batches, loading, importFile, removeBatch, clearAllData } = useTransactions();
@@ -29,6 +30,12 @@ function App() {
               Dashboard
             </button>
             <button
+              onClick={() => setTab('newPatientRevenue')}
+              className={`px-4 py-1.5 ${tab === 'newPatientRevenue' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              New Patient Revenue
+            </button>
+            <button
               onClick={() => setTab('data')}
               className={`px-4 py-1.5 ${tab === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
@@ -41,7 +48,7 @@ function App() {
       <main className="mx-auto max-w-6xl px-4 py-6">
         {loading ? (
           <p className="py-20 text-center text-sm text-zinc-500">Loading…</p>
-        ) : records.length === 0 && tab === 'dashboard' ? (
+        ) : records.length === 0 && tab !== 'data' ? (
           <div className="rounded-xl border border-zinc-200 bg-white p-10 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <p className="text-sm text-zinc-600 dark:text-zinc-300">
               No data yet. Upload your sales export on the <strong>Data</strong> tab to get started.
@@ -55,6 +62,8 @@ function App() {
           </div>
         ) : tab === 'dashboard' ? (
           <Dashboard records={analysisRecords} />
+        ) : tab === 'newPatientRevenue' ? (
+          <NewPatientRevenueDashboard records={analysisRecords} />
         ) : (
           <DataPage
             records={records}

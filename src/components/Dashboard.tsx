@@ -17,7 +17,6 @@ import { KpiCard } from './KpiCard';
 import { PeriodControls } from './PeriodControls';
 import { PatientTrendChart } from './PatientTrendChart';
 import { RevenueTrendChart } from './RevenueTrendChart';
-import { NewPatientRevenueChart } from './NewPatientRevenueChart';
 import { MonthlyPatientTable } from './MonthlyPatientTable';
 import { RedeemedPackagesTable } from './RedeemedPackagesTable';
 import { TopServicesChart } from './TopServicesChart';
@@ -146,8 +145,6 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
         <PatientTrendChart data={trend} />
         <RevenueTrendChart data={trend} />
       </div>
-
-      <NewPatientRevenueChart data={trend} />
 
       <MonthlyPatientTable data={trend} />
 
