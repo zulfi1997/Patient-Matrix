@@ -5,7 +5,13 @@ import { formatCurrency, formatNumber } from '../lib/format';
 
 type Metric = 'patientCount' | 'revenue';
 
-export function NewPatientTopServicesChart({ data }: { data: NewPatientServiceStat[] }) {
+export function NewPatientTopServicesChart({
+  data,
+  monthsBack,
+}: {
+  data: NewPatientServiceStat[];
+  monthsBack: number;
+}) {
   const [metric, setMetric] = useState<Metric>('patientCount');
   const top = [...data].sort((a, b) => b[metric] - a[metric]).slice(0, 10);
   const chartData = top.map((s) => ({
@@ -38,7 +44,7 @@ export function NewPatientTopServicesChart({ data }: { data: NewPatientServiceSt
         </div>
       </div>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-        What new patients bought on their first-ever visit, last 12 months.
+        What new patients bought on their first-ever visit, last {monthsBack} month{monthsBack === 1 ? '' : 's'}.
         {top.length > 0 && (
           <>
             {' '}
