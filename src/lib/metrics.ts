@@ -348,3 +348,84 @@ export function computeAtRiskPatients(
   }
   return result.sort((a, b) => b.daysSinceLastVisit - a.daysSinceLastVisit);
 }
+
+function monthsAgoStartISO(asOfISO: string, monthsBack: number): string {
+  const asOf = new Date(`${asOfISO}T00:00:00`);
+  return toISODate(new Date(asOf.getFullYear(), asOf.getMonth() - monthsBack + 1, 1));
+}
+
+/** Line items from each patient's first-ever visit, for patients whose first visit falls on/after windowStartISO. */
+function getNewPatientFirstVisitRecords(
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  windowStartISO: string,
+): SaleRecord[] {
+  return records.filter((r) => {
+    const s = patients.get(r.patientId);
+    return !!s && s.firstVisit >= windowStartISO && r.date === s.firstVisit;
+  });
+}
+
+export interface NewPatientDetail {
+  patientId: string;
+  patientName: string;
+  firstVisitDate: string;
+  services: string[];
+  revenue: number;
+}
+
+/** One row per new patient (first visit within the last monthsBack months), with what they bought on that first visit. */
+export function computeNewPatientDetails(
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  monthsBack: number,
+  asOfISO: string,
+): NewPatientDetail[] {
+  const windowStartISO = monthsAgoStartISO(asOfISO, monthsBack);
+  const firstVisitRecords = getNewPatientFirstVisitRecords(records, patients, windowStartISO);
+
+  const map = new Map<string, NewPatientDetail>();
+  for (const r of firstVisitRecords) {
+    let d = map.get(r.patientId);
+    if (!d) {
+      const s = patients.get(r.patientId)!;
+      d = { patientId: r.patientId, patientName: s.patientName, firstVisitDate: s.firstVisit, services: [], revenue: 0 };
+      map.set(r.patientId, d);
+    }
+    if (!d.services.includes(r.serviceName)) d.services.push(r.serviceName);
+    d.revenue += r.amount;
+  }
+  return [...map.values()].sort((a, b) => b.firstVisitDate.localeCompare(a.firstVisitDate));
+}
+
+export interface NewPatientServiceStat {
+  serviceName: string;
+  /** Distinct new patients who bought this on their first visit. */
+  patientCount: number;
+  revenue: number;
+}
+
+/** Which services new patients buy on their first visit, ranked by how many new patients bought each. */
+export function computeNewPatientTopServices(
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  monthsBack: number,
+  asOfISO: string,
+): NewPatientServiceStat[] {
+  const windowStartISO = monthsAgoStartISO(asOfISO, monthsBack);
+  const firstVisitRecords = getNewPatientFirstVisitRecords(records, patients, windowStartISO);
+
+  const map = new Map<string, { patients: Set<string>; revenue: number }>();
+  for (const r of firstVisitRecords) {
+    let s = map.get(r.serviceName);
+    if (!s) {
+      s = { patients: new Set(), revenue: 0 };
+      map.set(r.serviceName, s);
+    }
+    s.patients.add(r.patientId);
+    s.revenue += r.amount;
+  }
+  return [...map.entries()]
+    .map(([serviceName, v]) => ({ serviceName, patientCount: v.patients.size, revenue: v.revenue }))
+    .sort((a, b) => b.patientCount - a.patientCount);
+}

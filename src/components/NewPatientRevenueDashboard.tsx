@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
 import type { SaleRecord } from '../types';
-import { computeMonthlyTrend, summarizePatients } from '../lib/metrics';
+import { computeMonthlyTrend, computeNewPatientDetails, computeNewPatientTopServices, summarizePatients } from '../lib/metrics';
 import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { KpiCard } from './KpiCard';
 import { NewPatientRevenueChart } from './NewPatientRevenueChart';
 import { NewPatientRevenueTable } from './NewPatientRevenueTable';
+import { NewPatientTopServicesChart } from './NewPatientTopServicesChart';
+import { NewPatientsListTable } from './NewPatientsListTable';
 
 const MONTHS_BACK = 12;
 
@@ -18,6 +20,16 @@ export function NewPatientRevenueDashboard({ records }: { records: SaleRecord[] 
 
   const trend = useMemo(
     () => computeMonthlyTrend(records, patients, MONTHS_BACK, asOfISO),
+    [records, patients, asOfISO],
+  );
+
+  const newPatientDetails = useMemo(
+    () => computeNewPatientDetails(records, patients, MONTHS_BACK, asOfISO),
+    [records, patients, asOfISO],
+  );
+
+  const newPatientTopServices = useMemo(
+    () => computeNewPatientTopServices(records, patients, MONTHS_BACK, asOfISO),
     [records, patients, asOfISO],
   );
 
@@ -67,6 +79,8 @@ export function NewPatientRevenueDashboard({ records }: { records: SaleRecord[] 
 
       <NewPatientRevenueChart data={trend} />
       <NewPatientRevenueTable data={trend} />
+      <NewPatientTopServicesChart data={newPatientTopServices} />
+      <NewPatientsListTable data={newPatientDetails} />
     </div>
   );
 }
