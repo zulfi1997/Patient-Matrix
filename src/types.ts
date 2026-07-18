@@ -46,6 +46,7 @@ export interface SaleRecord {
   paymentType: string | null;
   staff: string | null;
   centerName: string;
+  invoiceNotes: string | null;
 }
 
 export interface ImportBatch {

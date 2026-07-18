@@ -234,6 +234,7 @@ export function rowsToRecords(
       paymentType,
       staff: (get(row, headerMap, 'Sold By') as string) || (get(row, headerMap, 'Therapist') as string) || null,
       centerName: String(get(row, headerMap, 'Center Name') ?? '').trim() || 'Default',
+      invoiceNotes: (get(row, headerMap, 'Invoice Notes') as string) || null,
     });
   });
 
