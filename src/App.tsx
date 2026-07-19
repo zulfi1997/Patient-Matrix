@@ -4,11 +4,12 @@ import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
 import { FlaggedTransactionsDashboard } from './components/FlaggedTransactionsDashboard';
+import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, hasFlaggedNote, toAnalysisRecords } from './lib/filters';
 import { formatNumber } from './lib/format';
 
-type Tab = 'dashboard' | 'newPatientRevenue' | 'yb111' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'yb111' | 'data';
 
 function App() {
   const { records, batches, loading, importFile, removeBatch, clearAllData } = useTransactions();
@@ -48,6 +49,12 @@ function App() {
               className={`px-4 py-1.5 ${tab === 'newPatientRevenue' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               New Patient Revenue
+            </button>
+            <button
+              onClick={() => setTab('kpi')}
+              className={`px-4 py-1.5 ${tab === 'kpi' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              KPI Evaluation
             </button>
             <button
               onClick={() => setTab('yb111')}
@@ -98,6 +105,8 @@ function App() {
           <Dashboard records={analysisRecords} />
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} />
+        ) : tab === 'kpi' ? (
+          <KpiEvaluationDashboard records={analysisRecords} />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard records={baseAnalysisRecords} />
         ) : (
