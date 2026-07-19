@@ -6,6 +6,7 @@ import {
   computeDailyConversion,
   computeRangeConversion,
   FOLLOW_UP_REASON_LABELS,
+  SNAPSHOT_STALENESS_CAP_DAYS,
   type ConversionCategory,
   type ProviderGroup,
   type RevenueAdjustment,
@@ -84,19 +85,13 @@ export function ProviderConversionDashboard({
   // rest of the dashboard doesn't need to branch on viewMode at all.
   const summary = useMemo(() => {
     if (viewMode === 'day') {
-      const daily = computeDailyConversion(
-        records,
-        patients,
-        clampedDate,
-        invoiceToPatient,
-        packageBenefitsByDate.get(clampedDate) ?? null,
-        providerGroups,
-        revenueAdjustments,
-      );
+      const daily = computeDailyConversion(records, patients, clampedDate, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments);
       return {
         range: { start: clampedDate, end: clampedDate },
-        daysWithSnapshot: daily.hasBalanceSnapshot ? 1 : 0,
+        daysWithExactSnapshot: daily.snapshotUsed?.daysAway === 0 ? 1 : 0,
+        daysWithFallbackSnapshot: daily.snapshotUsed && daily.snapshotUsed.daysAway > 0 ? 1 : 0,
         totalDays: 1,
+        snapshotUsed: daily.snapshotUsed,
         providers: daily.providers,
         overall: daily.overall,
         patientRows: daily.patientRows,
@@ -151,27 +146,36 @@ export function ProviderConversionDashboard({
   const periodLabel =
     viewMode === 'day' ? formatDate(clampedDate) : `${PRESET_LABELS[preset]} (${formatDate(summary.range.start)} – ${formatDate(summary.range.end)})`;
 
-  const snapshotBadge =
-    summary.daysWithSnapshot === summary.totalDays
+  const { daysWithExactSnapshot, daysWithFallbackSnapshot, totalDays } = summary;
+  const daysCovered = daysWithExactSnapshot + daysWithFallbackSnapshot;
+  const daysMissing = totalDays - daysCovered;
+
+  const snapshotBadge: { tone: 'good' | 'estimate' | 'warn'; text: string } =
+    daysWithExactSnapshot === totalDays
       ? {
-          tone: 'good' as const,
-          text:
-            summary.totalDays === 1
-              ? 'Package balance snapshot available for this date'
-              : `Package balance snapshot available for all ${summary.totalDays} days in this period`,
+          tone: 'good',
+          text: totalDays === 1 ? 'Package balance snapshot available for this date' : `Package balance snapshot available for all ${totalDays} days in this period`,
         }
-      : summary.daysWithSnapshot === 0
+      : daysMissing === 0
         ? {
-            tone: 'warn' as const,
+            tone: 'estimate',
             text:
-              summary.totalDays === 1
-                ? 'No package balance snapshot for this date - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted"'
-                : 'No package balance snapshots in this period - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted"',
+              totalDays === 1 && summary.snapshotUsed
+                ? `No snapshot for this exact date - using the ${formatDate(summary.snapshotUsed.snapshotDate)} snapshot (${summary.snapshotUsed.daysAway}d away) as an estimate`
+                : `${daysWithFallbackSnapshot} of ${totalDays} days used the nearest available snapshot (within ${SNAPSHOT_STALENESS_CAP_DAYS} days) as an estimate`,
           }
-        : {
-            tone: 'warn' as const,
-            text: `Package balance snapshot available for ${summary.daysWithSnapshot} of ${summary.totalDays} days in this period - other days' $0-revenue repeat visits may show as "Repeat Unconverted"`,
-          };
+        : daysCovered === 0
+          ? {
+              tone: 'warn',
+              text:
+                totalDays === 1
+                  ? `No package balance snapshot within ${SNAPSHOT_STALENESS_CAP_DAYS} days of this date - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted"`
+                  : `No package balance snapshots within ${SNAPSHOT_STALENESS_CAP_DAYS} days of this period - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted"`,
+            }
+          : {
+              tone: 'warn',
+              text: `${daysCovered} of ${totalDays} days have a usable snapshot (exact or nearby estimate) - the other ${daysMissing} day(s) may show "Repeat Unconverted" instead of Follow-up`,
+            };
 
   return (
     <div className="flex flex-col gap-4">
@@ -253,7 +257,9 @@ export function ProviderConversionDashboard({
           className={`ml-auto rounded-full px-2.5 py-1 text-xs font-medium ${
             snapshotBadge.tone === 'good'
               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-              : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+              : snapshotBadge.tone === 'estimate'
+                ? 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300'
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
           }`}
         >
           {snapshotBadge.text}
