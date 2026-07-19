@@ -1,14 +1,13 @@
 import type { SaleRecord } from '../types';
 import { formatCurrencyCompact, formatNumber, formatPercent, toISODate } from './format';
 import {
-  computeFlaggedMonthlyTrend,
-  computeMonthlyTrend,
+  computeFlaggedSummary,
+  computeKpis,
   daysBetween,
   isInRange,
+  previousPeriod,
   summarizePatients,
   type DateRange,
-  type FlaggedMonthlyPoint,
-  type MonthlyTrendPoint,
   type PatientVisitSummary,
 } from './metrics';
 import { hasFlaggedNote } from './filters';
@@ -21,23 +20,21 @@ export interface KpiPoint {
   value: number;
 }
 
-export interface KpiContext {
-  records: SaleRecord[];
-  patients: Map<string, PatientVisitSummary>;
-  asOfISO: string;
-  monthsBack: number;
-  monthRanges: DateRange[];
-  trend: MonthlyTrendPoint[];
-  flaggedTrend: FlaggedMonthlyPoint[];
-}
-
+/**
+ * Every KPI is defined as a single function computing one number for an
+ * arbitrary date range - reused both for the month-by-month sparkline
+ * (called once per calendar month) and for the scorecard's period-scoped
+ * value (called once for the selected period and once for its prior-period
+ * equivalent), exactly mirroring how the Dashboard tab's own KPI cards vs.
+ * trend charts relate to its period selector.
+ */
 export interface KpiDefinition {
   id: string;
   label: string;
   category: KpiCategory;
   unit: KpiUnit;
   description: string;
-  compute: (ctx: KpiContext) => KpiPoint[];
+  computeRange: (records: SaleRecord[], patients: Map<string, PatientVisitSummary>, range: DateRange, asOfISO: string) => number;
 }
 
 export function buildMonthRanges(asOfISO: string, monthsBack: number): DateRange[] {
@@ -51,46 +48,24 @@ export function buildMonthRanges(asOfISO: string, monthsBack: number): DateRange
   return ranges;
 }
 
-export function buildKpiContext(records: SaleRecord[], asOfISO: string, monthsBack: number): KpiContext {
-  const patients = summarizePatients(records);
-  return {
-    records,
-    patients,
-    asOfISO,
-    monthsBack,
-    monthRanges: buildMonthRanges(asOfISO, monthsBack),
-    trend: computeMonthlyTrend(records, patients, monthsBack, asOfISO),
-    flaggedTrend: computeFlaggedMonthlyTrend(records, monthsBack, asOfISO),
-  };
+function sumInRange(records: SaleRecord[], range: DateRange, valueFn: (r: SaleRecord) => number, filterFn?: (r: SaleRecord) => boolean): number {
+  let sum = 0;
+  for (const r of records) {
+    if (!isInRange(r.date, range)) continue;
+    if (filterFn && !filterFn(r)) continue;
+    sum += valueFn(r);
+  }
+  return sum;
 }
 
-/** Sum of a per-record numeric field within range, filtered by an optional predicate. */
-function sumByMonth(
-  ctx: KpiContext,
-  valueFn: (r: SaleRecord) => number,
-  filterFn?: (r: SaleRecord) => boolean,
-): KpiPoint[] {
-  return ctx.monthRanges.map((range) => {
-    let sum = 0;
-    for (const r of ctx.records) {
-      if (!isInRange(r.date, range)) continue;
-      if (filterFn && !filterFn(r)) continue;
-      sum += valueFn(r);
-    }
-    return { month: range.start, value: sum };
-  });
-}
-
-function distinctCountByMonth(ctx: KpiContext, keyFn: (r: SaleRecord) => string | null): KpiPoint[] {
-  return ctx.monthRanges.map((range) => {
-    const set = new Set<string>();
-    for (const r of ctx.records) {
-      if (!isInRange(r.date, range)) continue;
-      const key = keyFn(r);
-      if (key) set.add(key);
-    }
-    return { month: range.start, value: set.size };
-  });
+function countDistinctInRange(records: SaleRecord[], range: DateRange, keyFn: (r: SaleRecord) => string | null): number {
+  const set = new Set<string>();
+  for (const r of records) {
+    if (!isInRange(r.date, range)) continue;
+    const key = keyFn(r);
+    if (key) set.add(key);
+  }
+  return set.size;
 }
 
 export const KPI_CATALOG: KpiDefinition[] = [
@@ -100,45 +75,48 @@ export const KPI_CATALOG: KpiDefinition[] = [
     label: 'Total Revenue',
     category: 'revenue',
     unit: 'currency',
-    description: 'Net revenue per month (excludes package-redemption double-counting).',
-    compute: (ctx) => ctx.trend.map((m) => ({ month: m.month, value: m.revenue })),
+    description: 'Net revenue (excludes package-redemption double-counting).',
+    computeRange: (records, _p, range) => sumInRange(records, range, (r) => r.amount),
   },
   {
     id: 'revenue-avg-transaction',
     label: 'Average Transaction Value',
     category: 'revenue',
     unit: 'currency',
-    description: 'Revenue divided by number of line items, per month.',
-    compute: (ctx) => ctx.trend.map((m) => ({ month: m.month, value: m.transactions > 0 ? m.revenue / m.transactions : 0 })),
+    description: 'Revenue divided by number of line items.',
+    computeRange: (records, _p, range) => {
+      const recs = records.filter((r) => isInRange(r.date, range));
+      const revenue = recs.reduce((s, r) => s + r.amount, 0);
+      return recs.length > 0 ? revenue / recs.length : 0;
+    },
   },
   {
     id: 'revenue-growth-rate',
     label: 'Revenue Growth Rate',
     category: 'revenue',
     unit: 'percent',
-    description: 'Month-over-month % change in revenue.',
-    compute: (ctx) =>
-      ctx.trend.map((m, i) => {
-        const prev = ctx.trend[i - 1];
-        const value = prev && prev.revenue > 0 ? ((m.revenue - prev.revenue) / prev.revenue) * 100 : 0;
-        return { month: m.month, value };
-      }),
+    description: '% change in revenue vs. the equivalent prior period.',
+    computeRange: (records, _p, range) => {
+      const current = sumInRange(records, range, (r) => r.amount);
+      const previous = sumInRange(records, previousPeriod(range), (r) => r.amount);
+      return previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : 0;
+    },
   },
   {
     id: 'revenue-service',
     label: 'Service Revenue',
     category: 'revenue',
     unit: 'currency',
-    description: 'Revenue from Item Type = Service, per month.',
-    compute: (ctx) => sumByMonth(ctx, (r) => r.amount, (r) => r.itemType === 'Service'),
+    description: 'Revenue from Item Type = Service.',
+    computeRange: (records, _p, range) => sumInRange(records, range, (r) => r.amount, (r) => r.itemType === 'Service'),
   },
   {
     id: 'revenue-package',
     label: 'Package Revenue',
     category: 'revenue',
     unit: 'currency',
-    description: 'Revenue from new package purchases (Item Type = Package), per month.',
-    compute: (ctx) => sumByMonth(ctx, (r) => r.amount, (r) => r.itemType === 'Package'),
+    description: 'Revenue from new package purchases (Item Type = Package).',
+    computeRange: (records, _p, range) => sumInRange(records, range, (r) => r.amount, (r) => r.itemType === 'Package'),
   },
 
   // --- Patient ---
@@ -147,61 +125,72 @@ export const KPI_CATALOG: KpiDefinition[] = [
     label: 'New Patients',
     category: 'patient',
     unit: 'count',
-    description: 'Patients whose first-ever visit fell in that month.',
-    compute: (ctx) => ctx.trend.map((m) => ({ month: m.month, value: m.newPatients })),
+    description: 'Patients whose first-ever visit fell in this period.',
+    computeRange: (records, patients, range) => {
+      const active = new Set(records.filter((r) => isInRange(r.date, range)).map((r) => r.patientId));
+      let n = 0;
+      for (const id of active) {
+        const s = patients.get(id);
+        if (s && isInRange(s.firstVisit, range)) n++;
+      }
+      return n;
+    },
   },
   {
     id: 'patient-returning',
     label: 'Returning Patients',
     category: 'patient',
     unit: 'count',
-    description: 'Active patients that month who had visited before.',
-    compute: (ctx) => ctx.trend.map((m) => ({ month: m.month, value: m.returningPatients })),
+    description: 'Active patients this period who had visited before.',
+    computeRange: (records, patients, range) => {
+      const active = new Set(records.filter((r) => isInRange(r.date, range)).map((r) => r.patientId));
+      let returning = 0;
+      for (const id of active) {
+        const s = patients.get(id);
+        if (!(s && isInRange(s.firstVisit, range))) returning++;
+      }
+      return returning;
+    },
   },
   {
     id: 'patient-active',
     label: 'Active Patients',
     category: 'patient',
     unit: 'count',
-    description: 'Distinct patients with at least one visit that month.',
-    compute: (ctx) => ctx.trend.map((m) => ({ month: m.month, value: m.activePatients })),
+    description: 'Distinct patients with at least one visit this period.',
+    computeRange: (records, _p, range) => countDistinctInRange(records, range, (r) => r.patientId),
   },
   {
     id: 'patient-retention-rate',
     label: 'Retention Rate',
     category: 'patient',
     unit: 'percent',
-    description: "Of last month's active patients, % who also visited this month.",
-    compute: (ctx) => ctx.trend.map((m) => ({ month: m.month, value: m.retentionRate ?? 0 })),
+    description: "Of the prior equivalent period's active patients, % who also visited this period.",
+    computeRange: (records, patients, range, asOfISO) => computeKpis(records, range, patients, 90, asOfISO).retentionRate ?? 0,
   },
   {
     id: 'patient-turnover-rate',
     label: 'Turnover Rate',
     category: 'patient',
     unit: 'percent',
-    description: "Of last month's active patients, % who did not return.",
-    compute: (ctx) =>
-      ctx.trend.map((m) => ({
-        month: m.month,
-        value: m.prevMonthActivePatients > 0 ? ((m.prevMonthActivePatients - m.retainedPatients) / m.prevMonthActivePatients) * 100 : 0,
-      })),
+    description: "Of the prior equivalent period's active patients, % who did not return.",
+    computeRange: (records, patients, range, asOfISO) => computeKpis(records, range, patients, 90, asOfISO).turnoverRate ?? 0,
   },
   {
     id: 'patient-stopped-visiting',
     label: 'Patients Stopped Visiting (90d+)',
     category: 'patient',
     unit: 'count',
-    description: 'As of each month-end, patients inactive 90+ days (using only data known up to that point).',
-    compute: (ctx) =>
-      ctx.monthRanges.map((range) => {
-        const upToNow = ctx.records.filter((r) => r.date <= range.end);
-        const snapshot = summarizePatients(upToNow);
-        let count = 0;
-        for (const s of snapshot.values()) {
-          if (daysBetween(s.lastVisit, range.end) >= 90) count++;
-        }
-        return { month: range.start, value: count };
-      }),
+    description: 'As of the end of this period, patients inactive 90+ days (using only data known up to that point).',
+    computeRange: (records, _p, range) => {
+      const upToNow = records.filter((r) => r.date <= range.end);
+      const snapshot = summarizePatients(upToNow);
+      let count = 0;
+      for (const s of snapshot.values()) {
+        if (daysBetween(s.lastVisit, range.end) >= 90) count++;
+      }
+      return count;
+    },
   },
 
   // --- Staff ---
@@ -210,19 +199,19 @@ export const KPI_CATALOG: KpiDefinition[] = [
     label: 'Active Staff Count',
     category: 'staff',
     unit: 'count',
-    description: 'Distinct staff (Sold By/Therapist) with at least one transaction that month.',
-    compute: (ctx) => distinctCountByMonth(ctx, (r) => r.staff),
+    description: 'Distinct staff (Sold By/Therapist) with at least one transaction this period.',
+    computeRange: (records, _p, range) => countDistinctInRange(records, range, (r) => r.staff),
   },
   {
     id: 'staff-avg-revenue',
     label: 'Average Revenue per Staff',
     category: 'staff',
     unit: 'currency',
-    description: 'Total revenue divided by distinct active staff, per month.',
-    compute: (ctx) => {
-      const revenue = sumByMonth(ctx, (r) => r.amount);
-      const staffCount = distinctCountByMonth(ctx, (r) => r.staff);
-      return revenue.map((m, i) => ({ month: m.month, value: staffCount[i].value > 0 ? m.value / staffCount[i].value : 0 }));
+    description: 'Total revenue divided by distinct active staff.',
+    computeRange: (records, _p, range) => {
+      const revenue = sumInRange(records, range, (r) => r.amount);
+      const staffCount = countDistinctInRange(records, range, (r) => r.staff);
+      return staffCount > 0 ? revenue / staffCount : 0;
     },
   },
   {
@@ -230,16 +219,16 @@ export const KPI_CATALOG: KpiDefinition[] = [
     label: '"YB111" Flagged Transactions',
     category: 'staff',
     unit: 'count',
-    description: 'Line items flagged "YB111" in Invoice Notes, per month.',
-    compute: (ctx) => ctx.flaggedTrend.map((m) => ({ month: m.month, value: m.count })),
+    description: 'Line items flagged "YB111" in Invoice Notes.',
+    computeRange: (records, _p, range) => computeFlaggedSummary(records, range).count,
   },
   {
     id: 'staff-yb111-value',
     label: '"YB111" Flagged Value',
     category: 'staff',
     unit: 'currency',
-    description: 'Revenue value on "YB111"-flagged line items, per month.',
-    compute: (ctx) => ctx.flaggedTrend.map((m) => ({ month: m.month, value: m.amount })),
+    description: 'Revenue value on "YB111"-flagged line items.',
+    computeRange: (records, _p, range) => computeFlaggedSummary(records, range).amount,
   },
 
   // --- Service ---
@@ -248,50 +237,49 @@ export const KPI_CATALOG: KpiDefinition[] = [
     label: 'Distinct Services Sold',
     category: 'service',
     unit: 'count',
-    description: 'Number of distinct services with at least one sale that month.',
-    compute: (ctx) => distinctCountByMonth(ctx, (r) => (r.itemType === 'Service' ? r.serviceKey : null)),
+    description: 'Number of distinct services with at least one sale this period.',
+    computeRange: (records, _p, range) => countDistinctInRange(records, range, (r) => (r.itemType === 'Service' ? r.serviceKey : null)),
   },
   {
     id: 'service-product-revenue',
     label: 'Product Revenue',
     category: 'service',
     unit: 'currency',
-    description: 'Revenue from Item Type = Product, per month.',
-    compute: (ctx) => sumByMonth(ctx, (r) => r.amount, (r) => r.itemType === 'Product'),
+    description: 'Revenue from Item Type = Product.',
+    computeRange: (records, _p, range) => sumInRange(records, range, (r) => r.amount, (r) => r.itemType === 'Product'),
   },
   {
     id: 'service-redeemed-value',
     label: 'Package Redemption Value',
     category: 'service',
     unit: 'currency',
-    description: "Value of previously-sold packages' sessions redeemed that month.",
-    compute: (ctx) => sumByMonth(ctx, (r) => r.redeemedAmount, (r) => !!r.packageName),
+    description: "Value of previously-sold packages' sessions redeemed this period.",
+    computeRange: (records, _p, range) => sumInRange(records, range, (r) => r.redeemedAmount, (r) => !!r.packageName),
   },
   {
     id: 'service-redeemed-count',
     label: 'Package Sessions Redeemed',
     category: 'service',
     unit: 'count',
-    description: 'Number of line items redeeming a session from a previously sold package, per month.',
-    compute: (ctx) => sumByMonth(ctx, () => 1, (r) => !!r.packageName),
+    description: 'Line items redeeming a session from a previously sold package.',
+    computeRange: (records, _p, range) => sumInRange(records, range, () => 1, (r) => !!r.packageName),
   },
   {
     id: 'service-flagged-share',
     label: '"YB111" Share of Service Lines',
     category: 'service',
     unit: 'percent',
-    description: '% of Service line items that month flagged "YB111".',
-    compute: (ctx) =>
-      ctx.monthRanges.map((range) => {
-        let total = 0;
-        let flagged = 0;
-        for (const r of ctx.records) {
-          if (!isInRange(r.date, range) || r.itemType !== 'Service') continue;
-          total++;
-          if (hasFlaggedNote(r)) flagged++;
-        }
-        return { month: range.start, value: total > 0 ? (flagged / total) * 100 : 0 };
-      }),
+    description: '% of Service line items this period flagged "YB111".',
+    computeRange: (records, _p, range) => {
+      let total = 0;
+      let flagged = 0;
+      for (const r of records) {
+        if (!isInRange(r.date, range) || r.itemType !== 'Service') continue;
+        total++;
+        if (hasFlaggedNote(r)) flagged++;
+      }
+      return total > 0 ? (flagged / total) * 100 : 0;
+    },
   },
 ];
 
@@ -303,6 +291,40 @@ export function formatKpiValue(value: number, unit: KpiUnit): string {
   if (unit === 'currency') return formatCurrencyCompact(value);
   if (unit === 'percent') return formatPercent(value, 1);
   return formatNumber(Math.round(value));
+}
+
+/** Monthly series (for sparklines/correlation), independent of any selected period - same pattern as the Dashboard's trend charts. */
+export function computeKpiMonthlySeries(
+  kpi: KpiDefinition,
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  asOfISO: string,
+  monthsBack: number,
+): KpiPoint[] {
+  return buildMonthRanges(asOfISO, monthsBack).map((range) => ({
+    month: range.start,
+    value: kpi.computeRange(records, patients, range, asOfISO),
+  }));
+}
+
+export interface KpiPeriodValue {
+  current: number;
+  previous: number;
+  changePct: number | null;
+}
+
+/** Value for the selected period and its prior-period equivalent, for the scorecard's headline number. */
+export function computeKpiPeriodValue(
+  kpi: KpiDefinition,
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  range: DateRange,
+  asOfISO: string,
+): KpiPeriodValue {
+  const current = kpi.computeRange(records, patients, range, asOfISO);
+  const previous = kpi.computeRange(records, patients, previousPeriod(range), asOfISO);
+  const changePct = previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : null;
+  return { current, previous, changePct };
 }
 
 /** Pearson correlation coefficient between two equal-length numeric series. NaN if fewer than 3 points or no variance. */

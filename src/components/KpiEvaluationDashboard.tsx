@@ -1,18 +1,33 @@
 import { useCallback, useMemo } from 'react';
 import type { SaleRecord } from '../types';
-import { buildKpiContext, KPI_CATALOG, type KpiPoint } from '../lib/kpiCatalog';
+import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
+import {
+  computeKpiMonthlySeries,
+  computeKpiPeriodValue,
+  KPI_CATALOG,
+  type KpiPeriodValue,
+  type KpiPoint,
+} from '../lib/kpiCatalog';
+import { summarizePatients, type DateRange } from '../lib/metrics';
 import { toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
+import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { KpiPicker } from './KpiPicker';
 import { KpiScorecardCard } from './KpiScorecardCard';
 import { KpiCorrelationMatrix } from './KpiCorrelationMatrix';
 import { KpiCorrelationInsights } from './KpiCorrelationInsights';
 
-const MONTHS_OPTIONS = [6, 12, 24, 36];
+// The sparkline/correlation view stays on a fixed rolling window regardless of the period
+// selector, same as the Dashboard's own trend charts vs. its period-scoped KPI cards.
+const TREND_MONTHS_BACK = 12;
 const DEFAULT_SELECTED = ['revenue-total', 'patient-new', 'patient-retention-rate', 'staff-yb111-count'];
 
 export function KpiEvaluationDashboard({ records }: { records: SaleRecord[] }) {
-  const [monthsBack, setMonthsBack] = useLocalStorageState('pm-kpi-months-back', 12);
+  const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-kpi-preset', 'last30');
+  const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-kpi-custom-range', {
+    start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
+    end: toISODate(new Date()),
+  });
   const [selectedIds, setSelectedIds] = useLocalStorageState<string[]>('pm-kpi-selected', DEFAULT_SELECTED);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -28,17 +43,28 @@ export function KpiEvaluationDashboard({ records }: { records: SaleRecord[] }) {
     return records.reduce((max, r) => (r.date > max ? r.date : max), records[0].date);
   }, [records]);
 
-  const ctx = useMemo(() => buildKpiContext(records, asOfISO, monthsBack), [records, asOfISO, monthsBack]);
+  const range: DateRange = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
+  const patients = useMemo(() => summarizePatients(records), [records]);
 
   const selectedKpis = useMemo(() => KPI_CATALOG.filter((k) => selected.has(k.id)), [selected]);
+
+  const periodValueById = useMemo(() => {
+    const map = new Map<string, KpiPeriodValue>();
+    for (const kpi of selectedKpis) {
+      map.set(kpi.id, computeKpiPeriodValue(kpi, records, patients, range, asOfISO));
+    }
+    return map;
+  }, [selectedKpis, records, patients, range, asOfISO]);
 
   const seriesById = useMemo(() => {
     const map = new Map<string, KpiPoint[]>();
     for (const kpi of selectedKpis) {
-      map.set(kpi.id, kpi.compute(ctx));
+      map.set(kpi.id, computeKpiMonthlySeries(kpi, records, patients, asOfISO, TREND_MONTHS_BACK));
     }
     return map;
-  }, [selectedKpis, ctx]);
+  }, [selectedKpis, records, patients, asOfISO]);
+
+  const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -51,24 +77,19 @@ export function KpiEvaluationDashboard({ records }: { records: SaleRecord[] }) {
         <div>
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 print:hidden">KPI Evaluation</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Pick any KPIs across Revenue, Patient, Staff, and Service, see them evaluated side by side over the last{' '}
-            {monthsBack} months, and how they relate to each other. Data as of {asOfISO}.
+            Pick any KPIs across Revenue, Patient, Staff, and Service. Scorecards show {periodLabel}, compared with
+            the equivalent prior period; trends and relationships below are always the last {TREND_MONTHS_BACK}{' '}
+            months. Data as of {asOfISO}.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3 print:hidden">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">History</label>
-            <select
-              value={monthsBack}
-              onChange={(e) => setMonthsBack(Number(e.target.value))}
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-            >
-              {MONTHS_OPTIONS.map((m) => (
-                <option key={m} value={m}>
-                  Last {m} months
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-end gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <PeriodPresetSelect
+              preset={preset}
+              onPresetChange={setPreset}
+              customRange={customRange}
+              onCustomRangeChange={setCustomRange}
+            />
           </div>
           <button
             onClick={() => window.print()}
@@ -89,7 +110,12 @@ export function KpiEvaluationDashboard({ records }: { records: SaleRecord[] }) {
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {selectedKpis.map((kpi) => (
-              <KpiScorecardCard key={kpi.id} kpi={kpi} points={seriesById.get(kpi.id) ?? []} />
+              <KpiScorecardCard
+                key={kpi.id}
+                kpi={kpi}
+                periodValue={periodValueById.get(kpi.id)!}
+                series={seriesById.get(kpi.id) ?? []}
+              />
             ))}
           </div>
 
