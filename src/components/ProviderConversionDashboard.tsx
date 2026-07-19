@@ -294,11 +294,11 @@ export function ProviderConversionDashboard({
               <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
                 <tr>
                   <th className="py-2 pr-2 align-bottom">Provider / Therapist</th>
-                  <th className="py-2 pr-2 text-right align-bottom">New Unconv.</th>
-                  <th className="py-2 pr-2 text-right align-bottom">New Conv.</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Repeat Unconv.</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Repeat Conv.</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Follow-up</th>
+                  <th className="py-2 pr-2 text-right align-bottom">New Unconverted</th>
+                  <th className="py-2 pr-2 text-right align-bottom">New Converted</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Repeat Unconverted</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Repeat Converted</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Follow-up / Direct Service</th>
                   <th className="py-2 pr-2 text-right align-bottom">Total</th>
                   <th className="py-2 pr-2 text-right align-bottom">Conversion Rate</th>
                   <th className="py-2 pr-2 text-right align-bottom">Revenue</th>
