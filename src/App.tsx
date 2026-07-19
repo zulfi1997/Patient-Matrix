@@ -6,7 +6,7 @@ import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashbo
 import { FlaggedTransactionsDashboard } from './components/FlaggedTransactionsDashboard';
 import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
 import { DataPage } from './components/DataPage';
-import { excludeFlaggedRecords, hasFlaggedNote, toAnalysisRecords } from './lib/filters';
+import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
 import { formatNumber } from './lib/format';
 
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'yb111' | 'data';
@@ -15,6 +15,7 @@ function App() {
   const { records, batches, loading, importFile, removeBatch, clearAllData } = useTransactions();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
   const [excludeFlagged, setExcludeFlagged] = useLocalStorageState('pm-exclude-yb111', false);
+  const [excludeZeroValue, setExcludeZeroValue] = useLocalStorageState('pm-exclude-zero-value', false);
 
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
   // the Data tab still shows true totals for every row that was imported.
@@ -22,12 +23,21 @@ function App() {
 
   // The "Exclude" toggle only affects the Dashboard/New Patient Revenue tabs - the YB111
   // Analytics tab always shows flagged transactions regardless, since that's its purpose.
-  const analysisRecords = useMemo(
+  const flaggedFilteredRecords = useMemo(
     () => (excludeFlagged ? excludeFlaggedRecords(baseAnalysisRecords) : baseAnalysisRecords),
     [baseAnalysisRecords, excludeFlagged],
   );
 
+  // Zero-value line items (no revenue, no package redemption - e.g. a complimentary
+  // service) never count as a "visit" for retention once excluded; package redemptions
+  // (net revenue 0 but redeemedAmount > 0) are untouched, since those are real, already-paid visits.
+  const analysisRecords = useMemo(
+    () => (excludeZeroValue ? excludeZeroValueRecords(flaggedFilteredRecords) : flaggedFilteredRecords),
+    [flaggedFilteredRecords, excludeZeroValue],
+  );
+
   const flaggedCount = useMemo(() => records.filter(hasFlaggedNote).length, [records]);
+  const zeroValueCount = useMemo(() => baseAnalysisRecords.filter((r) => !hasVisitValue(r)).length, [baseAnalysisRecords]);
 
   return (
     <div className="min-h-screen bg-zinc-50 print:bg-white dark:bg-zinc-950">
@@ -71,7 +81,7 @@ function App() {
           </nav>
         </div>
         {records.length > 0 && tab !== 'data' && tab !== 'yb111' && (
-          <div className="mx-auto flex max-w-6xl items-center justify-end px-4 pb-3">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
                 type="checkbox"
@@ -81,6 +91,19 @@ function App() {
               />
               Exclude "YB111"-flagged transactions
               {flaggedCount > 0 && ` (${formatNumber(flaggedCount)} rows)`}
+            </label>
+            <label
+              className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300"
+              title="Excludes line items with no revenue and no package redemption (e.g. a complimentary service) from patient activity - New/Returning/Active/Retention/Turnover/Stopped Visiting. Package sessions redeemed from a previously-sold package still count as real visits."
+            >
+              <input
+                type="checkbox"
+                checked={excludeZeroValue}
+                onChange={(e) => setExcludeZeroValue(e.target.checked)}
+                className="rounded border-zinc-300 dark:border-zinc-700"
+              />
+              Exclude zero-revenue visits (e.g. complimentary services)
+              {zeroValueCount > 0 && ` (${formatNumber(zeroValueCount)} rows)`}
             </label>
           </div>
         )}

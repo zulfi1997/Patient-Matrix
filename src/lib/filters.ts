@@ -15,3 +15,17 @@ export function hasFlaggedNote(record: SaleRecord): boolean {
 export function excludeFlaggedRecords(records: SaleRecord[]): SaleRecord[] {
   return records.filter((r) => !hasFlaggedNote(r));
 }
+
+/**
+ * True if this line item has any monetary value at all - either net revenue (amount) or a
+ * package session redeemed (redeemedAmount, already recognized as revenue when the package
+ * was purchased). False only for genuinely free/complimentary line items with no charge and
+ * no package behind them, which shouldn't count as a "visit" for retention purposes.
+ */
+export function hasVisitValue(record: SaleRecord): boolean {
+  return record.amount + record.redeemedAmount > 0;
+}
+
+export function excludeZeroValueRecords(records: SaleRecord[]): SaleRecord[] {
+  return records.filter(hasVisitValue);
+}
