@@ -7,7 +7,8 @@ export function MonthlyPatientTable({ data }: { data: MonthlyTrendPoint[] }) {
       <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Month-by-Month Patient Activity</h3>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
         New = first-ever visit that month. Repeat = visited that month with an earlier visit on record. Retained =
-        of the patients active in the previous month, how many also visited this month.
+        of the patients active in the previous month, how many also visited this month - split into those who were
+        themselves new last month vs. already-returning last month.
       </p>
 
       <div className="max-h-96 overflow-auto print:max-h-none print:overflow-visible">
@@ -18,7 +19,9 @@ export function MonthlyPatientTable({ data }: { data: MonthlyTrendPoint[] }) {
               <th className="py-2 pr-2 text-right">New</th>
               <th className="py-2 pr-2 text-right">Repeat</th>
               <th className="py-2 pr-2 text-right">Active</th>
-              <th className="py-2 pr-2 text-right">Retained</th>
+              <th className="py-2 pr-2 text-right">Retained (total)</th>
+              <th className="py-2 pr-2 text-right">New Retained</th>
+              <th className="py-2 pr-2 text-right">Returning Retained</th>
               <th className="py-2 pr-2 text-right">Retention Rate</th>
             </tr>
           </thead>
@@ -36,6 +39,12 @@ export function MonthlyPatientTable({ data }: { data: MonthlyTrendPoint[] }) {
                   {m.prevMonthActivePatients > 0 && (
                     <span className="text-zinc-400"> /{formatNumber(m.prevMonthActivePatients)}</span>
                   )}
+                </td>
+                <td className="py-1.5 pr-2 text-right text-indigo-600 dark:text-indigo-400">
+                  {formatNumber(m.newPatientsRetained)}
+                </td>
+                <td className="py-1.5 pr-2 text-right text-sky-600 dark:text-sky-400">
+                  {formatNumber(m.returningPatientsRetained)}
                 </td>
                 <td className="py-1.5 pr-2 text-right font-medium">{formatPercent(m.retentionRate)}</td>
               </tr>

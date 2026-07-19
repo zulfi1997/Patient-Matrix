@@ -149,6 +149,10 @@ export interface MonthlyTrendPoint {
   returningPatients: number;
   /** Of last month's active patients, how many also visited this month. */
   retainedPatients: number;
+  /** Of retainedPatients, how many were new (first-ever visit) last month. */
+  newPatientsRetained: number;
+  /** Of retainedPatients, how many had already visited before last month. */
+  returningPatientsRetained: number;
   prevMonthActivePatients: number;
   /** retainedPatients / prevMonthActivePatients, null if the prior month had no activity. */
   retentionRate: number | null;
@@ -190,8 +194,17 @@ export function computeMonthlyTrend(
     // displayed month still gets a correct prior-month comparison.
     const prevActiveSet = new Set(records.filter((r) => isInRange(r.date, prevRange)).map((r) => r.patientId));
     let retainedPatients = 0;
+    let newPatientsRetained = 0;
+    let returningPatientsRetained = 0;
     for (const id of prevActiveSet) {
-      if (activeSet.has(id)) retainedPatients++;
+      if (!activeSet.has(id)) continue;
+      retainedPatients++;
+      const s = patients.get(id);
+      if (s && isInRange(s.firstVisit, prevRange)) {
+        newPatientsRetained++;
+      } else {
+        returningPatientsRetained++;
+      }
     }
     const retentionRate = prevActiveSet.size > 0 ? (retainedPatients / prevActiveSet.size) * 100 : null;
 
@@ -212,6 +225,8 @@ export function computeMonthlyTrend(
       newPatients,
       returningPatients: activeSet.size - newPatients,
       retainedPatients,
+      newPatientsRetained,
+      returningPatientsRetained,
       prevMonthActivePatients: prevActiveSet.size,
       retentionRate,
       revenue: monthRecords.reduce((sum, r) => sum + r.amount, 0),
