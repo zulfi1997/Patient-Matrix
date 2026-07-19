@@ -17,13 +17,14 @@ export function excludeFlaggedRecords(records: SaleRecord[]): SaleRecord[] {
 }
 
 /**
- * True if this line item has any monetary value at all - either net revenue (amount) or a
- * package session redeemed (redeemedAmount, already recognized as revenue when the package
- * was purchased). False only for genuinely free/complimentary line items with no charge and
- * no package behind them, which shouldn't count as a "visit" for retention purposes.
+ * True unless this line item is exactly zero on both amount and redeemedAmount - i.e. a
+ * genuinely free/complimentary line (no charge, no package behind it), which shouldn't count
+ * as a "visit" for retention purposes. Deliberately not "> 0": a negative amount (a refund,
+ * discount, or correction) still has real financial substance and must stay counted - only
+ * exact-zero-on-both is "nothing happened here".
  */
 export function hasVisitValue(record: SaleRecord): boolean {
-  return record.amount + record.redeemedAmount > 0;
+  return record.amount !== 0 || record.redeemedAmount !== 0;
 }
 
 export function excludeZeroValueRecords(records: SaleRecord[]): SaleRecord[] {
