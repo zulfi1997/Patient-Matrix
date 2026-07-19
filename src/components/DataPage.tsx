@@ -1,8 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
-import type { ImportBatch, SaleRecord } from '../types';
+import type { ImportBatch, PackageBenefitBatch, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
+import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
+import { PackageBenefitsSection } from './PackageBenefitsSection';
 
 interface DataPageProps {
   records: SaleRecord[];
@@ -10,6 +12,9 @@ interface DataPageProps {
   importFile: (file: File) => Promise<ImportResult>;
   removeBatch: (id: string) => Promise<void>;
   clearAllData: () => Promise<void>;
+  packageBenefitBatches: PackageBenefitBatch[];
+  importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
+  removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
 }
 
 function exportAllCsv(records: SaleRecord[]) {
@@ -35,7 +40,16 @@ function exportAllCsv(records: SaleRecord[]) {
   URL.revokeObjectURL(url);
 }
 
-export function DataPage({ records, batches, importFile, removeBatch, clearAllData }: DataPageProps) {
+export function DataPage({
+  records,
+  batches,
+  importFile,
+  removeBatch,
+  clearAllData,
+  packageBenefitBatches,
+  importPackageBenefitFile,
+  removePackageBenefitSnapshot,
+}: DataPageProps) {
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -215,6 +229,18 @@ export function DataPage({ records, batches, importFile, removeBatch, clearAllDa
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+        <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">Package Balance Snapshots</h2>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Powers the "has package benefit balance" reason on the Provider Conversion dashboard.
+        </p>
+        <PackageBenefitsSection
+          batches={packageBenefitBatches}
+          importPackageBenefitFile={importPackageBenefitFile}
+          removePackageBenefitSnapshot={removePackageBenefitSnapshot}
+        />
       </div>
     </div>
   );

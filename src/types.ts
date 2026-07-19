@@ -67,3 +67,37 @@ export interface ImportWarning {
   rowNumber: number;
   message: string;
 }
+
+/**
+ * One row from a Zenoti "Package Benefits Detail" export - a point-in-time snapshot of a
+ * previously-sold package's remaining sessions, "as on" a specific date. Not transactional
+ * history: re-uploading the same "as on" date replaces that date's snapshot entirely.
+ */
+export interface PackageBenefitRecord {
+  /** Content hash of snapshotDate + invoiceNo + benefitName, for dedup within one snapshot. */
+  id: string;
+  snapshotDate: string; // ISO yyyy-mm-dd, parsed from the report's "As on" date
+  saleCenter: string;
+  /** The original package-purchase invoice - used to resolve the patient via the sales data (this report has no Guest Code). */
+  invoiceNo: string;
+  packageCode: string | null;
+  packageName: string;
+  packageCategory: string;
+  guestName: string;
+  benefitType: string;
+  benefitName: string;
+  accruedQty: number;
+  value: number;
+  redeemedQty: number;
+  redeemedValue: number;
+  balanceQty: number;
+  packageStatus: string;
+}
+
+export interface PackageBenefitBatch {
+  /** The snapshot's "as on" date (ISO yyyy-mm-dd) - also the primary key, one snapshot per date. */
+  snapshotDate: string;
+  fileName: string;
+  uploadedAt: string; // ISO datetime
+  rowCount: number;
+}

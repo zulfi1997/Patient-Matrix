@@ -1,19 +1,33 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTransactions } from './hooks/useTransactions';
+import { usePackageBenefits } from './hooks/usePackageBenefits';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
 import { FlaggedTransactionsDashboard } from './components/FlaggedTransactionsDashboard';
 import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
+import { ProviderConversionDashboard } from './components/ProviderConversionDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
 import { formatNumber } from './lib/format';
 
-type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'yb111' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'data';
 
 function App() {
-  const { records, batches, loading, importFile, removeBatch, clearAllData } = useTransactions();
+  const { records, batches, loading, importFile, removeBatch, clearAllData: clearAllTransactions } = useTransactions();
+  const {
+    packageBenefits,
+    packageBenefitBatches,
+    importPackageBenefitFile,
+    removePackageBenefitSnapshot,
+    refresh: refreshPackageBenefits,
+  } = usePackageBenefits();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
+
+  const clearAllData = useCallback(async () => {
+    await clearAllTransactions();
+    await refreshPackageBenefits();
+  }, [clearAllTransactions, refreshPackageBenefits]);
   const [excludeFlagged, setExcludeFlagged] = useLocalStorageState('pm-exclude-yb111', false);
   const [excludeZeroValue, setExcludeZeroValue] = useLocalStorageState('pm-exclude-zero-value', false);
 
@@ -67,6 +81,12 @@ function App() {
               KPI Evaluation
             </button>
             <button
+              onClick={() => setTab('conversion')}
+              className={`px-4 py-1.5 ${tab === 'conversion' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              Provider Conversion
+            </button>
+            <button
               onClick={() => setTab('yb111')}
               className={`px-4 py-1.5 ${tab === 'yb111' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
@@ -80,7 +100,7 @@ function App() {
             </button>
           </nav>
         </div>
-        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && (
+        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && (
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
@@ -130,6 +150,8 @@ function App() {
           <NewPatientRevenueDashboard records={analysisRecords} />
         ) : tab === 'kpi' ? (
           <KpiEvaluationDashboard records={analysisRecords} />
+        ) : tab === 'conversion' ? (
+          <ProviderConversionDashboard records={baseAnalysisRecords} packageBenefits={packageBenefits} />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard records={baseAnalysisRecords} />
         ) : (
@@ -139,6 +161,9 @@ function App() {
             importFile={importFile}
             removeBatch={removeBatch}
             clearAllData={clearAllData}
+            packageBenefitBatches={packageBenefitBatches}
+            importPackageBenefitFile={importPackageBenefitFile}
+            removePackageBenefitSnapshot={removePackageBenefitSnapshot}
           />
         )}
       </main>

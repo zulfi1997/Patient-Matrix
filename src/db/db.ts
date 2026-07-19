@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ImportBatch, SaleRecord } from '../types';
+import type { ImportBatch, PackageBenefitBatch, PackageBenefitRecord, SaleRecord } from '../types';
 
 interface PatientMatrixDB extends DBSchema {
   transactions: {
@@ -11,21 +11,37 @@ interface PatientMatrixDB extends DBSchema {
     key: string;
     value: ImportBatch;
   };
+  packageBenefits: {
+    key: string;
+    value: PackageBenefitRecord;
+    indexes: { 'by-snapshot': string };
+  };
+  packageBenefitBatches: {
+    key: string;
+    value: PackageBenefitBatch;
+  };
 }
 
 const DB_NAME = 'patient-matrix';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<PatientMatrixDB>> | null = null;
 
 function getDB() {
   if (!dbPromise) {
     dbPromise = openDB<PatientMatrixDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        const tx = db.createObjectStore('transactions', { keyPath: 'id' });
-        tx.createIndex('by-batch', 'importBatchId');
-        tx.createIndex('by-patient', 'patientId');
-        db.createObjectStore('batches', { keyPath: 'id' });
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const tx = db.createObjectStore('transactions', { keyPath: 'id' });
+          tx.createIndex('by-batch', 'importBatchId');
+          tx.createIndex('by-patient', 'patientId');
+          db.createObjectStore('batches', { keyPath: 'id' });
+        }
+        if (oldVersion < 2) {
+          const pb = db.createObjectStore('packageBenefits', { keyPath: 'id' });
+          pb.createIndex('by-snapshot', 'snapshotDate');
+          db.createObjectStore('packageBenefitBatches', { keyPath: 'snapshotDate' });
+        }
       },
     });
   }
@@ -91,10 +107,63 @@ export async function deleteBatch(batchId: string): Promise<void> {
   await tx.done;
 }
 
+export async function getAllPackageBenefits(): Promise<PackageBenefitRecord[]> {
+  const db = await getDB();
+  return db.getAll('packageBenefits');
+}
+
+export async function getAllPackageBenefitBatches(): Promise<PackageBenefitBatch[]> {
+  const db = await getDB();
+  const batches = await db.getAll('packageBenefitBatches');
+  return batches.sort((a, b) => b.snapshotDate.localeCompare(a.snapshotDate));
+}
+
+/**
+ * A package-benefits file is a full snapshot "as on" one date, not incremental
+ * transactional history - re-uploading the same date replaces every row for
+ * that date rather than deduping/refreshing row by row.
+ */
+export async function addPackageBenefitSnapshot(
+  batch: PackageBenefitBatch,
+  records: PackageBenefitRecord[],
+): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['packageBenefits', 'packageBenefitBatches'], 'readwrite');
+  const store = tx.objectStore('packageBenefits');
+  const index = store.index('by-snapshot');
+
+  let cursor = await index.openCursor(IDBKeyRange.only(batch.snapshotDate));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  for (const record of records) {
+    await store.put(record);
+  }
+
+  await tx.objectStore('packageBenefitBatches').put(batch);
+  await tx.done;
+}
+
+export async function deletePackageBenefitSnapshot(snapshotDate: string): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['packageBenefits', 'packageBenefitBatches'], 'readwrite');
+  const index = tx.objectStore('packageBenefits').index('by-snapshot');
+  let cursor = await index.openCursor(IDBKeyRange.only(snapshotDate));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.objectStore('packageBenefitBatches').delete(snapshotDate);
+  await tx.done;
+}
+
 export async function clearAll(): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(['transactions', 'batches'], 'readwrite');
+  const tx = db.transaction(['transactions', 'batches', 'packageBenefits', 'packageBenefitBatches'], 'readwrite');
   await tx.objectStore('transactions').clear();
   await tx.objectStore('batches').clear();
+  await tx.objectStore('packageBenefits').clear();
+  await tx.objectStore('packageBenefitBatches').clear();
   await tx.done;
 }
