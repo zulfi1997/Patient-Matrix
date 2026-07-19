@@ -16,15 +16,31 @@ function ProviderGroupsEditor({
   knownStaff: string[];
 }) {
   const [canonicalName, setCanonicalName] = useState('');
-  const [aliasesText, setAliasesText] = useState('');
+  const [selectedAliases, setSelectedAliases] = useState<Set<string>>(new Set());
+  const [staffFilter, setStaffFilter] = useState('');
+
+  const alreadyGrouped = new Set(groups.flatMap((g) => [g.canonicalName, ...g.aliases]));
+  const pickableStaff = knownStaff.filter(
+    (s) => s !== canonicalName.trim() && !alreadyGrouped.has(s) && s.toLowerCase().includes(staffFilter.trim().toLowerCase()),
+  );
+
+  const toggleAlias = (name: string) => {
+    setSelectedAliases((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const addGroup = () => {
     const name = canonicalName.trim();
-    const aliases = aliasesText.split(',').map((a) => a.trim()).filter(Boolean);
+    const aliases = [...selectedAliases];
     if (!name || aliases.length === 0) return;
     setGroups((prev) => [...prev, { id: newId(), canonicalName: name, aliases }]);
     setCanonicalName('');
-    setAliasesText('');
+    setSelectedAliases(new Set());
+    setStaffFilter('');
   };
 
   return (
@@ -35,7 +51,7 @@ function ProviderGroupsEditor({
         everywhere on this dashboard (visit counts, conversion category, and Revenue).
       </p>
 
-      <div className="mb-3 flex flex-wrap items-end gap-2">
+      <div className="mb-3 flex flex-wrap items-start gap-3">
         <div>
           <label className="block text-xs text-zinc-500 dark:text-zinc-400">Canonical Provider (e.g. the doctor)</label>
           <input
@@ -47,18 +63,37 @@ function ProviderGroupsEditor({
           />
         </div>
         <div>
-          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Aliases (comma-separated, e.g. nurses)</label>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">
+            Aliases {selectedAliases.size > 0 && `(${selectedAliases.size} selected)`}
+          </label>
           <input
-            value={aliasesText}
-            onChange={(e) => setAliasesText(e.target.value)}
-            placeholder="Rini, Anuja Renchu"
-            className="mt-0.5 w-64 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            value={staffFilter}
+            onChange={(e) => setStaffFilter(e.target.value)}
+            placeholder="Filter staff…"
+            className="mt-0.5 w-56 rounded-t-lg border border-zinc-300 border-b-0 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
           />
+          <div className="max-h-40 w-56 overflow-auto rounded-b-lg border border-zinc-300 bg-white p-1.5 dark:border-zinc-700 dark:bg-zinc-800">
+            {pickableStaff.length === 0 ? (
+              <p className="px-1.5 py-1 text-xs text-zinc-400">No matching, ungrouped staff.</p>
+            ) : (
+              pickableStaff.map((s) => (
+                <label key={s} className="flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700/50">
+                  <input
+                    type="checkbox"
+                    checked={selectedAliases.has(s)}
+                    onChange={() => toggleAlias(s)}
+                    className="rounded border-zinc-300 dark:border-zinc-700"
+                  />
+                  {s}
+                </label>
+              ))
+            )}
+          </div>
         </div>
         <button
           onClick={addGroup}
-          disabled={!canonicalName.trim() || !aliasesText.trim()}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+          disabled={!canonicalName.trim() || selectedAliases.size === 0}
+          className="mt-5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
         >
           Add Group
         </button>
