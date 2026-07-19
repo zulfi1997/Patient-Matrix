@@ -18,6 +18,7 @@ import { ConversionTrendChart } from './ConversionTrendChart';
 const CATEGORY_LABELS: Record<ConversionCategory, string> = {
   newUnconverted: 'New - Unconverted',
   newConverted: 'New - Converted',
+  repeatUnconverted: 'Repeat - Unconverted',
   repeatConverted: 'Repeat - Converted',
   followUp: 'Follow-up / Direct Service',
 };
@@ -130,10 +131,12 @@ export function ProviderConversionDashboard({
           <p className="max-w-3xl text-xs text-zinc-500 dark:text-zinc-400">
             Per provider, per day: a first-ever visit with revenue that day is <strong>New Converted</strong>, with no
             revenue is <strong>New Unconverted</strong>. A repeat visit with revenue that day is{' '}
-            <strong>Repeat Converted</strong>. A repeat visit with no revenue, or any "YB111"-flagged visit, falls
-            under <strong>Follow-up/Direct Service</strong> - never counted as a conversion opportunity. Conversion
-            Rate = (New Converted + Repeat Converted) / (New Unconverted + New Converted + Repeat Converted).
-            Assisting nurses' invoices and manual Revenue corrections can be configured under{' '}
+            <strong>Repeat Converted</strong>; with no revenue and no package redemption or package benefit balance,
+            it's <strong>Repeat Unconverted</strong>. A repeat visit with no revenue that came for a package
+            redemption or has a package benefit balance, or any "YB111"-flagged visit, falls under{' '}
+            <strong>Follow-up/Direct Service</strong> - never counted as a conversion opportunity. Conversion Rate =
+            (New Converted + Repeat Converted) / (New Unconverted + New Converted + Repeat Unconverted + Repeat
+            Converted). Assisting nurses' invoices and manual Revenue corrections can be configured under{' '}
             <strong>Master Control</strong> on the Data tab.
           </p>
         </div>
@@ -178,14 +181,15 @@ export function ProviderConversionDashboard({
         >
           {summary.hasBalanceSnapshot
             ? 'Package balance snapshot available for this date'
-            : 'No package balance snapshot for this date - "Has Package Balance" reason unavailable, those visits show as "Other"'}
+            : 'No package balance snapshot for this date - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted" instead of Follow-up/Direct Service'}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <KpiCard label="Total Patients" value={formatNumber(summary.overall.total)} />
         <KpiCard label="New Unconverted" value={formatNumber(summary.overall.newUnconverted)} tone="bad" />
         <KpiCard label="New Converted" value={formatNumber(summary.overall.newConverted)} tone="good" />
+        <KpiCard label="Repeat Unconverted" value={formatNumber(summary.overall.repeatUnconverted)} tone="bad" />
         <KpiCard label="Repeat Converted" value={formatNumber(summary.overall.repeatConverted)} tone="good" />
         <KpiCard label="Follow-up / Direct Service" value={formatNumber(summary.overall.followUp)} />
         <KpiCard label="Conversion Rate" value={formatPercent(summary.overall.conversionRate, 1)} tone="neutral" />
@@ -206,6 +210,7 @@ export function ProviderConversionDashboard({
                   <th className="py-2 pr-2">Provider / Therapist</th>
                   <th className="py-2 pr-2 text-right">New Unconv.</th>
                   <th className="py-2 pr-2 text-right">New Conv.</th>
+                  <th className="py-2 pr-2 text-right">Repeat Unconv.</th>
                   <th className="py-2 pr-2 text-right">Repeat Conv.</th>
                   <th className="py-2 pr-2 text-right">Follow-up</th>
                   <th className="py-2 pr-2 text-right">Total</th>
@@ -224,6 +229,7 @@ export function ProviderConversionDashboard({
                       <td className="py-1.5 pr-2 font-medium">{p.staff}</td>
                       <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">{formatNumber(p.newUnconverted)}</td>
                       <td className="py-1.5 pr-2 text-right text-emerald-600 dark:text-emerald-400">{formatNumber(p.newConverted)}</td>
+                      <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">{formatNumber(p.repeatUnconverted)}</td>
                       <td className="py-1.5 pr-2 text-right text-emerald-600 dark:text-emerald-400">{formatNumber(p.repeatConverted)}</td>
                       <td className="py-1.5 pr-2 text-right" title={reasonBreakdown || undefined}>
                         {formatNumber(p.followUp)}
@@ -251,6 +257,7 @@ export function ProviderConversionDashboard({
                   <td className="py-1.5 pr-2">All Providers</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.newUnconverted)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.newConverted)}</td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.repeatUnconverted)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.repeatConverted)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.followUp)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.total)}</td>
