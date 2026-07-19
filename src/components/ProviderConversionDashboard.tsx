@@ -6,6 +6,8 @@ import {
   computeDailyConversion,
   FOLLOW_UP_REASON_LABELS,
   type ConversionCategory,
+  type ProviderGroup,
+  type RevenueAdjustment,
 } from '../lib/conversionMetrics';
 import { summarizePatients } from '../lib/metrics';
 import { formatDate, formatNumber, formatPercent, toISODate } from '../lib/format';
@@ -31,9 +33,13 @@ function addDays(iso: string, days: number): string {
 export function ProviderConversionDashboard({
   records,
   packageBenefits,
+  providerGroups,
+  revenueAdjustments,
 }: {
   records: SaleRecord[];
   packageBenefits: PackageBenefitRecord[];
+  providerGroups: ProviderGroup[];
+  revenueAdjustments: RevenueAdjustment[];
 }) {
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -63,8 +69,17 @@ export function ProviderConversionDashboard({
   }, [packageBenefits]);
 
   const summary = useMemo(
-    () => computeDailyConversion(records, patients, clampedDate, invoiceToPatient, packageBenefitsByDate.get(clampedDate) ?? null),
-    [records, patients, clampedDate, invoiceToPatient, packageBenefitsByDate],
+    () =>
+      computeDailyConversion(
+        records,
+        patients,
+        clampedDate,
+        invoiceToPatient,
+        packageBenefitsByDate.get(clampedDate) ?? null,
+        providerGroups,
+        revenueAdjustments,
+      ),
+    [records, patients, clampedDate, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments],
   );
 
   const trendDays = useMemo(() => {
@@ -79,8 +94,17 @@ export function ProviderConversionDashboard({
   }, [asOfISO, minDate]);
 
   const trend = useMemo(
-    () => computeConversionTrend(records, patients, invoiceToPatient, packageBenefitsByDate, trendDays),
-    [records, patients, invoiceToPatient, packageBenefitsByDate, trendDays],
+    () =>
+      computeConversionTrend(
+        records,
+        patients,
+        invoiceToPatient,
+        packageBenefitsByDate,
+        trendDays,
+        providerGroups,
+        revenueAdjustments,
+      ),
+    [records, patients, invoiceToPatient, packageBenefitsByDate, trendDays, providerGroups, revenueAdjustments],
   );
 
   const staffOptions = useMemo(() => summary.providers.map((p) => p.staff), [summary.providers]);
@@ -109,6 +133,8 @@ export function ProviderConversionDashboard({
             <strong>Repeat Converted</strong>. A repeat visit with no revenue, or any "YB111"-flagged visit, falls
             under <strong>Follow-up/Direct Service</strong> - never counted as a conversion opportunity. Conversion
             Rate = (New Converted + Repeat Converted) / (New Unconverted + New Converted + Repeat Converted).
+            Assisting nurses' invoices and manual Revenue corrections can be configured under{' '}
+            <strong>Master Control</strong> on the Data tab.
           </p>
         </div>
         <button
@@ -156,13 +182,14 @@ export function ProviderConversionDashboard({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
         <KpiCard label="Total Patients" value={formatNumber(summary.overall.total)} />
         <KpiCard label="New Unconverted" value={formatNumber(summary.overall.newUnconverted)} tone="bad" />
         <KpiCard label="New Converted" value={formatNumber(summary.overall.newConverted)} tone="good" />
         <KpiCard label="Repeat Converted" value={formatNumber(summary.overall.repeatConverted)} tone="good" />
         <KpiCard label="Follow-up / Direct Service" value={formatNumber(summary.overall.followUp)} />
         <KpiCard label="Conversion Rate" value={formatPercent(summary.overall.conversionRate, 1)} tone="neutral" />
+        <KpiCard label="Revenue" value={formatNumber(summary.overall.revenue)} />
       </div>
 
       <ConversionTrendChart data={trend} />
@@ -183,6 +210,7 @@ export function ProviderConversionDashboard({
                   <th className="py-2 pr-2 text-right">Follow-up</th>
                   <th className="py-2 pr-2 text-right">Total</th>
                   <th className="py-2 pr-2 text-right">Conversion Rate</th>
+                  <th className="py-2 pr-2 text-right">Revenue</th>
                 </tr>
               </thead>
               <tbody>
@@ -202,6 +230,18 @@ export function ProviderConversionDashboard({
                       </td>
                       <td className="py-1.5 pr-2 text-right font-medium">{formatNumber(p.total)}</td>
                       <td className="py-1.5 pr-2 text-right font-medium">{formatPercent(p.conversionRate, 1)}</td>
+                      <td
+                        className="py-1.5 pr-2 text-right"
+                        title={p.revenueAdjustment !== 0 ? `Includes a Master Control adjustment of ${p.revenueAdjustment > 0 ? '+' : ''}${formatNumber(p.revenueAdjustment)}` : undefined}
+                      >
+                        {formatNumber(p.revenue)}
+                        {p.revenueAdjustment !== 0 && (
+                          <span className="ml-1 text-zinc-400">
+                            ({p.revenueAdjustment > 0 ? '+' : ''}
+                            {formatNumber(p.revenueAdjustment)})
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -215,6 +255,7 @@ export function ProviderConversionDashboard({
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.followUp)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.total)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatPercent(summary.overall.conversionRate, 1)}</td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.revenue)}</td>
                 </tr>
               </tfoot>
             </table>

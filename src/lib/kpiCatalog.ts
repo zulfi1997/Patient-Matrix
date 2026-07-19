@@ -11,6 +11,7 @@ import {
   type PatientVisitSummary,
 } from './metrics';
 import { hasFlaggedNote } from './filters';
+import { resolveProvider, type ProviderGroup } from './conversionMetrics';
 
 export type KpiCategory = 'revenue' | 'patient' | 'staff' | 'service';
 export type KpiUnit = 'currency' | 'count' | 'percent';
@@ -26,7 +27,9 @@ export interface KpiPoint {
  * (called once per calendar month) and for the scorecard's period-scoped
  * value (called once for the selected period and once for its prior-period
  * equivalent), exactly mirroring how the Dashboard tab's own KPI cards vs.
- * trend charts relate to its period selector.
+ * trend charts relate to its period selector. `providerGroups` folds
+ * assisting-nurse names into their doctor's canonical name (Data tab Master
+ * Control) - only the Staff KPIs use it, everything else ignores it.
  */
 export interface KpiDefinition {
   id: string;
@@ -34,7 +37,13 @@ export interface KpiDefinition {
   category: KpiCategory;
   unit: KpiUnit;
   description: string;
-  computeRange: (records: SaleRecord[], patients: Map<string, PatientVisitSummary>, range: DateRange, asOfISO: string) => number;
+  computeRange: (
+    records: SaleRecord[],
+    patients: Map<string, PatientVisitSummary>,
+    range: DateRange,
+    asOfISO: string,
+    providerGroups: ProviderGroup[],
+  ) => number;
 }
 
 export function buildMonthRanges(asOfISO: string, monthsBack: number): DateRange[] {
@@ -108,7 +117,8 @@ export const KPI_CATALOG: KpiDefinition[] = [
     category: 'revenue',
     unit: 'currency',
     description: 'Revenue from Item Type = Service.',
-    computeRange: (records, _p, range) => sumInRange(records, range, (r) => r.amount, (r) => r.itemType === 'Service'),
+    computeRange: (records, _p, range) =>
+      sumInRange(records, range, (r) => r.amount, (r) => r.itemType === 'Service'),
   },
   {
     id: 'revenue-package',
@@ -116,7 +126,8 @@ export const KPI_CATALOG: KpiDefinition[] = [
     category: 'revenue',
     unit: 'currency',
     description: 'Revenue from new package purchases (Item Type = Package).',
-    computeRange: (records, _p, range) => sumInRange(records, range, (r) => r.amount, (r) => r.itemType === 'Package'),
+    computeRange: (records, _p, range) =>
+      sumInRange(records, range, (r) => r.amount, (r) => r.itemType === 'Package'),
   },
 
   // --- Patient ---
@@ -199,18 +210,19 @@ export const KPI_CATALOG: KpiDefinition[] = [
     label: 'Active Staff Count',
     category: 'staff',
     unit: 'count',
-    description: 'Distinct staff (Sold By/Therapist) with at least one transaction this period.',
-    computeRange: (records, _p, range) => countDistinctInRange(records, range, (r) => r.staff),
+    description: 'Distinct providers (Sold By/Therapist, folded through Master Control provider groups) with at least one transaction this period.',
+    computeRange: (records, _p, range, _a, providerGroups) =>
+      countDistinctInRange(records, range, (r) => resolveProvider(r.staff, providerGroups)),
   },
   {
     id: 'staff-avg-revenue',
     label: 'Average Revenue per Staff',
     category: 'staff',
     unit: 'currency',
-    description: 'Total revenue divided by distinct active staff.',
-    computeRange: (records, _p, range) => {
+    description: 'Total revenue divided by distinct active providers (folded through Master Control provider groups).',
+    computeRange: (records, _p, range, _a, providerGroups) => {
       const revenue = sumInRange(records, range, (r) => r.amount);
-      const staffCount = countDistinctInRange(records, range, (r) => r.staff);
+      const staffCount = countDistinctInRange(records, range, (r) => resolveProvider(r.staff, providerGroups));
       return staffCount > 0 ? revenue / staffCount : 0;
     },
   },
@@ -300,10 +312,11 @@ export function computeKpiMonthlySeries(
   patients: Map<string, PatientVisitSummary>,
   asOfISO: string,
   monthsBack: number,
+  providerGroups: ProviderGroup[] = [],
 ): KpiPoint[] {
   return buildMonthRanges(asOfISO, monthsBack).map((range) => ({
     month: range.start,
-    value: kpi.computeRange(records, patients, range, asOfISO),
+    value: kpi.computeRange(records, patients, range, asOfISO, providerGroups),
   }));
 }
 
@@ -320,9 +333,10 @@ export function computeKpiPeriodValue(
   patients: Map<string, PatientVisitSummary>,
   range: DateRange,
   asOfISO: string,
+  providerGroups: ProviderGroup[] = [],
 ): KpiPeriodValue {
-  const current = kpi.computeRange(records, patients, range, asOfISO);
-  const previous = kpi.computeRange(records, patients, previousPeriod(range), asOfISO);
+  const current = kpi.computeRange(records, patients, range, asOfISO, providerGroups);
+  const previous = kpi.computeRange(records, patients, previousPeriod(range), asOfISO, providerGroups);
   const changePct = previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : null;
   return { current, previous, changePct };
 }

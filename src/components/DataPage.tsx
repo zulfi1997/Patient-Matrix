@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ImportBatch, PackageBenefitBatch, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
+import type { ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
+import { MasterControlPanel } from './MasterControlPanel';
 
 interface DataPageProps {
   records: SaleRecord[];
@@ -15,6 +17,10 @@ interface DataPageProps {
   packageBenefitBatches: PackageBenefitBatch[];
   importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
+  providerGroups: ProviderGroup[];
+  setProviderGroups: Dispatch<SetStateAction<ProviderGroup[]>>;
+  revenueAdjustments: RevenueAdjustment[];
+  setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
 }
 
 function exportAllCsv(records: SaleRecord[]) {
@@ -49,7 +55,19 @@ export function DataPage({
   packageBenefitBatches,
   importPackageBenefitFile,
   removePackageBenefitSnapshot,
+  providerGroups,
+  setProviderGroups,
+  revenueAdjustments,
+  setRevenueAdjustments,
 }: DataPageProps) {
+  const knownStaff = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of records) {
+      if (r.staff) set.add(r.staff);
+    }
+    return [...set].sort();
+  }, [records]);
+
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -240,6 +258,21 @@ export function DataPage({
           batches={packageBenefitBatches}
           importPackageBenefitFile={importPackageBenefitFile}
           removePackageBenefitSnapshot={removePackageBenefitSnapshot}
+        />
+      </div>
+
+      <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+        <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">Master Control</h2>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Applies across the Provider Conversion dashboard and the "Staff" KPIs on the KPI Evaluation dashboard
+          (Active Staff Count, Average Revenue per Staff).
+        </p>
+        <MasterControlPanel
+          providerGroups={providerGroups}
+          setProviderGroups={setProviderGroups}
+          revenueAdjustments={revenueAdjustments}
+          setRevenueAdjustments={setRevenueAdjustments}
+          knownStaff={knownStaff}
         />
       </div>
     </div>

@@ -8,6 +8,7 @@ import {
   type KpiPeriodValue,
   type KpiPoint,
 } from '../lib/kpiCatalog';
+import type { ProviderGroup } from '../lib/conversionMetrics';
 import { summarizePatients, type DateRange } from '../lib/metrics';
 import { toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
@@ -22,7 +23,7 @@ import { KpiCorrelationInsights } from './KpiCorrelationInsights';
 const TREND_MONTHS_BACK = 12;
 const DEFAULT_SELECTED = ['revenue-total', 'patient-new', 'patient-retention-rate', 'staff-yb111-count'];
 
-export function KpiEvaluationDashboard({ records }: { records: SaleRecord[] }) {
+export function KpiEvaluationDashboard({ records, providerGroups }: { records: SaleRecord[]; providerGroups: ProviderGroup[] }) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-kpi-preset', 'last30');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-kpi-custom-range', {
     start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
@@ -51,18 +52,18 @@ export function KpiEvaluationDashboard({ records }: { records: SaleRecord[] }) {
   const periodValueById = useMemo(() => {
     const map = new Map<string, KpiPeriodValue>();
     for (const kpi of selectedKpis) {
-      map.set(kpi.id, computeKpiPeriodValue(kpi, records, patients, range, asOfISO));
+      map.set(kpi.id, computeKpiPeriodValue(kpi, records, patients, range, asOfISO, providerGroups));
     }
     return map;
-  }, [selectedKpis, records, patients, range, asOfISO]);
+  }, [selectedKpis, records, patients, range, asOfISO, providerGroups]);
 
   const seriesById = useMemo(() => {
     const map = new Map<string, KpiPoint[]>();
     for (const kpi of selectedKpis) {
-      map.set(kpi.id, computeKpiMonthlySeries(kpi, records, patients, asOfISO, TREND_MONTHS_BACK));
+      map.set(kpi.id, computeKpiMonthlySeries(kpi, records, patients, asOfISO, TREND_MONTHS_BACK, providerGroups));
     }
     return map;
-  }, [selectedKpis, records, patients, asOfISO]);
+  }, [selectedKpis, records, patients, asOfISO, providerGroups]);
 
   const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
 
