@@ -4,16 +4,19 @@ import {
   buildInvoiceToPatientMap,
   computeConversionTrend,
   computeDailyConversion,
+  computeRangeConversion,
   FOLLOW_UP_REASON_LABELS,
   type ConversionCategory,
   type ProviderGroup,
   type RevenueAdjustment,
 } from '../lib/conversionMetrics';
-import { summarizePatients } from '../lib/metrics';
-import { formatDate, formatNumber, formatPercent, toISODate } from '../lib/format';
+import { summarizePatients, type DateRange } from '../lib/metrics';
+import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
+import { formatCurrencyCompact, formatDate, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { ConversionTrendChart } from './ConversionTrendChart';
+import { PeriodPresetSelect } from './PeriodPresetSelect';
 
 const CATEGORY_LABELS: Record<ConversionCategory, string> = {
   newUnconverted: 'New - Unconverted',
@@ -24,6 +27,7 @@ const CATEGORY_LABELS: Record<ConversionCategory, string> = {
 };
 
 const TREND_DAYS = 30;
+type ViewMode = 'day' | 'period';
 
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00`);
@@ -51,11 +55,18 @@ export function ProviderConversionDashboard({
     return records.reduce((min, r) => (r.date < min ? r.date : min), records[0].date);
   }, [records, asOfISO]);
 
+  const [viewMode, setViewMode] = useLocalStorageState<ViewMode>('pm-conversion-view-mode', 'day');
   const [date, setDate] = useLocalStorageState('pm-conversion-date', asOfISO);
+  const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-conversion-preset', 'thisMonth');
+  const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-conversion-custom-range', {
+    start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
+    end: toISODate(new Date()),
+  });
   const [staffFilter, setStaffFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   const clampedDate = date > asOfISO ? asOfISO : date < minDate ? minDate : date;
+  const periodRange: DateRange = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
 
   const patients = useMemo(() => summarizePatients(records), [records]);
   const invoiceToPatient = useMemo(() => buildInvoiceToPatientMap(records), [records]);
@@ -69,9 +80,11 @@ export function ProviderConversionDashboard({
     return map;
   }, [packageBenefits]);
 
-  const summary = useMemo(
-    () =>
-      computeDailyConversion(
+  // Both view modes normalize to the same shape (a single day is just a 1-day range) so the
+  // rest of the dashboard doesn't need to branch on viewMode at all.
+  const summary = useMemo(() => {
+    if (viewMode === 'day') {
+      const daily = computeDailyConversion(
         records,
         patients,
         clampedDate,
@@ -79,9 +92,26 @@ export function ProviderConversionDashboard({
         packageBenefitsByDate.get(clampedDate) ?? null,
         providerGroups,
         revenueAdjustments,
-      ),
-    [records, patients, clampedDate, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments],
-  );
+      );
+      return {
+        range: { start: clampedDate, end: clampedDate },
+        daysWithSnapshot: daily.hasBalanceSnapshot ? 1 : 0,
+        totalDays: 1,
+        providers: daily.providers,
+        overall: daily.overall,
+        patientRows: daily.patientRows,
+      };
+    }
+    return computeRangeConversion(
+      records,
+      patients,
+      periodRange,
+      invoiceToPatient,
+      packageBenefitsByDate,
+      providerGroups,
+      revenueAdjustments,
+    );
+  }, [viewMode, records, patients, clampedDate, periodRange, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments]);
 
   const trendDays = useMemo(() => {
     const days: string[] = [];
@@ -118,6 +148,31 @@ export function ProviderConversionDashboard({
     [summary.patientRows, staffFilter, categoryFilter],
   );
 
+  const periodLabel =
+    viewMode === 'day' ? formatDate(clampedDate) : `${PRESET_LABELS[preset]} (${formatDate(summary.range.start)} – ${formatDate(summary.range.end)})`;
+
+  const snapshotBadge =
+    summary.daysWithSnapshot === summary.totalDays
+      ? {
+          tone: 'good' as const,
+          text:
+            summary.totalDays === 1
+              ? 'Package balance snapshot available for this date'
+              : `Package balance snapshot available for all ${summary.totalDays} days in this period`,
+        }
+      : summary.daysWithSnapshot === 0
+        ? {
+            tone: 'warn' as const,
+            text:
+              summary.totalDays === 1
+                ? 'No package balance snapshot for this date - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted"'
+                : 'No package balance snapshots in this period - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted"',
+          }
+        : {
+            tone: 'warn' as const,
+            text: `Package balance snapshot available for ${summary.daysWithSnapshot} of ${summary.totalDays} days in this period - other days' $0-revenue repeat visits may show as "Repeat Unconverted"`,
+          };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="hidden print:block">
@@ -136,8 +191,8 @@ export function ProviderConversionDashboard({
             redemption or has a package benefit balance, or any "YB111"-flagged visit, falls under{' '}
             <strong>Follow-up/Direct Service</strong> - never counted as a conversion opportunity. Conversion Rate =
             (New Converted + Repeat Converted) / (New Unconverted + New Converted + Repeat Unconverted + Repeat
-            Converted). Assisting nurses' invoices and manual Revenue corrections can be configured under{' '}
-            <strong>Master Control</strong> on the Data tab.
+            Converted). A period is the sum of each day's own classification. Assisting nurses' invoices and manual
+            Revenue corrections can be configured under <strong>Master Control</strong> on the Data tab.
           </p>
         </div>
         <button
@@ -148,44 +203,64 @@ export function ProviderConversionDashboard({
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
-        <button
-          onClick={() => setDate(addDays(clampedDate, -1))}
-          disabled={clampedDate <= minDate}
-          className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          ← Prev day
-        </button>
-        <input
-          type="date"
-          value={clampedDate}
-          min={minDate}
-          max={asOfISO}
-          onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        <button
-          onClick={() => setDate(addDays(clampedDate, 1))}
-          disabled={clampedDate >= asOfISO}
-          className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          Next day →
-        </button>
-        <span className="text-sm text-zinc-500 dark:text-zinc-400">{formatDate(clampedDate)}</span>
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-sm dark:border-zinc-700">
+          <button
+            onClick={() => setViewMode('day')}
+            className={`px-3 py-1.5 ${viewMode === 'day' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+          >
+            Single Day
+          </button>
+          <button
+            onClick={() => setViewMode('period')}
+            className={`px-3 py-1.5 ${viewMode === 'period' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+          >
+            Period
+          </button>
+        </div>
+
+        {viewMode === 'day' ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setDate(addDays(clampedDate, -1))}
+              disabled={clampedDate <= minDate}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              ← Prev day
+            </button>
+            <input
+              type="date"
+              value={clampedDate}
+              min={minDate}
+              max={asOfISO}
+              onChange={(e) => setDate(e.target.value)}
+              className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            />
+            <button
+              onClick={() => setDate(addDays(clampedDate, 1))}
+              disabled={clampedDate >= asOfISO}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Next day →
+            </button>
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">{formatDate(clampedDate)}</span>
+          </div>
+        ) : (
+          <PeriodPresetSelect preset={preset} onPresetChange={setPreset} customRange={customRange} onCustomRangeChange={setCustomRange} />
+        )}
+
         <span
           className={`ml-auto rounded-full px-2.5 py-1 text-xs font-medium ${
-            summary.hasBalanceSnapshot
+            snapshotBadge.tone === 'good'
               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
               : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
           }`}
         >
-          {summary.hasBalanceSnapshot
-            ? 'Package balance snapshot available for this date'
-            : 'No package balance snapshot for this date - $0-revenue repeat visits with a real package balance may show as "Repeat Unconverted" instead of Follow-up/Direct Service'}
+          {snapshotBadge.text}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label="Total Patients" value={formatNumber(summary.overall.total)} />
         <KpiCard label="New Unconverted" value={formatNumber(summary.overall.newUnconverted)} tone="bad" />
         <KpiCard label="New Converted" value={formatNumber(summary.overall.newConverted)} tone="good" />
@@ -193,29 +268,40 @@ export function ProviderConversionDashboard({
         <KpiCard label="Repeat Converted" value={formatNumber(summary.overall.repeatConverted)} tone="good" />
         <KpiCard label="Follow-up / Direct Service" value={formatNumber(summary.overall.followUp)} />
         <KpiCard label="Conversion Rate" value={formatPercent(summary.overall.conversionRate, 1)} tone="neutral" />
-        <KpiCard label="Revenue" value={formatNumber(summary.overall.revenue)} />
+        <KpiCard label="Revenue" value={formatCurrencyCompact(summary.overall.revenue)} />
       </div>
 
       <ConversionTrendChart data={trend} />
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">By Provider / Therapist - {formatDate(clampedDate)}</h3>
+        <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">By Provider / Therapist - {periodLabel}</h3>
         {summary.providers.length === 0 ? (
-          <p className="py-6 text-center text-sm text-zinc-500">No visits recorded for this date.</p>
+          <p className="py-6 text-center text-sm text-zinc-500">No visits recorded for this {viewMode === 'day' ? 'date' : 'period'}.</p>
         ) : (
           <div className="overflow-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[19%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[7%]" />
+                <col className="w-[13%]" />
+                <col className="w-[16%]" />
+              </colgroup>
               <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
                 <tr>
-                  <th className="py-2 pr-2">Provider / Therapist</th>
-                  <th className="py-2 pr-2 text-right">New Unconv.</th>
-                  <th className="py-2 pr-2 text-right">New Conv.</th>
-                  <th className="py-2 pr-2 text-right">Repeat Unconv.</th>
-                  <th className="py-2 pr-2 text-right">Repeat Conv.</th>
-                  <th className="py-2 pr-2 text-right">Follow-up</th>
-                  <th className="py-2 pr-2 text-right">Total</th>
-                  <th className="py-2 pr-2 text-right">Conversion Rate</th>
-                  <th className="py-2 pr-2 text-right">Revenue</th>
+                  <th className="py-2 pr-2 align-bottom">Provider / Therapist</th>
+                  <th className="py-2 pr-2 text-right align-bottom">New Unconv.</th>
+                  <th className="py-2 pr-2 text-right align-bottom">New Conv.</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Repeat Unconv.</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Repeat Conv.</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Follow-up</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Total</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Conversion Rate</th>
+                  <th className="py-2 pr-2 text-right align-bottom">Revenue</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,7 +312,7 @@ export function ProviderConversionDashboard({
                     .join(', ');
                   return (
                     <tr key={p.staff} className="border-t border-zinc-100 dark:border-zinc-800">
-                      <td className="py-1.5 pr-2 font-medium">{p.staff}</td>
+                      <td className="py-1.5 pr-2 font-medium break-words">{p.staff}</td>
                       <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">{formatNumber(p.newUnconverted)}</td>
                       <td className="py-1.5 pr-2 text-right text-emerald-600 dark:text-emerald-400">{formatNumber(p.newConverted)}</td>
                       <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">{formatNumber(p.repeatUnconverted)}</td>
@@ -272,7 +358,7 @@ export function ProviderConversionDashboard({
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Patient Detail - {formatDate(clampedDate)}</h3>
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Patient Detail - {periodLabel}</h3>
           <div className="flex gap-2 print:hidden">
             <select
               value={staffFilter}
@@ -300,6 +386,7 @@ export function ProviderConversionDashboard({
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-500 print:static dark:bg-zinc-900 dark:text-zinc-400">
               <tr>
+                {viewMode === 'period' && <th className="py-2 pr-2">Date</th>}
                 <th className="py-2 pr-2">Patient</th>
                 <th className="py-2 pr-2">Provider</th>
                 <th className="py-2 pr-2">Category</th>
@@ -311,11 +398,12 @@ export function ProviderConversionDashboard({
             <tbody>
               {filteredPatientRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-sm text-zinc-500">No patients match this filter.</td>
+                  <td colSpan={viewMode === 'period' ? 7 : 6} className="py-6 text-center text-sm text-zinc-500">No patients match this filter.</td>
                 </tr>
               ) : (
                 filteredPatientRows.map((r) => (
-                  <tr key={`${r.patientId}-${r.staff}`} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <tr key={`${r.date}-${r.patientId}-${r.staff}`} className="border-t border-zinc-100 dark:border-zinc-800">
+                    {viewMode === 'period' && <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{formatDate(r.date)}</td>}
                     <td className="py-1.5 pr-2">{r.patientName}</td>
                     <td className="py-1.5 pr-2">{r.staff}</td>
                     <td className="py-1.5 pr-2">{CATEGORY_LABELS[r.category]}</td>
