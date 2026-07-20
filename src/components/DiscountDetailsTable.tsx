@@ -4,10 +4,34 @@ import { formatCurrency, formatDate, formatNumber } from '../lib/format';
 
 const PAGE_SIZE = 25;
 
+const CATEGORY_BADGE: Record<string, string> = {
+  manual: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+  campaign: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
+  priceAdjusted: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  other: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  manual: 'Manual',
+  campaign: 'Campaign',
+  priceAdjusted: 'Adjusted',
+  other: 'Other',
+};
+
 function downloadCsv(rows: DiscountDetailRow[]) {
-  const header = ['Invoice No', 'Date', 'Patient Name', 'Service Name', 'Discount Name', 'Price (OMR)', 'Discount (OMR)', 'Net Price (OMR)'];
+  const header = ['Invoice No', 'Date', 'Patient Name', 'Service Name', 'Discount Name', 'Type', 'Price (OMR)', 'Discount (OMR)', 'Net Price (OMR)'];
   const lines = rows.map((r) =>
-    [r.invoiceNo, r.date, r.patientName, r.serviceName, r.discountName ?? '', r.price.toFixed(3), r.discountAmount.toFixed(3), r.netPrice.toFixed(3)]
+    [
+      r.invoiceNo,
+      r.date,
+      r.patientName,
+      r.serviceName,
+      r.discountName ?? '',
+      CATEGORY_LABEL[r.category] ?? 'Other',
+      r.price.toFixed(3),
+      r.discountAmount.toFixed(3),
+      r.netPrice.toFixed(3),
+    ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(','),
   );
@@ -91,6 +115,7 @@ export function DiscountDetailsTable({ data }: { data: DiscountDetailRow[] }) {
                   <th className="py-2 pr-2">Date</th>
                   <th className="py-2 pr-2">Patient</th>
                   <th className="py-2 pr-2">Service</th>
+                  <th className="py-2 pr-2">Type</th>
                   <th className="py-2 pr-2 text-right">Price</th>
                   <th className="py-2 pr-2 text-right">Discount</th>
                   <th className="py-2 pr-2 text-right">Net Price</th>
@@ -103,6 +128,14 @@ export function DiscountDetailsTable({ data }: { data: DiscountDetailRow[] }) {
                     <td className="py-1.5 pr-2">{formatDate(r.date)}</td>
                     <td className="py-1.5 pr-2">{r.patientName}</td>
                     <td className="py-1.5 pr-2">{r.serviceName}</td>
+                    <td className="py-1.5 pr-2">
+                      <span
+                        title={r.discountName ?? undefined}
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_BADGE[r.category] ?? CATEGORY_BADGE.other}`}
+                      >
+                        {CATEGORY_LABEL[r.category] ?? 'Other'}
+                      </span>
+                    </td>
                     <td className="py-1.5 pr-2 text-right">{formatCurrency(r.price)}</td>
                     <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">{formatCurrency(r.discountAmount)}</td>
                     <td className="py-1.5 pr-2 text-right font-medium">{formatCurrency(r.netPrice)}</td>
