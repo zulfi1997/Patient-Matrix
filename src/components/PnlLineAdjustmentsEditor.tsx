@@ -36,10 +36,17 @@ export function PnlLineAdjustmentsEditor({
     () => [...new Set(pnlLines.filter((l) => l.section === 'expense' && l.group).map((l) => l.group as string))].sort(),
     [pnlLines],
   );
-  const knownDescriptions = useMemo(
-    () => [...new Set(pnlLines.filter((l) => l.section === 'expense').map((l) => l.description))].sort(),
-    [pnlLines],
-  );
+  // Narrowed to the currently-typed Group, so picking a group actually filters the suggested line items instead of always listing every expense account.
+  const knownDescriptions = useMemo(() => {
+    const groupFilter = group.trim().toLowerCase();
+    return [
+      ...new Set(
+        pnlLines
+          .filter((l) => l.section === 'expense' && (!groupFilter || (l.group ?? '').toLowerCase() === groupFilter))
+          .map((l) => l.description),
+      ),
+    ].sort();
+  }, [pnlLines, group]);
 
   const addAdjustment = () => {
     const amt = parseFloat(amount);
