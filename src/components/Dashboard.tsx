@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import type { ItemType, SaleRecord } from '../types';
 import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
 import {
+  computeAgingBucketSummary,
   computeAtRiskPatients,
   computeDormantServices,
+  computeInvoiceAging,
   computeKpis,
   computeMonthlyTrend,
   computeRedeemedPackages,
@@ -26,6 +28,7 @@ import { DiscountDetailsTable } from './DiscountDetailsTable';
 import { TopServicesChart } from './TopServicesChart';
 import { DormantServicesTable } from './DormantServicesTable';
 import { AtRiskPatientsTable } from './AtRiskPatientsTable';
+import { InvoiceAgingSection } from './InvoiceAgingSection';
 
 const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Package', 'All'];
 
@@ -77,6 +80,9 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
   const discountSummary = useMemo(() => computeDiscountSummary(records, range), [records, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(records, range), [records, range]);
   const discountDetails = useMemo(() => computeDiscountDetails(records, range), [records, range]);
+
+  const invoiceAging = useMemo(() => computeInvoiceAging(records, asOfISO), [records, asOfISO]);
+  const agingBucketSummary = useMemo(() => computeAgingBucketSummary(invoiceAging), [invoiceAging]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -163,6 +169,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
       <DiscountsBreakdownTable data={discountBreakdown} />
 
       <DiscountDetailsTable data={discountDetails} />
+
+      <InvoiceAgingSection rows={invoiceAging} bucketSummary={agingBucketSummary} asOfISO={asOfISO} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
         <PatientTrendChart data={trend} />

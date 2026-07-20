@@ -583,6 +583,83 @@ export function computeFlaggedMonthlyTrend(records: SaleRecord[], monthsBack: nu
   return points;
 }
 
+export type AgingBucket = '0-15' | '16-30' | '31-60' | '60+';
+
+const AGING_BUCKETS: AgingBucket[] = ['0-15', '16-30', '31-60', '60+'];
+
+function agingBucketFor(ageDays: number): AgingBucket {
+  if (ageDays <= 15) return '0-15';
+  if (ageDays <= 30) return '16-30';
+  if (ageDays <= 60) return '31-60';
+  return '60+';
+}
+
+export interface InvoiceAgingRow {
+  invoiceNo: string;
+  patientId: string;
+  patientName: string;
+  date: string;
+  services: string[];
+  dueAmount: number;
+  invoiceStatus: string;
+  ageDays: number;
+  agingBucket: AgingBucket;
+}
+
+/**
+ * Invoice-wise outstanding balance and age (days since Sale Date, as of `asOfISO`), across ALL
+ * sales data regardless of any period filter elsewhere on the dashboard - a balance doesn't stop
+ * being owed just because the invoice's sale date falls outside whatever range is selected.
+ */
+export function computeInvoiceAging(records: SaleRecord[], asOfISO: string): InvoiceAgingRow[] {
+  const map = new Map<string, InvoiceAgingRow>();
+  for (const r of records) {
+    if (r.dueAmount <= 0) continue;
+    let inv = map.get(r.invoiceNo);
+    if (!inv) {
+      inv = {
+        invoiceNo: r.invoiceNo,
+        patientId: r.patientId,
+        patientName: r.patientName,
+        date: r.date,
+        services: [],
+        dueAmount: 0,
+        invoiceStatus: r.invoiceStatus,
+        ageDays: 0,
+        agingBucket: '0-15',
+      };
+      map.set(r.invoiceNo, inv);
+    }
+    if (!inv.services.includes(r.serviceName)) inv.services.push(r.serviceName);
+    inv.dueAmount += r.dueAmount;
+    if (r.date > inv.date) inv.date = r.date;
+  }
+
+  const rows = [...map.values()];
+  for (const inv of rows) {
+    inv.ageDays = Math.max(0, daysBetween(inv.date, asOfISO));
+    inv.agingBucket = agingBucketFor(inv.ageDays);
+  }
+  return rows.sort((a, b) => b.ageDays - a.ageDays);
+}
+
+export interface AgingBucketStat {
+  bucket: AgingBucket;
+  count: number;
+  amount: number;
+}
+
+/** Fixed bucket order (0-15, 16-30, 31-60, 60+), zero-filled so an empty bucket still shows as 0 rather than disappearing. */
+export function computeAgingBucketSummary(rows: InvoiceAgingRow[]): AgingBucketStat[] {
+  const map = new Map<AgingBucket, AgingBucketStat>(AGING_BUCKETS.map((b) => [b, { bucket: b, count: 0, amount: 0 }]));
+  for (const r of rows) {
+    const s = map.get(r.agingBucket)!;
+    s.count += 1;
+    s.amount += r.dueAmount;
+  }
+  return AGING_BUCKETS.map((b) => map.get(b)!);
+}
+
 export interface FlaggedDueInvoice {
   invoiceNo: string;
   patientId: string;
