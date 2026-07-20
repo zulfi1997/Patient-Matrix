@@ -15,15 +15,14 @@ function totalsRow(label: string, pick: (t: SegmentPnlTotals) => number, emphasi
 
 function Breakdown({ own, total }: { own: number; total: number }) {
   const allocated = total - own;
+  const hasAllocation = Math.abs(allocated) > 0.0005;
   return (
-    <>
+    <span
+      title={hasAllocation ? `Own ${formatCurrency(own)} + Allocated ${formatCurrency(allocated)}` : undefined}
+      className={hasAllocation ? 'cursor-help underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-600' : undefined}
+    >
       {formatCurrency(total)}
-      {Math.abs(allocated) > 0.0005 && (
-        <span className="ml-1 text-xs text-zinc-400">
-          ({formatCurrency(own)} + {formatCurrency(allocated)})
-        </span>
-      )}
-    </>
+    </span>
   );
 }
 
@@ -62,8 +61,8 @@ export function SegmentPnlSummaryTable({ results }: { results: SegmentPnlResult[
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Segment P&amp;L Summary</h3>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-        Each figure is the fully-allocated total; where General overhead contributed to it, the breakdown in
-        parentheses shows (own + allocated). Expense is broken down by cost center below.
+        Each figure is the fully-allocated total; where General overhead contributed to it, hover a dotted-underlined
+        figure for the own + allocated breakdown. Expense is broken down by cost center below.
       </p>
       <div className="overflow-auto">
         <table className="w-full text-left text-sm">
@@ -71,13 +70,9 @@ export function SegmentPnlSummaryTable({ results }: { results: SegmentPnlResult[
             <tr>
               <th className="py-2 pr-2">Line</th>
               {results.map((r) => (
-                <th key={r.segment} className="py-2 pr-2 text-right">
-                  {r.segment} <span className="font-normal normal-case text-zinc-400">(own + alloc.)</span>
-                </th>
+                <th key={r.segment} className="py-2 pr-2 text-right">{r.segment}</th>
               ))}
-              <th className="py-2 pr-2 text-right">
-                Total <span className="font-normal normal-case text-zinc-400">(own + alloc.)</span>
-              </th>
+              <th className="py-2 pr-2 text-right">Total</th>
             </tr>
           </thead>
           <tbody>

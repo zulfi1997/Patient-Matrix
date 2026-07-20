@@ -40,10 +40,7 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
               <tr>
                 <th className="py-2 pr-2">Line</th>
                 {results.map((r) => (
-                  <th key={r.segment} className="py-2 pr-2 text-right">
-                    {r.segment}
-                    {showOwnColumn && <span className="ml-1 font-normal normal-case text-zinc-400">(own / alloc.)</span>}
-                  </th>
+                  <th key={r.segment} className="py-2 pr-2 text-right">{r.segment}</th>
                 ))}
               </tr>
             </thead>
@@ -78,14 +75,19 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
                     <td className="py-1 pl-6 pr-2">{key.description}</td>
                     {results.map((r) => {
                       const line = lookup(r, key.section, key.group, key.description);
+                      const hasAllocation = showOwnColumn && !!line && Math.abs(line.allocatedAmount) > 0.0005;
                       return (
                         <td key={r.segment} className="py-1 pr-2 text-right">
-                          {formatCurrency(line?.total ?? 0)}
-                          {showOwnColumn && line && Math.abs(line.allocatedAmount) > 0.0005 && (
-                            <span className="ml-1 text-xs text-zinc-400">
-                              ({formatCurrency(line.ownAmount)} + {formatCurrency(line.allocatedAmount)})
-                            </span>
-                          )}
+                          <span
+                            title={
+                              hasAllocation
+                                ? `Own ${formatCurrency(line!.ownAmount)} + Allocated ${formatCurrency(line!.allocatedAmount)}`
+                                : undefined
+                            }
+                            className={hasAllocation ? 'cursor-help underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-600' : undefined}
+                          >
+                            {formatCurrency(line?.total ?? 0)}
+                          </span>
                         </td>
                       );
                     })}
