@@ -175,6 +175,40 @@ export function unionLineKeys(results: SegmentPnlResult[]): PnlLineKey[] {
   );
 }
 
+export interface SegmentGroupTotal {
+  group: string;
+  own: number;
+  total: number;
+}
+
+/** This segment's own+allocated subtotal for each group within a section (e.g. every EXPENSE group: Administration Expenses, Human Resource Expenses, Depreciation, ...) - "Other" for lines with no group. */
+export function computeGroupTotals(result: SegmentPnlResult, section: PnlSection): Map<string, SegmentGroupTotal> {
+  const map = new Map<string, SegmentGroupTotal>();
+  for (const l of result.lines) {
+    if (l.section !== section) continue;
+    const key = l.group ?? 'Other';
+    let g = map.get(key);
+    if (!g) {
+      g = { group: key, own: 0, total: 0 };
+      map.set(key, g);
+    }
+    g.own += l.ownAmount;
+    g.total += l.total;
+  }
+  return map;
+}
+
+/** Every group name used within a section across all segments, ordered by combined magnitude (largest first) so the biggest cost centers lead. */
+export function unionGroups(results: SegmentPnlResult[], section: PnlSection): string[] {
+  const magnitude = new Map<string, number>();
+  for (const r of results) {
+    for (const [group, g] of computeGroupTotals(r, section)) {
+      magnitude.set(group, (magnitude.get(group) ?? 0) + Math.abs(g.total));
+    }
+  }
+  return [...magnitude.entries()].sort((a, b) => b[1] - a[1]).map(([group]) => group);
+}
+
 /** Months (from what's actually been uploaded) making up the year-to-date range ending at `throughMonth`, inclusive - only months that were actually imported, so a gap doesn't get silently treated as zero. */
 export function resolveYtdMonths(availableMonths: string[], throughMonth: string): string[] {
   const year = throughMonth.slice(0, 4);

@@ -1,22 +1,17 @@
-import type { SegmentPnlResult, SegmentPnlTotals } from '../lib/segmentAllocation';
+import { computeGroupTotals, unionGroups, type SegmentPnlResult, type SegmentPnlTotals } from '../lib/segmentAllocation';
 import { formatCurrency } from '../lib/format';
 
 interface SummaryRow {
   label: string;
-  own: (t: SegmentPnlTotals) => number;
-  total: (t: SegmentPnlTotals) => number;
+  own: (r: SegmentPnlResult) => number;
+  total: (r: SegmentPnlResult) => number;
   emphasize?: boolean;
+  indent?: boolean;
 }
 
-const ROWS: SummaryRow[] = [
-  { label: 'Revenue', own: (t) => t.income, total: (t) => t.income },
-  { label: 'Cost of Goods Sold', own: (t) => t.cogs, total: (t) => t.cogs },
-  { label: 'Gross Profit', own: (t) => t.grossProfit, total: (t) => t.grossProfit, emphasize: true },
-  { label: 'Total Expense', own: (t) => t.expense, total: (t) => t.expense },
-  { label: 'Other Income', own: (t) => t.otherIncome, total: (t) => t.otherIncome },
-  { label: 'Other Expense', own: (t) => t.otherExpense, total: (t) => t.otherExpense },
-  { label: 'Net Profit', own: (t) => t.netProfit, total: (t) => t.netProfit, emphasize: true },
-];
+function totalsRow(label: string, pick: (t: SegmentPnlTotals) => number, emphasize?: boolean): SummaryRow {
+  return { label, own: (r) => pick(r.ownTotals), total: (r) => pick(r.allocatedTotals), emphasize };
+}
 
 function Breakdown({ own, total }: { own: number; total: number }) {
   const allocated = total - own;
@@ -41,15 +36,34 @@ export function SegmentPnlSummaryTable({ results }: { results: SegmentPnlResult[
     );
   }
 
-  const totalOwn = (get: SummaryRow['own']) => results.reduce((sum, r) => sum + get(r.ownTotals), 0);
-  const totalAll = (get: SummaryRow['total']) => results.reduce((sum, r) => sum + get(r.allocatedTotals), 0);
+  const expenseGroups = unionGroups(results, 'expense');
+  const rows: SummaryRow[] = [
+    totalsRow('Revenue', (t) => t.income),
+    totalsRow('Cost of Goods Sold', (t) => t.cogs),
+    totalsRow('Gross Profit', (t) => t.grossProfit, true),
+    ...expenseGroups.map(
+      (group): SummaryRow => ({
+        label: group,
+        own: (r) => computeGroupTotals(r, 'expense').get(group)?.own ?? 0,
+        total: (r) => computeGroupTotals(r, 'expense').get(group)?.total ?? 0,
+        indent: true,
+      }),
+    ),
+    totalsRow('Total Expense', (t) => t.expense, true),
+    totalsRow('Other Income', (t) => t.otherIncome),
+    totalsRow('Other Expense', (t) => t.otherExpense),
+    totalsRow('Net Profit', (t) => t.netProfit, true),
+  ];
+
+  const totalOwn = (get: SummaryRow['own']) => results.reduce((sum, r) => sum + get(r), 0);
+  const totalAll = (get: SummaryRow['total']) => results.reduce((sum, r) => sum + get(r), 0);
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Segment P&amp;L Summary</h3>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
         Each figure is the fully-allocated total; where General overhead contributed to it, the breakdown in
-        parentheses shows (own + allocated).
+        parentheses shows (own + allocated). Expense is broken down by cost center below.
       </p>
       <div className="overflow-auto">
         <table className="w-full text-left text-sm">
@@ -67,15 +81,15 @@ export function SegmentPnlSummaryTable({ results }: { results: SegmentPnlResult[
             </tr>
           </thead>
           <tbody>
-            {ROWS.map((row) => (
+            {rows.map((row) => (
               <tr
                 key={row.label}
                 className={`border-t border-zinc-100 dark:border-zinc-800 ${row.emphasize ? 'font-semibold' : ''}`}
               >
-                <td className="py-1.5 pr-2">{row.label}</td>
+                <td className={`py-1.5 pr-2 ${row.indent ? 'pl-4 text-xs text-zinc-500 dark:text-zinc-400' : ''}`}>{row.label}</td>
                 {results.map((r) => (
                   <td key={r.segment} className="py-1.5 pr-2 text-right">
-                    <Breakdown own={row.own(r.ownTotals)} total={row.total(r.allocatedTotals)} />
+                    <Breakdown own={row.own(r)} total={row.total(r)} />
                   </td>
                 ))}
                 <td className="py-1.5 pr-2 text-right">
