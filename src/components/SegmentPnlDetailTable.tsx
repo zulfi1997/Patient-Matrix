@@ -42,6 +42,7 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
                 {results.map((r) => (
                   <th key={r.segment} className="py-2 pr-2 text-right">{r.segment}</th>
                 ))}
+                <th className="py-2 pr-2 text-right">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -50,7 +51,7 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
                 if (key.section !== lastSection) {
                   rows.push(
                     <tr key={`section-${key.section}`} className="border-t border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/60">
-                      <td colSpan={results.length + 1} className="py-1.5 pr-2 font-semibold text-zinc-700 dark:text-zinc-200">
+                      <td colSpan={results.length + 2} className="py-1.5 pr-2 font-semibold text-zinc-700 dark:text-zinc-200">
                         {SECTION_LABELS[key.section]}
                       </td>
                     </tr>,
@@ -62,7 +63,7 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
                   if (key.group) {
                     rows.push(
                       <tr key={`group-${key.section}-${key.group}`}>
-                        <td colSpan={results.length + 1} className="py-1 pl-3 pr-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        <td colSpan={results.length + 2} className="py-1 pl-3 pr-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
                           {key.group}
                         </td>
                       </tr>,
@@ -70,11 +71,13 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
                   }
                   lastGroup = key.group;
                 }
+                let lineTotal = 0;
                 rows.push(
                   <tr key={`${key.section}|${key.group}|${key.description}`} className="border-t border-zinc-100 dark:border-zinc-800">
                     <td className="py-1 pl-6 pr-2">{key.description}</td>
                     {results.map((r) => {
                       const line = lookup(r, key.section, key.group, key.description);
+                      lineTotal += line?.total ?? 0;
                       const hasAllocation = showOwnColumn && !!line && Math.abs(line.allocatedAmount) > 0.0005;
                       return (
                         <td key={r.segment} className="py-1 pr-2 text-right">
@@ -91,6 +94,7 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
                         </td>
                       );
                     })}
+                    <td className="py-1 pr-2 text-right font-medium">{formatCurrency(lineTotal)}</td>
                   </tr>,
                 );
                 return rows;
@@ -102,6 +106,9 @@ export function SegmentPnlDetailTable({ results, showOwnColumn }: { results: Seg
                     {formatCurrency(r.allocatedTotals.netProfit)}
                   </td>
                 ))}
+                <td className="py-2 pr-2 text-right">
+                  {formatCurrency(results.reduce((sum, r) => sum + r.allocatedTotals.netProfit, 0))}
+                </td>
               </tr>
             </tbody>
           </table>

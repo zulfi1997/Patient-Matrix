@@ -42,6 +42,41 @@ export function totalAllocatedPercent(rules: SegmentAllocationRule[], segments: 
     .reduce((sum, s) => sum + resolveAllocationPercent(rules, s, month), 0);
 }
 
+/** Whether GEN's overhead is split by a manually configured %, or dynamically by each segment's share of that month's own Revenue. */
+export type AllocationMode = 'percentage' | 'revenue';
+
+/** Each target segment's own Revenue (INCOME section) for `month`, 0 for a segment with none. */
+function computeMonthlyRevenue(records: PnlLineRecord[], month: string, targetSegments: string[]): Map<string, number> {
+  const revenue = new Map(targetSegments.map((s) => [s, 0]));
+  for (const r of records) {
+    if (r.month !== month || r.section !== 'income' || !revenue.has(r.segment)) continue;
+    revenue.set(r.segment, (revenue.get(r.segment) ?? 0) + r.amount);
+  }
+  return revenue;
+}
+
+/**
+ * The % of GEN's costs allocated to `segment` for `month`, under either mode: the configured
+ * rule (percentage mode), or that segment's share of the target segments' combined Revenue for
+ * that same month (revenue mode) - so a segment that brought in more revenue that month absorbs
+ * a proportionally larger share of overhead. Revenue mode is 0% for every segment in a month
+ * where none of the target segments had any revenue (nothing to apportion by).
+ */
+export function resolveMonthlyAllocationPercent(
+  records: PnlLineRecord[],
+  mode: AllocationMode,
+  rules: SegmentAllocationRule[],
+  segment: string,
+  month: string,
+  targetSegments: string[],
+): number {
+  if (mode === 'percentage') return resolveAllocationPercent(rules, segment, month);
+  const revenue = computeMonthlyRevenue(records, month, targetSegments);
+  const total = [...revenue.values()].reduce((sum, v) => sum + v, 0);
+  if (total <= 0) return 0;
+  return ((revenue.get(segment) ?? 0) / total) * 100;
+}
+
 export interface PnlLineKey {
   section: PnlSection;
   group: string | null;
@@ -107,13 +142,16 @@ export function computeSegmentPnl(
   months: string[],
   segments: string[],
   allocationRules: SegmentAllocationRule[],
+  mode: AllocationMode = 'percentage',
 ): SegmentPnlResult[] {
   const monthSet = new Set(months);
   const targetSegments = segments.filter((s) => s !== GENERAL_SEGMENT);
   const results: SegmentPnlResult[] = [];
 
   for (const segment of targetSegments) {
-    const percentByMonth = new Map(months.map((m) => [m, resolveAllocationPercent(allocationRules, segment, m)]));
+    const percentByMonth = new Map(
+      months.map((m) => [m, resolveMonthlyAllocationPercent(records, mode, allocationRules, segment, m, targetSegments)]),
+    );
     const lineMap = new Map<string, SegmentPnlLine>();
 
     for (const r of records) {

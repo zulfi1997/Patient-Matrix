@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import type { PnlImportBatch, PnlLineRecord } from '../types';
 import {
   computeSegmentPnl,
   resolveYtdMonths,
   summarizeBatchMonths,
+  type AllocationMode,
   type SegmentAllocationRule,
 } from '../lib/segmentAllocation';
 import { formatMonthLabel } from '../lib/format';
@@ -16,10 +17,14 @@ export function SegmentPnlDashboard({
   pnlLines,
   pnlBatches,
   allocationRules,
+  allocationMode,
+  setAllocationMode,
 }: {
   pnlLines: PnlLineRecord[];
   pnlBatches: PnlImportBatch[];
   allocationRules: SegmentAllocationRule[];
+  allocationMode: AllocationMode;
+  setAllocationMode: Dispatch<SetStateAction<AllocationMode>>;
 }) {
   const availableMonths = useMemo(() => summarizeBatchMonths(pnlBatches), [pnlBatches]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
@@ -35,8 +40,8 @@ export function SegmentPnlDashboard({
   }, [month, view, availableMonths]);
 
   const results = useMemo(
-    () => computeSegmentPnl(pnlLines, monthsForView, segments, allocationRules),
-    [pnlLines, monthsForView, segments, allocationRules],
+    () => computeSegmentPnl(pnlLines, monthsForView, segments, allocationRules, allocationMode),
+    [pnlLines, monthsForView, segments, allocationRules, allocationMode],
   );
 
   if (availableMonths.length === 0) {
@@ -80,6 +85,23 @@ export function SegmentPnlDashboard({
               Year to Date
             </button>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">Allocate GEN by</label>
+            <div className="mt-0.5 flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
+              <button
+                onClick={() => setAllocationMode('percentage')}
+                className={`px-2.5 py-1.5 ${allocationMode === 'percentage' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              >
+                Fixed %
+              </button>
+              <button
+                onClick={() => setAllocationMode('revenue')}
+                className={`px-2.5 py-1.5 ${allocationMode === 'revenue' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              >
+                Revenue Share
+              </button>
+            </div>
+          </div>
         </div>
         <button
           onClick={() => window.print()}
@@ -97,8 +119,11 @@ export function SegmentPnlDashboard({
             Showing <strong>Year to Date through {formatMonthLabel(month)}</strong> ({monthsForView.map(formatMonthLabel).join(', ')}).
           </>
         )}{' '}
-        Every General ({segments.includes('GEN') ? 'GEN' : 'overhead'}) line item is split by the configured % and merged
-        into each segment's own figures below - "fully allocated" means own + that segment's share of GEN.
+        Every General ({segments.includes('GEN') ? 'GEN' : 'overhead'}) line item is split{' '}
+        {allocationMode === 'percentage'
+          ? 'by the configured % (Data tab)'
+          : "by each segment's share of that month's own Revenue"}{' '}
+        and merged into each segment's own figures below - "fully allocated" means own + that segment's share of GEN.
       </p>
 
       <SegmentPnlSummaryTable results={results} />

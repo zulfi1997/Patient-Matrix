@@ -12,7 +12,7 @@ import { SegmentPnlDashboard } from './components/SegmentPnlDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
-import type { SegmentAllocationRule } from './lib/segmentAllocation';
+import type { AllocationMode, SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'data';
@@ -43,6 +43,7 @@ function App() {
     [],
   );
   const [allocationRules, setAllocationRules] = useLocalStorageState<SegmentAllocationRule[]>('pm-segment-allocation-rules', []);
+  const [allocationMode, setAllocationMode] = useLocalStorageState<AllocationMode>('pm-pnl-allocation-mode', 'percentage');
   const pnlSegments = useMemo(() => [...new Set(pnlBatches.flatMap((b) => b.segments))].sort(), [pnlBatches]);
 
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
@@ -185,7 +186,13 @@ function App() {
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard records={baseAnalysisRecords} />
         ) : tab === 'segmentPnl' ? (
-          <SegmentPnlDashboard pnlLines={pnlLines} pnlBatches={pnlBatches} allocationRules={allocationRules} />
+          <SegmentPnlDashboard
+            pnlLines={pnlLines}
+            pnlBatches={pnlBatches}
+            allocationRules={allocationRules}
+            allocationMode={allocationMode}
+            setAllocationMode={setAllocationMode}
+          />
         ) : (
           <DataPage
             records={records}
@@ -208,6 +215,7 @@ function App() {
             pnlSegments={pnlSegments}
             allocationRules={allocationRules}
             setAllocationRules={setAllocationRules}
+            allocationMode={allocationMode}
           />
         )}
       </main>

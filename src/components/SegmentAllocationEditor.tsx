@@ -3,6 +3,7 @@ import {
   GENERAL_SEGMENT,
   resolveAllocationPercent,
   totalAllocatedPercent,
+  type AllocationMode,
   type SegmentAllocationRule,
 } from '../lib/segmentAllocation';
 import { formatMonthLabel } from '../lib/format';
@@ -21,6 +22,7 @@ export function SegmentAllocationEditor({
   rules,
   setRules,
   latestMonth,
+  allocationMode,
 }: {
   /** All segment codes seen across uploaded P&L data, including GEN. */
   segments: string[];
@@ -28,6 +30,7 @@ export function SegmentAllocationEditor({
   setRules: Dispatch<SetStateAction<SegmentAllocationRule[]>>;
   /** Most recent month with uploaded data, used to preview the currently-effective % split. */
   latestMonth: string | null;
+  allocationMode: AllocationMode;
 }) {
   const targetSegments = segments.filter((s) => s !== GENERAL_SEGMENT);
 
@@ -62,6 +65,14 @@ export function SegmentAllocationEditor({
         month onward (until superseded by a later change here), so a mid-year rate change doesn't rewrite prior
         months. Ideally the percentages for a given month add up to 100% - anything left over stays unallocated.
       </p>
+
+      {allocationMode === 'revenue' && (
+        <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+          "Allocate GEN by" is currently set to <strong>Revenue Share</strong> on the Segment P&amp;L tab, so these
+          fixed percentages are not being used - each segment's share is computed from its own Revenue for the
+          period instead. Switch back to <strong>Fixed %</strong> there to use this configuration.
+        </p>
+      )}
 
       {targetSegments.length === 0 ? (
         <p className="py-3 text-center text-xs text-zinc-500">Upload a Segment P&amp;L file first to configure allocation.</p>

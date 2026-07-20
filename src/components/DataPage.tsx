@@ -4,7 +4,7 @@ import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
-import type { SegmentAllocationRule } from '../lib/segmentAllocation';
+import type { AllocationMode, SegmentAllocationRule } from '../lib/segmentAllocation';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
@@ -33,6 +33,7 @@ interface DataPageProps {
   pnlSegments: string[];
   allocationRules: SegmentAllocationRule[];
   setAllocationRules: Dispatch<SetStateAction<SegmentAllocationRule[]>>;
+  allocationMode: AllocationMode;
 }
 
 function exportAllCsv(records: SaleRecord[]) {
@@ -79,6 +80,7 @@ export function DataPage({
   pnlSegments,
   allocationRules,
   setAllocationRules,
+  allocationMode,
 }: DataPageProps) {
   const knownStaff = useMemo(() => {
     const set = new Set<string>();
@@ -294,6 +296,7 @@ export function DataPage({
             rules={allocationRules}
             setRules={setAllocationRules}
             latestMonth={pnlBatches.length > 0 ? pnlBatches.map((b) => b.month).sort().at(-1)! : null}
+            allocationMode={allocationMode}
           />
         </div>
       </div>
