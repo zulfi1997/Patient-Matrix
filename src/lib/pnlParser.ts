@@ -24,6 +24,35 @@ const SECTION_MAP: Record<string, PnlSection> = {
   'OTHER EXPENSE': 'otherExpense',
 };
 
+/**
+ * Clinic-requested regroupings that override where a specific account lands, regardless of which
+ * section/group the raw export puts it under (e.g. "Bank Charges" is exported under OTHER
+ * EXPENSE, but the clinic wants it alongside "Interest Expenses" under EXPENSE > Finance and
+ * Other Expenses). Checked by exact (case-insensitive) description match; first match wins.
+ */
+const LINE_OVERRIDES: { match: RegExp; section?: PnlSection; group?: string }[] = [
+  { match: /^Depreciation Account$/i, group: 'Depreciation' },
+  { match: /^Bank Charges$/i, section: 'expense', group: 'Finance and Other Expenses' },
+];
+
+/** Group-heading relabels applied to every line still under that heading (not just overridden ones). */
+const GROUP_LABEL_OVERRIDES: Record<string, string> = {
+  'Expense - Accounts': 'Administration Expenses',
+};
+
+function applyLineOverrides(
+  section: PnlSection,
+  group: string | null,
+  description: string,
+): { section: PnlSection; group: string | null } {
+  for (const rule of LINE_OVERRIDES) {
+    if (rule.match.test(description)) {
+      return { section: rule.section ?? section, group: rule.group ?? group };
+    }
+  }
+  return { section, group: group != null ? (GROUP_LABEL_OVERRIDES[group] ?? group) : group };
+}
+
 /** The 7 standardized section-subtotal rows Zoho always labels the same way - captured for cross-checking our own re-derived totals against the report's, not stored as line records. */
 const STANDARD_TOTAL_LABELS: Record<string, keyof PnlReportedTotals> = {
   'TOTAL INCOME': 'totalIncome',
@@ -138,13 +167,15 @@ export function parsePnlWorkbook(html: string): PnlParseOutcome {
 
     if (!currentSection) continue; // defensive - shouldn't happen once past the first section header
 
+    const { section: finalSection, group: finalGroup } = applyLineOverrides(currentSection, currentGroup, description);
+
     for (const seg of segmentCols) {
       const cell = cells[seg.index];
       if (!cell) continue;
       const amount = parseNumber(cell.textContent);
       if (amount === 0) continue;
 
-      const key = `${month}|${seg.segment}|${currentSection}|${currentGroup ?? ''}|${description}`;
+      const key = `${month}|${seg.segment}|${finalSection}|${finalGroup ?? ''}|${description}`;
       const occCount = (occurrence.get(key) ?? 0) + 1;
       occurrence.set(key, occCount);
 
@@ -152,8 +183,8 @@ export function parsePnlWorkbook(html: string): PnlParseOutcome {
         id: hashString(`${key}|${occCount}`),
         month,
         segment: seg.segment,
-        section: currentSection,
-        group: currentGroup,
+        section: finalSection,
+        group: finalGroup,
         description,
         amount,
       });
