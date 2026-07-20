@@ -11,6 +11,7 @@ import {
   summarizePatients,
   type DateRange,
 } from '../lib/metrics';
+import { computeDiscountBreakdown, computeDiscountSummary } from '../lib/discounts';
 import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -20,6 +21,7 @@ import { RevenueTrendChart } from './RevenueTrendChart';
 import { RetainedPatientsChart } from './RetainedPatientsChart';
 import { MonthlyPatientTable } from './MonthlyPatientTable';
 import { RedeemedPackagesTable } from './RedeemedPackagesTable';
+import { DiscountsBreakdownTable } from './DiscountsBreakdownTable';
 import { TopServicesChart } from './TopServicesChart';
 import { DormantServicesTable } from './DormantServicesTable';
 import { AtRiskPatientsTable } from './AtRiskPatientsTable';
@@ -70,6 +72,9 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
   );
 
   const redeemedPackages = useMemo(() => computeRedeemedPackages(records, range), [records, range]);
+
+  const discountSummary = useMemo(() => computeDiscountSummary(records, range), [records, range]);
+  const discountBreakdown = useMemo(() => computeDiscountBreakdown(records, range), [records, range]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -138,9 +143,22 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
           hint={`As of today, inactive ${inactivityDays}+ days - this is the number that responds to the threshold above`}
           tone="bad"
         />
+        <KpiCard
+          label="Total Discount"
+          value={formatCurrencyCompact(discountSummary.totalDiscount)}
+          hint={`${formatCurrency(discountSummary.totalDiscount)} · manual + campaign + price adjustments, excludes package redemption`}
+          tone="bad"
+        />
+        <KpiCard
+          label="Discount %"
+          value={formatPercent(discountSummary.discountPct)}
+          hint="Total discount as a share of gross (pre-discount) sales this period"
+        />
       </div>
 
       <RedeemedPackagesTable data={redeemedPackages} />
+
+      <DiscountsBreakdownTable data={discountBreakdown} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
         <PatientTrendChart data={trend} />

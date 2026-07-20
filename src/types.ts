@@ -49,6 +49,11 @@ export interface SaleRecord {
   invoiceNotes: string | null;
   /** Outstanding balance not yet collected for this line (0 once paid). */
   dueAmount: number;
+
+  /** Raw "Discount Name" from the export, e.g. "Manual discount", "Campaign - Buy 1 get 1 Free", "Price adjusted". */
+  discountName: string | null;
+  /** Discount amount taken off this line's Price to arrive at Sales (Exc. Tax): Price - discountAmount = salesExcTax. */
+  discountAmount: number;
 }
 
 export interface ImportBatch {

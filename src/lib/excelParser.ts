@@ -176,6 +176,8 @@ export function rowsToRecords(
     const redeemedAmount = isPackageRedemption ? parseNumber(get(row, headerMap, 'Redeemed')) : 0;
     const amount = salesExcTax - redeemedAmount;
     const dueAmount = parseNumber(get(row, headerMap, 'Due'));
+    const discountName = (get(row, headerMap, 'Discount Name') as string) || null;
+    const discountAmount = parseNumber(get(row, headerMap, 'Discount'));
 
     records.push({
       id,
@@ -200,6 +202,8 @@ export function rowsToRecords(
       centerName: String(get(row, headerMap, 'Center Name') ?? '').trim() || 'Default',
       invoiceNotes: (get(row, headerMap, 'Invoice Notes') as string) || null,
       dueAmount,
+      discountName,
+      discountAmount,
     });
   });
 
