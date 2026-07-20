@@ -35,6 +35,20 @@ export interface ProviderGroup {
   aliases: string[];
 }
 
+/**
+ * A temporary, date-scoped exception to the permanent Provider Groups - e.g. a nurse who
+ * normally assists Dr. A is reassigned to cover for Dr. B while Dr. A is on leave. Takes
+ * priority over Provider Groups for any visit date within [startDate, endDate] (inclusive).
+ */
+export interface ProviderAssignmentOverride {
+  id: string;
+  staffName: string;
+  canonicalName: string;
+  startDate: string; // ISO yyyy-mm-dd, inclusive
+  endDate: string; // ISO yyyy-mm-dd, inclusive
+  note: string;
+}
+
 /** A manual, date-scoped correction: move a specific revenue amount from one provider's total to another's. Does not change any patient's underlying conversion category - only the Revenue column. */
 export interface RevenueAdjustment {
   id: string;
@@ -45,10 +59,26 @@ export interface RevenueAdjustment {
   note: string;
 }
 
-/** Folds a raw staff name to its canonical provider name per the configured groups; unmatched names pass through unchanged. Case-insensitive, trims whitespace. */
-export function resolveProvider(rawStaff: string | null, groups: ProviderGroup[]): string {
+/**
+ * Folds a raw staff name to its canonical provider name for a given visit date. Checks
+ * date-scoped overrides first (temporary reassignments), then falls back to the permanent
+ * Provider Groups, then passes the name through unchanged. Case-insensitive, trims whitespace.
+ */
+export function resolveProvider(
+  rawStaff: string | null,
+  date: string,
+  groups: ProviderGroup[],
+  overrides: ProviderAssignmentOverride[] = [],
+): string {
   const name = (rawStaff || 'Unassigned').trim();
   const lower = name.toLowerCase();
+
+  for (const o of overrides) {
+    if (o.staffName.trim().toLowerCase() === lower && date >= o.startDate && date <= o.endDate) {
+      return o.canonicalName.trim();
+    }
+  }
+
   for (const g of groups) {
     if (g.canonicalName.trim().toLowerCase() === lower) return g.canonicalName.trim();
     if (g.aliases.some((a) => a.trim().toLowerCase() === lower)) return g.canonicalName.trim();
@@ -184,6 +214,7 @@ export function computeDailyConversion(
   packageBenefitsByDate: Map<string, PackageBenefitRecord[]>,
   providerGroups: ProviderGroup[] = [],
   revenueAdjustments: RevenueAdjustment[] = [],
+  providerAssignmentOverrides: ProviderAssignmentOverride[] = [],
 ): DailyConversionSummary {
   const dayRecords = records.filter((r) => r.date === date);
   const resolvedSnapshot = resolveSnapshotForDate(packageBenefitsByDate, date);
@@ -193,7 +224,7 @@ export function computeDailyConversion(
   // out of the key string) since provider names routinely contain spaces themselves.
   const groups = new Map<string, { patientId: string; staff: string; lines: SaleRecord[] }>();
   for (const r of dayRecords) {
-    const staff = resolveProvider(r.staff, providerGroups);
+    const staff = resolveProvider(r.staff, r.date, providerGroups, providerAssignmentOverrides);
     const key = `${r.patientId} ${staff}`;
     if (!groups.has(key)) groups.set(key, { patientId: r.patientId, staff, lines: [] });
     groups.get(key)!.lines.push(r);
@@ -261,8 +292,8 @@ export function computeDailyConversion(
   // only, and never change any patient's underlying conversion category/counts.
   for (const adj of revenueAdjustments) {
     if (adj.date !== date || adj.amount === 0) continue;
-    const fromName = resolveProvider(adj.fromProvider, providerGroups);
-    const toName = resolveProvider(adj.toProvider, providerGroups);
+    const fromName = resolveProvider(adj.fromProvider, adj.date, providerGroups, providerAssignmentOverrides);
+    const toName = resolveProvider(adj.toProvider, adj.date, providerGroups, providerAssignmentOverrides);
     if (!providerMap.has(fromName)) providerMap.set(fromName, emptyProviderStat(fromName));
     if (!providerMap.has(toName)) providerMap.set(toName, emptyProviderStat(toName));
     const fromStat = providerMap.get(fromName)!;
@@ -312,9 +343,19 @@ export function computeConversionTrend(
   days: string[],
   providerGroups: ProviderGroup[] = [],
   revenueAdjustments: RevenueAdjustment[] = [],
+  providerAssignmentOverrides: ProviderAssignmentOverride[] = [],
 ): ConversionTrendPoint[] {
   return days.map((date) => {
-    const summary = computeDailyConversion(records, patients, date, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments);
+    const summary = computeDailyConversion(
+      records,
+      patients,
+      date,
+      invoiceToPatient,
+      packageBenefitsByDate,
+      providerGroups,
+      revenueAdjustments,
+      providerAssignmentOverrides,
+    );
     return { date, conversionRate: summary.overall.conversionRate, total: summary.overall.total };
   });
 }
@@ -353,6 +394,7 @@ export function computeRangeConversion(
   packageBenefitsByDate: Map<string, PackageBenefitRecord[]>,
   providerGroups: ProviderGroup[] = [],
   revenueAdjustments: RevenueAdjustment[] = [],
+  providerAssignmentOverrides: ProviderAssignmentOverride[] = [],
 ): RangeConversionSummary {
   const days = enumerateDates(range);
   const providerMap = new Map<string, ProviderConversionStat>();
@@ -361,7 +403,16 @@ export function computeRangeConversion(
   let daysWithFallbackSnapshot = 0;
 
   for (const date of days) {
-    const daily = computeDailyConversion(records, patients, date, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments);
+    const daily = computeDailyConversion(
+      records,
+      patients,
+      date,
+      invoiceToPatient,
+      packageBenefitsByDate,
+      providerGroups,
+      revenueAdjustments,
+      providerAssignmentOverrides,
+    );
     if (daily.snapshotUsed) {
       if (daily.snapshotUsed.daysAway === 0) daysWithExactSnapshot++;
       else daysWithFallbackSnapshot++;

@@ -1,5 +1,5 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import type { ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
+import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import { formatDate, formatNumber } from '../lib/format';
 
 function newId(): string {
@@ -128,6 +128,139 @@ function ProviderGroupsEditor({
           <option key={s} value={s} />
         ))}
       </datalist>
+    </div>
+  );
+}
+
+function TemporaryReassignmentsEditor({
+  overrides,
+  setOverrides,
+}: {
+  overrides: ProviderAssignmentOverride[];
+  setOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
+}) {
+  const [staffName, setStaffName] = useState('');
+  const [canonicalName, setCanonicalName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [note, setNote] = useState('');
+
+  const addOverride = () => {
+    if (!staffName.trim() || !canonicalName.trim() || !startDate || !endDate || endDate < startDate) return;
+    setOverrides((prev) => [
+      ...prev,
+      { id: newId(), staffName: staffName.trim(), canonicalName: canonicalName.trim(), startDate, endDate, note: note.trim() },
+    ]);
+    setStaffName('');
+    setCanonicalName('');
+    setStartDate('');
+    setEndDate('');
+    setNote('');
+  };
+
+  return (
+    <div>
+      <h4 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Temporary Reassignments</h4>
+      <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+        A date-range exception to Provider Groups - e.g. a nurse who normally assists Dr. A is reassigned to cover
+        for Dr. B while Dr. A is on leave. Takes priority over Provider Groups for visit dates within the range.
+      </p>
+
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Staff (being reassigned)</label>
+          <input
+            list="master-control-staff-options"
+            value={staffName}
+            onChange={(e) => setStaffName(e.target.value)}
+            placeholder="Rini"
+            className="mt-0.5 w-36 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Covering For (provider)</label>
+          <input
+            list="master-control-staff-options"
+            value={canonicalName}
+            onChange={(e) => setCanonicalName(e.target.value)}
+            placeholder="Dr. Meacy"
+            className="mt-0.5 w-36 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">From</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="mt-0.5 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">To</label>
+          <input
+            type="date"
+            value={endDate}
+            min={startDate || undefined}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="mt-0.5 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Note (optional)</label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Dr. A on leave"
+            className="mt-0.5 w-48 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <button
+          onClick={addOverride}
+          disabled={!staffName.trim() || !canonicalName.trim() || !startDate || !endDate || endDate < startDate}
+          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+        >
+          Add Reassignment
+        </button>
+      </div>
+
+      {overrides.length === 0 ? (
+        <p className="py-3 text-center text-xs text-zinc-500">No temporary reassignments yet.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+            <tr>
+              <th className="py-1.5 pr-2">Staff</th>
+              <th className="py-1.5 pr-2">Covering For</th>
+              <th className="py-1.5 pr-2">From</th>
+              <th className="py-1.5 pr-2">To</th>
+              <th className="py-1.5 pr-2">Note</th>
+              <th className="py-1.5 pr-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {[...overrides]
+              .sort((a, b) => b.startDate.localeCompare(a.startDate))
+              .map((o) => (
+                <tr key={o.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <td className="py-1.5 pr-2">{o.staffName}</td>
+                  <td className="py-1.5 pr-2">{o.canonicalName}</td>
+                  <td className="py-1.5 pr-2">{formatDate(o.startDate)}</td>
+                  <td className="py-1.5 pr-2">{formatDate(o.endDate)}</td>
+                  <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{o.note || '—'}</td>
+                  <td className="py-1.5 pr-2 text-right">
+                    <button
+                      onClick={() => setOverrides((prev) => prev.filter((x) => x.id !== o.id))}
+                      className="text-xs text-rose-600 hover:underline dark:text-rose-400"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -274,17 +407,23 @@ export function MasterControlPanel({
   setProviderGroups,
   revenueAdjustments,
   setRevenueAdjustments,
+  providerAssignmentOverrides,
+  setProviderAssignmentOverrides,
   knownStaff,
 }: {
   providerGroups: ProviderGroup[];
   setProviderGroups: Dispatch<SetStateAction<ProviderGroup[]>>;
   revenueAdjustments: RevenueAdjustment[];
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
+  providerAssignmentOverrides: ProviderAssignmentOverride[];
+  setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
   knownStaff: string[];
 }) {
   return (
     <div className="flex flex-col gap-6 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
       <ProviderGroupsEditor groups={providerGroups} setGroups={setProviderGroups} knownStaff={knownStaff} />
+      <div className="border-t border-zinc-200 dark:border-zinc-800" />
+      <TemporaryReassignmentsEditor overrides={providerAssignmentOverrides} setOverrides={setProviderAssignmentOverrides} />
       <div className="border-t border-zinc-200 dark:border-zinc-800" />
       <RevenueAdjustmentsEditor adjustments={revenueAdjustments} setAdjustments={setRevenueAdjustments} />
     </div>

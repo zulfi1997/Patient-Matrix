@@ -8,6 +8,7 @@ import {
   FOLLOW_UP_REASON_LABELS,
   SNAPSHOT_STALENESS_CAP_DAYS,
   type ConversionCategory,
+  type ProviderAssignmentOverride,
   type ProviderConversionStat,
   type ProviderGroup,
   type RevenueAdjustment,
@@ -70,11 +71,13 @@ export function ProviderConversionDashboard({
   packageBenefits,
   providerGroups,
   revenueAdjustments,
+  providerAssignmentOverrides,
 }: {
   records: SaleRecord[];
   packageBenefits: PackageBenefitRecord[];
   providerGroups: ProviderGroup[];
   revenueAdjustments: RevenueAdjustment[];
+  providerAssignmentOverrides: ProviderAssignmentOverride[];
 }) {
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -114,7 +117,16 @@ export function ProviderConversionDashboard({
   // rest of the dashboard doesn't need to branch on viewMode at all.
   const summary = useMemo(() => {
     if (viewMode === 'day') {
-      const daily = computeDailyConversion(records, patients, clampedDate, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments);
+      const daily = computeDailyConversion(
+        records,
+        patients,
+        clampedDate,
+        invoiceToPatient,
+        packageBenefitsByDate,
+        providerGroups,
+        revenueAdjustments,
+        providerAssignmentOverrides,
+      );
       return {
         range: { start: clampedDate, end: clampedDate },
         daysWithExactSnapshot: daily.snapshotUsed?.daysAway === 0 ? 1 : 0,
@@ -134,8 +146,20 @@ export function ProviderConversionDashboard({
       packageBenefitsByDate,
       providerGroups,
       revenueAdjustments,
+      providerAssignmentOverrides,
     );
-  }, [viewMode, records, patients, clampedDate, periodRange, invoiceToPatient, packageBenefitsByDate, providerGroups, revenueAdjustments]);
+  }, [
+    viewMode,
+    records,
+    patients,
+    clampedDate,
+    periodRange,
+    invoiceToPatient,
+    packageBenefitsByDate,
+    providerGroups,
+    revenueAdjustments,
+    providerAssignmentOverrides,
+  ]);
 
   const trendDays = useMemo(() => {
     const days: string[] = [];
@@ -158,8 +182,9 @@ export function ProviderConversionDashboard({
         trendDays,
         providerGroups,
         revenueAdjustments,
+        providerAssignmentOverrides,
       ),
-    [records, patients, invoiceToPatient, packageBenefitsByDate, trendDays, providerGroups, revenueAdjustments],
+    [records, patients, invoiceToPatient, packageBenefitsByDate, trendDays, providerGroups, revenueAdjustments, providerAssignmentOverrides],
   );
 
   const staffOptions = useMemo(() => summary.providers.map((p) => p.staff), [summary.providers]);
@@ -224,8 +249,9 @@ export function ProviderConversionDashboard({
             redemption or has a package benefit balance, or any "YB111"-flagged visit, falls under{' '}
             <strong>Follow-up/Direct Service</strong> - never counted as a conversion opportunity. Conversion Rate =
             (New Converted + Repeat Converted) / (New Unconverted + New Converted + Repeat Unconverted + Repeat
-            Converted). A period is the sum of each day's own classification. Assisting nurses' invoices and manual
-            Revenue corrections can be configured under <strong>Master Control</strong> on the Data tab.
+            Converted). A period is the sum of each day's own classification. Assisting nurses' invoices, temporary
+            reassignments (e.g. covering for a doctor on leave), and manual Revenue corrections can all be configured
+            under <strong>Master Control</strong> on the Data tab.
           </p>
         </div>
         <button

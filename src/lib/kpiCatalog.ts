@@ -11,7 +11,7 @@ import {
   type PatientVisitSummary,
 } from './metrics';
 import { hasFlaggedNote } from './filters';
-import { resolveProvider, type ProviderGroup } from './conversionMetrics';
+import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
 
 export type KpiCategory = 'revenue' | 'patient' | 'staff' | 'service';
 export type KpiUnit = 'currency' | 'count' | 'percent';
@@ -43,6 +43,7 @@ export interface KpiDefinition {
     range: DateRange,
     asOfISO: string,
     providerGroups: ProviderGroup[],
+    providerAssignmentOverrides: ProviderAssignmentOverride[],
   ) => number;
 }
 
@@ -211,8 +212,8 @@ export const KPI_CATALOG: KpiDefinition[] = [
     category: 'staff',
     unit: 'count',
     description: 'Distinct providers (Sold By/Therapist, folded through Master Control provider groups) with at least one transaction this period.',
-    computeRange: (records, _p, range, _a, providerGroups) =>
-      countDistinctInRange(records, range, (r) => resolveProvider(r.staff, providerGroups)),
+    computeRange: (records, _p, range, _a, providerGroups, overrides) =>
+      countDistinctInRange(records, range, (r) => resolveProvider(r.staff, r.date, providerGroups, overrides)),
   },
   {
     id: 'staff-avg-revenue',
@@ -220,9 +221,9 @@ export const KPI_CATALOG: KpiDefinition[] = [
     category: 'staff',
     unit: 'currency',
     description: 'Total revenue divided by distinct active providers (folded through Master Control provider groups).',
-    computeRange: (records, _p, range, _a, providerGroups) => {
+    computeRange: (records, _p, range, _a, providerGroups, overrides) => {
       const revenue = sumInRange(records, range, (r) => r.amount);
-      const staffCount = countDistinctInRange(records, range, (r) => resolveProvider(r.staff, providerGroups));
+      const staffCount = countDistinctInRange(records, range, (r) => resolveProvider(r.staff, r.date, providerGroups, overrides));
       return staffCount > 0 ? revenue / staffCount : 0;
     },
   },
@@ -313,10 +314,11 @@ export function computeKpiMonthlySeries(
   asOfISO: string,
   monthsBack: number,
   providerGroups: ProviderGroup[] = [],
+  providerAssignmentOverrides: ProviderAssignmentOverride[] = [],
 ): KpiPoint[] {
   return buildMonthRanges(asOfISO, monthsBack).map((range) => ({
     month: range.start,
-    value: kpi.computeRange(records, patients, range, asOfISO, providerGroups),
+    value: kpi.computeRange(records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides),
   }));
 }
 
@@ -334,9 +336,10 @@ export function computeKpiPeriodValue(
   range: DateRange,
   asOfISO: string,
   providerGroups: ProviderGroup[] = [],
+  providerAssignmentOverrides: ProviderAssignmentOverride[] = [],
 ): KpiPeriodValue {
-  const current = kpi.computeRange(records, patients, range, asOfISO, providerGroups);
-  const previous = kpi.computeRange(records, patients, previousPeriod(range), asOfISO, providerGroups);
+  const current = kpi.computeRange(records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides);
+  const previous = kpi.computeRange(records, patients, previousPeriod(range), asOfISO, providerGroups, providerAssignmentOverrides);
   const changePct = previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : null;
   return { current, previous, changePct };
 }

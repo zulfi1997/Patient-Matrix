@@ -8,7 +8,7 @@ import {
   type KpiPeriodValue,
   type KpiPoint,
 } from '../lib/kpiCatalog';
-import type { ProviderGroup } from '../lib/conversionMetrics';
+import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversionMetrics';
 import { summarizePatients, type DateRange } from '../lib/metrics';
 import { toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
@@ -23,7 +23,15 @@ import { KpiCorrelationInsights } from './KpiCorrelationInsights';
 const TREND_MONTHS_BACK = 12;
 const DEFAULT_SELECTED = ['revenue-total', 'patient-new', 'patient-retention-rate', 'staff-yb111-count'];
 
-export function KpiEvaluationDashboard({ records, providerGroups }: { records: SaleRecord[]; providerGroups: ProviderGroup[] }) {
+export function KpiEvaluationDashboard({
+  records,
+  providerGroups,
+  providerAssignmentOverrides,
+}: {
+  records: SaleRecord[];
+  providerGroups: ProviderGroup[];
+  providerAssignmentOverrides: ProviderAssignmentOverride[];
+}) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-kpi-preset', 'last30');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-kpi-custom-range', {
     start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
@@ -52,18 +60,18 @@ export function KpiEvaluationDashboard({ records, providerGroups }: { records: S
   const periodValueById = useMemo(() => {
     const map = new Map<string, KpiPeriodValue>();
     for (const kpi of selectedKpis) {
-      map.set(kpi.id, computeKpiPeriodValue(kpi, records, patients, range, asOfISO, providerGroups));
+      map.set(kpi.id, computeKpiPeriodValue(kpi, records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides));
     }
     return map;
-  }, [selectedKpis, records, patients, range, asOfISO, providerGroups]);
+  }, [selectedKpis, records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides]);
 
   const seriesById = useMemo(() => {
     const map = new Map<string, KpiPoint[]>();
     for (const kpi of selectedKpis) {
-      map.set(kpi.id, computeKpiMonthlySeries(kpi, records, patients, asOfISO, TREND_MONTHS_BACK, providerGroups));
+      map.set(kpi.id, computeKpiMonthlySeries(kpi, records, patients, asOfISO, TREND_MONTHS_BACK, providerGroups, providerAssignmentOverrides));
     }
     return map;
-  }, [selectedKpis, records, patients, asOfISO, providerGroups]);
+  }, [selectedKpis, records, patients, asOfISO, providerGroups, providerAssignmentOverrides]);
 
   const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
 

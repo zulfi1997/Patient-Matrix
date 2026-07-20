@@ -9,7 +9,7 @@ import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
 import { ProviderConversionDashboard } from './components/ProviderConversionDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
-import type { ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
+import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
 import { formatNumber } from './lib/format';
 
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'data';
@@ -33,6 +33,10 @@ function App() {
   const [excludeZeroValue, setExcludeZeroValue] = useLocalStorageState('pm-exclude-zero-value', false);
   const [providerGroups, setProviderGroups] = useLocalStorageState<ProviderGroup[]>('pm-provider-groups', []);
   const [revenueAdjustments, setRevenueAdjustments] = useLocalStorageState<RevenueAdjustment[]>('pm-revenue-adjustments', []);
+  const [providerAssignmentOverrides, setProviderAssignmentOverrides] = useLocalStorageState<ProviderAssignmentOverride[]>(
+    'pm-provider-assignment-overrides',
+    [],
+  );
 
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
   // the Data tab still shows true totals for every row that was imported.
@@ -152,13 +156,18 @@ function App() {
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} />
         ) : tab === 'kpi' ? (
-          <KpiEvaluationDashboard records={analysisRecords} providerGroups={providerGroups} />
+          <KpiEvaluationDashboard
+            records={analysisRecords}
+            providerGroups={providerGroups}
+            providerAssignmentOverrides={providerAssignmentOverrides}
+          />
         ) : tab === 'conversion' ? (
           <ProviderConversionDashboard
             records={baseAnalysisRecords}
             packageBenefits={packageBenefits}
             providerGroups={providerGroups}
             revenueAdjustments={revenueAdjustments}
+            providerAssignmentOverrides={providerAssignmentOverrides}
           />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard records={baseAnalysisRecords} />
@@ -176,6 +185,8 @@ function App() {
             setProviderGroups={setProviderGroups}
             revenueAdjustments={revenueAdjustments}
             setRevenueAdjustments={setRevenueAdjustments}
+            providerAssignmentOverrides={providerAssignmentOverrides}
+            setProviderAssignmentOverrides={setProviderAssignmentOverrides}
           />
         )}
       </main>

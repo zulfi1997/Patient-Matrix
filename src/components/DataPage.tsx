@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAct
 import type { ImportBatch, PackageBenefitBatch, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
-import type { ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
+import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
@@ -21,6 +21,8 @@ interface DataPageProps {
   setProviderGroups: Dispatch<SetStateAction<ProviderGroup[]>>;
   revenueAdjustments: RevenueAdjustment[];
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
+  providerAssignmentOverrides: ProviderAssignmentOverride[];
+  setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
 }
 
 function exportAllCsv(records: SaleRecord[]) {
@@ -59,6 +61,8 @@ export function DataPage({
   setProviderGroups,
   revenueAdjustments,
   setRevenueAdjustments,
+  providerAssignmentOverrides,
+  setProviderAssignmentOverrides,
 }: DataPageProps) {
   const knownStaff = useMemo(() => {
     const set = new Set<string>();
@@ -272,6 +276,8 @@ export function DataPage({
           setProviderGroups={setProviderGroups}
           revenueAdjustments={revenueAdjustments}
           setRevenueAdjustments={setRevenueAdjustments}
+          providerAssignmentOverrides={providerAssignmentOverrides}
+          setProviderAssignmentOverrides={setProviderAssignmentOverrides}
           knownStaff={knownStaff}
         />
       </div>
