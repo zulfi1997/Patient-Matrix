@@ -8,6 +8,7 @@ import {
   FOLLOW_UP_REASON_LABELS,
   SNAPSHOT_STALENESS_CAP_DAYS,
   type ConversionCategory,
+  type ProviderConversionStat,
   type ProviderGroup,
   type RevenueAdjustment,
 } from '../lib/conversionMetrics';
@@ -34,6 +35,34 @@ function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00`);
   d.setDate(d.getDate() + days);
   return toISODate(d);
+}
+
+function exportProviderSummaryCsv(providers: ProviderConversionStat[], overall: ProviderConversionStat, periodLabel: string) {
+  const header = [
+    'Provider', 'New Unconverted', 'New Converted', 'Total New Patients',
+    'Repeat Unconverted', 'Repeat Converted', 'Total Repeat Patients',
+    'Follow-up / Direct Service', 'Total Patients', 'Conversion Rate (%)', 'Revenue',
+  ];
+  const rows = [...providers, { ...overall, staff: 'All Providers' }];
+  const lines = rows.map((p) =>
+    [
+      p.staff,
+      p.newUnconverted, p.newConverted, p.newUnconverted + p.newConverted,
+      p.repeatUnconverted, p.repeatConverted, p.repeatUnconverted + p.repeatConverted,
+      p.followUp, p.total, p.conversionRate != null ? p.conversionRate.toFixed(1) : '',
+      p.revenue.toFixed(3),
+    ]
+      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+      .join(','),
+  );
+  const csv = [header.join(','), ...lines].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `provider-conversion-${periodLabel.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function ProviderConversionDashboard({
@@ -280,34 +309,47 @@ export function ProviderConversionDashboard({
       <ConversionTrendChart data={trend} />
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">By Provider / Therapist - {periodLabel}</h3>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">By Provider / Therapist - {periodLabel}</h3>
+          <button
+            onClick={() => exportProviderSummaryCsv(summary.providers, summary.overall, periodLabel)}
+            disabled={summary.providers.length === 0}
+            className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 print:hidden dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            Export by Provider (CSV)
+          </button>
+        </div>
         {summary.providers.length === 0 ? (
           <p className="py-6 text-center text-sm text-zinc-500">No visits recorded for this {viewMode === 'day' ? 'date' : 'period'}.</p>
         ) : (
           <div className="overflow-auto">
             <table className="w-full table-fixed text-left text-sm">
               <colgroup>
-                <col className="w-[19%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[7%]" />
                 <col className="w-[13%]" />
-                <col className="w-[16%]" />
+                <col className="w-[9%]" />
+                <col className="w-[8%]" />
+                <col className="w-[8%]" />
+                <col className="w-[9%]" />
+                <col className="w-[8%]" />
+                <col className="w-[8%]" />
+                <col className="w-[8%]" />
+                <col className="w-[6%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
               </colgroup>
-              <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+              <thead className="text-[10px] uppercase leading-tight text-zinc-500 dark:text-zinc-400">
                 <tr>
-                  <th className="py-2 pr-2 align-bottom">Provider / Therapist</th>
-                  <th className="py-2 pr-2 text-right align-bottom">New Unconverted</th>
-                  <th className="py-2 pr-2 text-right align-bottom">New Converted</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Repeat Unconverted</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Repeat Converted</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Follow-up / Direct Service</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Total</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Conversion Rate</th>
-                  <th className="py-2 pr-2 text-right align-bottom">Revenue</th>
+                  <th className="break-words py-2 pr-2 align-bottom">Provider / Therapist</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">New Unconverted</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">New Converted</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Total New Patients</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Repeat Unconverted</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Repeat Converted</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Total Repeat Patients</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Follow-up / Direct Service</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Total</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Conversion Rate</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Revenue</th>
                 </tr>
               </thead>
               <tbody>
@@ -321,8 +363,10 @@ export function ProviderConversionDashboard({
                       <td className="py-1.5 pr-2 font-medium break-words">{p.staff}</td>
                       <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">{formatNumber(p.newUnconverted)}</td>
                       <td className="py-1.5 pr-2 text-right text-emerald-600 dark:text-emerald-400">{formatNumber(p.newConverted)}</td>
+                      <td className="py-1.5 pr-2 text-right font-medium">{formatNumber(p.newUnconverted + p.newConverted)}</td>
                       <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">{formatNumber(p.repeatUnconverted)}</td>
                       <td className="py-1.5 pr-2 text-right text-emerald-600 dark:text-emerald-400">{formatNumber(p.repeatConverted)}</td>
+                      <td className="py-1.5 pr-2 text-right font-medium">{formatNumber(p.repeatUnconverted + p.repeatConverted)}</td>
                       <td className="py-1.5 pr-2 text-right" title={reasonBreakdown || undefined}>
                         {formatNumber(p.followUp)}
                       </td>
@@ -349,8 +393,10 @@ export function ProviderConversionDashboard({
                   <td className="py-1.5 pr-2">All Providers</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.newUnconverted)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.newConverted)}</td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.newUnconverted + summary.overall.newConverted)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.repeatUnconverted)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.repeatConverted)}</td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.repeatUnconverted + summary.overall.repeatConverted)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.followUp)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.total)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatPercent(summary.overall.conversionRate, 1)}</td>
