@@ -106,3 +106,31 @@ export interface PackageBenefitBatch {
   uploadedAt: string; // ISO datetime
   rowCount: number;
 }
+
+export type PnlSection = 'income' | 'cogs' | 'expense' | 'otherIncome' | 'otherExpense';
+
+/**
+ * One line item from a Zoho Books "Income Statement Segment Wise" export - a single account's
+ * amount for one segment/class, for one month. `segment` is whatever code the export's column
+ * header uses (e.g. "GEN", "HT", "DM", "BT") - new segments just show up automatically the first
+ * time they appear in an uploaded file, no code change needed.
+ */
+export interface PnlLineRecord {
+  id: string;
+  month: string; // ISO yyyy-mm-01
+  segment: string;
+  section: PnlSection;
+  /** The report's subcategory heading active when this line appeared (e.g. "Human Resource Expenses"), or null for lines sitting directly under a section. */
+  group: string | null;
+  description: string;
+  amount: number;
+}
+
+export interface PnlImportBatch {
+  /** ISO yyyy-mm-01 - also the primary key, one batch per month (re-uploading a month replaces it wholesale, like a Package Benefits snapshot). */
+  month: string;
+  fileName: string;
+  uploadedAt: string; // ISO datetime
+  segments: string[];
+  lineCount: number;
+}

@@ -1,11 +1,15 @@
 import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ImportBatch, PackageBenefitBatch, SaleRecord } from '../types';
+import type { ImportBatch, PackageBenefitBatch, PnlImportBatch, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
+import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
+import type { SegmentAllocationRule } from '../lib/segmentAllocation';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
+import { PnlUploadSection } from './PnlUploadSection';
+import { SegmentAllocationEditor } from './SegmentAllocationEditor';
 import { MasterControlPanel } from './MasterControlPanel';
 
 interface DataPageProps {
@@ -23,6 +27,12 @@ interface DataPageProps {
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
+  pnlBatches: PnlImportBatch[];
+  importPnlFile: (file: File) => Promise<PnlImportResult>;
+  removePnlBatch: (month: string) => Promise<void>;
+  pnlSegments: string[];
+  allocationRules: SegmentAllocationRule[];
+  setAllocationRules: Dispatch<SetStateAction<SegmentAllocationRule[]>>;
 }
 
 function exportAllCsv(records: SaleRecord[]) {
@@ -63,6 +73,12 @@ export function DataPage({
   setRevenueAdjustments,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
+  pnlBatches,
+  importPnlFile,
+  removePnlBatch,
+  pnlSegments,
+  allocationRules,
+  setAllocationRules,
 }: DataPageProps) {
   const knownStaff = useMemo(() => {
     const set = new Set<string>();
@@ -263,6 +279,23 @@ export function DataPage({
           importPackageBenefitFile={importPackageBenefitFile}
           removePackageBenefitSnapshot={removePackageBenefitSnapshot}
         />
+      </div>
+
+      <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+        <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">Segment P&amp;L</h2>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Powers the "Segment P&amp;L" tab - month-on-month and year-to-date P&amp;L per business segment, with
+          General overhead allocated in.
+        </p>
+        <PnlUploadSection batches={pnlBatches} importPnlFile={importPnlFile} removePnlBatch={removePnlBatch} />
+        <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <SegmentAllocationEditor
+            segments={pnlSegments}
+            rules={allocationRules}
+            setRules={setAllocationRules}
+            latestMonth={pnlBatches.length > 0 ? pnlBatches.map((b) => b.month).sort().at(-1)! : null}
+          />
+        </div>
       </div>
 
       <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">

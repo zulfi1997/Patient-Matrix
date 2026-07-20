@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ImportBatch, PackageBenefitBatch, PackageBenefitRecord, SaleRecord } from '../types';
+import type { ImportBatch, PackageBenefitBatch, PackageBenefitRecord, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
 
 interface PatientMatrixDB extends DBSchema {
   transactions: {
@@ -20,10 +20,19 @@ interface PatientMatrixDB extends DBSchema {
     key: string;
     value: PackageBenefitBatch;
   };
+  pnlLines: {
+    key: string;
+    value: PnlLineRecord;
+    indexes: { 'by-month': string };
+  };
+  pnlBatches: {
+    key: string;
+    value: PnlImportBatch;
+  };
 }
 
 const DB_NAME = 'patient-matrix';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<PatientMatrixDB>> | null = null;
 
@@ -41,6 +50,11 @@ function getDB() {
           const pb = db.createObjectStore('packageBenefits', { keyPath: 'id' });
           pb.createIndex('by-snapshot', 'snapshotDate');
           db.createObjectStore('packageBenefitBatches', { keyPath: 'snapshotDate' });
+        }
+        if (oldVersion < 3) {
+          const pnl = db.createObjectStore('pnlLines', { keyPath: 'id' });
+          pnl.createIndex('by-month', 'month');
+          db.createObjectStore('pnlBatches', { keyPath: 'month' });
         }
       },
     });
@@ -158,12 +172,61 @@ export async function deletePackageBenefitSnapshot(snapshotDate: string): Promis
   await tx.done;
 }
 
+export async function getAllPnlLines(): Promise<PnlLineRecord[]> {
+  const db = await getDB();
+  return db.getAll('pnlLines');
+}
+
+export async function getAllPnlBatches(): Promise<PnlImportBatch[]> {
+  const db = await getDB();
+  const batches = await db.getAll('pnlBatches');
+  return batches.sort((a, b) => b.month.localeCompare(a.month));
+}
+
+/** A P&L file is a full statement for one month, not incremental data - re-uploading the same month replaces every line for that month rather than deduping/refreshing line by line. */
+export async function addPnlBatch(batch: PnlImportBatch, records: PnlLineRecord[]): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['pnlLines', 'pnlBatches'], 'readwrite');
+  const store = tx.objectStore('pnlLines');
+  const index = store.index('by-month');
+
+  let cursor = await index.openCursor(IDBKeyRange.only(batch.month));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  for (const record of records) {
+    await store.put(record);
+  }
+
+  await tx.objectStore('pnlBatches').put(batch);
+  await tx.done;
+}
+
+export async function deletePnlBatch(month: string): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['pnlLines', 'pnlBatches'], 'readwrite');
+  const index = tx.objectStore('pnlLines').index('by-month');
+  let cursor = await index.openCursor(IDBKeyRange.only(month));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.objectStore('pnlBatches').delete(month);
+  await tx.done;
+}
+
 export async function clearAll(): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(['transactions', 'batches', 'packageBenefits', 'packageBenefitBatches'], 'readwrite');
+  const tx = db.transaction(
+    ['transactions', 'batches', 'packageBenefits', 'packageBenefitBatches', 'pnlLines', 'pnlBatches'],
+    'readwrite',
+  );
   await tx.objectStore('transactions').clear();
   await tx.objectStore('batches').clear();
   await tx.objectStore('packageBenefits').clear();
   await tx.objectStore('packageBenefitBatches').clear();
+  await tx.objectStore('pnlLines').clear();
+  await tx.objectStore('pnlBatches').clear();
   await tx.done;
 }

@@ -1,18 +1,21 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTransactions } from './hooks/useTransactions';
 import { usePackageBenefits } from './hooks/usePackageBenefits';
+import { usePnl } from './hooks/usePnl';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
 import { FlaggedTransactionsDashboard } from './components/FlaggedTransactionsDashboard';
 import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
 import { ProviderConversionDashboard } from './components/ProviderConversionDashboard';
+import { SegmentPnlDashboard } from './components/SegmentPnlDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
+import type { SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
-type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'data';
 
 function App() {
   const { records, batches, loading, importFile, removeBatch, clearAllData: clearAllTransactions } = useTransactions();
@@ -23,12 +26,14 @@ function App() {
     removePackageBenefitSnapshot,
     refresh: refreshPackageBenefits,
   } = usePackageBenefits();
+  const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, refresh: refreshPnl } = usePnl();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
 
   const clearAllData = useCallback(async () => {
     await clearAllTransactions();
     await refreshPackageBenefits();
-  }, [clearAllTransactions, refreshPackageBenefits]);
+    await refreshPnl();
+  }, [clearAllTransactions, refreshPackageBenefits, refreshPnl]);
   const [excludeFlagged, setExcludeFlagged] = useLocalStorageState('pm-exclude-yb111', false);
   const [excludeZeroValue, setExcludeZeroValue] = useLocalStorageState('pm-exclude-zero-value', false);
   const [providerGroups, setProviderGroups] = useLocalStorageState<ProviderGroup[]>('pm-provider-groups', []);
@@ -37,6 +42,8 @@ function App() {
     'pm-provider-assignment-overrides',
     [],
   );
+  const [allocationRules, setAllocationRules] = useLocalStorageState<SegmentAllocationRule[]>('pm-segment-allocation-rules', []);
+  const pnlSegments = useMemo(() => [...new Set(pnlBatches.flatMap((b) => b.segments))].sort(), [pnlBatches]);
 
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
   // the Data tab still shows true totals for every row that was imported.
@@ -100,6 +107,12 @@ function App() {
               "YB111" Analytics
             </button>
             <button
+              onClick={() => setTab('segmentPnl')}
+              className={`px-4 py-1.5 ${tab === 'segmentPnl' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              Segment P&amp;L
+            </button>
+            <button
               onClick={() => setTab('data')}
               className={`px-4 py-1.5 ${tab === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
@@ -107,7 +120,7 @@ function App() {
             </button>
           </nav>
         </div>
-        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && (
+        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'segmentPnl' && (
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
@@ -139,7 +152,7 @@ function App() {
       <main className="mx-auto max-w-6xl px-4 py-6">
         {loading ? (
           <p className="py-20 text-center text-sm text-zinc-500">Loading…</p>
-        ) : records.length === 0 && tab !== 'data' ? (
+        ) : records.length === 0 && tab !== 'data' && tab !== 'segmentPnl' ? (
           <div className="rounded-xl border border-zinc-200 bg-white p-10 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <p className="text-sm text-zinc-600 dark:text-zinc-300">
               No data yet. Upload your sales export on the <strong>Data</strong> tab to get started.
@@ -171,6 +184,8 @@ function App() {
           />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard records={baseAnalysisRecords} />
+        ) : tab === 'segmentPnl' ? (
+          <SegmentPnlDashboard pnlLines={pnlLines} pnlBatches={pnlBatches} allocationRules={allocationRules} />
         ) : (
           <DataPage
             records={records}
@@ -187,6 +202,12 @@ function App() {
             setRevenueAdjustments={setRevenueAdjustments}
             providerAssignmentOverrides={providerAssignmentOverrides}
             setProviderAssignmentOverrides={setProviderAssignmentOverrides}
+            pnlBatches={pnlBatches}
+            importPnlFile={importPnlFile}
+            removePnlBatch={removePnlBatch}
+            pnlSegments={pnlSegments}
+            allocationRules={allocationRules}
+            setAllocationRules={setAllocationRules}
           />
         )}
       </main>
