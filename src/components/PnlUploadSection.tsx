@@ -9,9 +9,11 @@ interface PnlUploadSectionProps {
   importPnlFile: (file: File) => Promise<PnlImportResult>;
   removePnlBatch: (month: string) => Promise<void>;
   clearAllPnl: () => Promise<void>;
+  /** Present only when signed in to OneDrive - pulls every file from the configured "P&L Data" subfolder. */
+  onPullFromOneDrive?: () => Promise<File[]>;
 }
 
-export function PnlUploadSection({ batches, importPnlFile, removePnlBatch, clearAllPnl }: PnlUploadSectionProps) {
+export function PnlUploadSection({ batches, importPnlFile, removePnlBatch, clearAllPnl, onPullFromOneDrive }: PnlUploadSectionProps) {
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<PnlImportResult[]>([]);
@@ -53,6 +55,24 @@ export function PnlUploadSection({ batches, importPnlFile, removePnlBatch, clear
     [handleFiles],
   );
 
+  const pullFromOneDrive = useCallback(async () => {
+    if (!onPullFromOneDrive) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const files = await onPullFromOneDrive();
+      if (files.length === 0) {
+        setError('No .xls/.xlsx files found in the "P&L Data" OneDrive folder.');
+        setBusy(false);
+        return;
+      }
+      await handleFiles(files);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to pull files from OneDrive.');
+      setBusy(false);
+    }
+  }, [onPullFromOneDrive, handleFiles]);
+
   return (
     <div className="flex flex-col gap-4">
       <div
@@ -71,13 +91,24 @@ export function PnlUploadSection({ batches, importPnlFile, removePnlBatch, clear
         <p className="text-sm text-zinc-600 dark:text-zinc-300">
           Drag & drop a Zoho Books "Income Statement Segment Wise" export (.xls) here, or
         </p>
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {busy ? 'Importing…' : 'Choose file'}
-        </button>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {busy ? 'Importing…' : 'Choose file'}
+          </button>
+          {onPullFromOneDrive && (
+            <button
+              onClick={pullFromOneDrive}
+              disabled={busy}
+              className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+            >
+              {busy ? 'Importing…' : 'Pull from OneDrive'}
+            </button>
+          )}
+        </div>
         <input
           ref={inputRef}
           type="file"
@@ -93,7 +124,8 @@ export function PnlUploadSection({ batches, importPnlFile, removePnlBatch, clear
         <p className="mt-3 text-xs text-zinc-400">
           One file per month, filtered to every segment. Each upload replaces that month's data
           entirely - safe to re-upload if the accounting export changes. Select or drop several months' files at
-          once (e.g. Jan-Jun) to import them all in one go.
+          once (e.g. Jan-Jun) to import them all in one go, or use "Pull from OneDrive" to import every file
+          currently in the shared "P&amp;L Data" folder.
         </p>
       </div>
 

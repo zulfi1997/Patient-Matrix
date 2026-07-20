@@ -5,12 +5,15 @@ import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from '../lib/segmentAllocation';
+import type { AccountInfo } from '@azure/msal-browser';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
+import { ONEDRIVE_SUBFOLDERS } from '../lib/oneDriveConfig';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
 import { PnlUploadSection } from './PnlUploadSection';
 import { SegmentAllocationEditor } from './SegmentAllocationEditor';
 import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
+import { OneDriveConnectSection } from './OneDriveConnectSection';
 import { MasterControlPanel } from './MasterControlPanel';
 
 interface DataPageProps {
@@ -39,6 +42,14 @@ interface DataPageProps {
   allocationMode: AllocationMode;
   pnlLineAdjustments: PnlLineAdjustment[];
   setPnlLineAdjustments: Dispatch<SetStateAction<PnlLineAdjustment[]>>;
+  oneDrive: {
+    account: AccountInfo | null;
+    loading: boolean;
+    error: string | null;
+    signIn: () => Promise<void>;
+    signOut: () => Promise<void>;
+    pullFiles: (subfolderName: string) => Promise<File[]>;
+  };
 }
 
 function exportAllCsv(records: SaleRecord[]) {
@@ -90,6 +101,7 @@ export function DataPage({
   allocationMode,
   pnlLineAdjustments,
   setPnlLineAdjustments,
+  oneDrive,
 }: DataPageProps) {
   const knownStaff = useMemo(() => {
     const set = new Set<string>();
@@ -138,8 +150,34 @@ export function DataPage({
     [handleFiles],
   );
 
+  const pullSalesFromOneDrive = useCallback(async () => {
+    if (!oneDrive.account) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const files = await oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.sales);
+      if (files.length === 0) {
+        setError('No .xlsx/.xls/.csv files found in the "Sales Data" OneDrive folder.');
+        setBusy(false);
+        return;
+      }
+      await handleFiles(files);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to pull files from OneDrive.');
+      setBusy(false);
+    }
+  }, [oneDrive, handleFiles]);
+
   return (
     <div className="flex flex-col gap-4">
+      <OneDriveConnectSection
+        account={oneDrive.account}
+        loading={oneDrive.loading}
+        error={oneDrive.error}
+        signIn={oneDrive.signIn}
+        signOut={oneDrive.signOut}
+      />
+
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -156,13 +194,24 @@ export function DataPage({
         <p className="text-sm text-zinc-600 dark:text-zinc-300">
           Drag & drop the sales export (.xlsx) here, or
         </p>
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {busy ? 'Importing…' : 'Choose file'}
-        </button>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {busy ? 'Importing…' : 'Choose file'}
+          </button>
+          {oneDrive.account && (
+            <button
+              onClick={pullSalesFromOneDrive}
+              disabled={busy}
+              className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+            >
+              {busy ? 'Importing…' : 'Pull from OneDrive'}
+            </button>
+          )}
+        </div>
         <input
           ref={inputRef}
           type="file"
@@ -179,7 +228,8 @@ export function DataPage({
           Upload the full history once, then just the latest export each day — records already imported are
           detected automatically and refreshed in place (not duplicated), so it's always safe to re-upload
           overlapping data, and doing so also re-applies any dashboard fixes/improvements to that data. Select or
-          drop multiple files at once to import them all in one go.
+          drop multiple files at once to import them all in one go, or use "Pull from OneDrive" to import every file
+          currently in the shared "Sales Data" folder.
         </p>
       </div>
 
@@ -296,6 +346,9 @@ export function DataPage({
           batches={packageBenefitBatches}
           importPackageBenefitFile={importPackageBenefitFile}
           removePackageBenefitSnapshot={removePackageBenefitSnapshot}
+          onPullFromOneDrive={
+            oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.packageBenefits) : undefined
+          }
         />
       </div>
 
@@ -305,7 +358,13 @@ export function DataPage({
           Powers the "Segment P&amp;L" tab - month-on-month and year-to-date P&amp;L per business segment, with
           General overhead allocated in.
         </p>
-        <PnlUploadSection batches={pnlBatches} importPnlFile={importPnlFile} removePnlBatch={removePnlBatch} clearAllPnl={clearAllPnl} />
+        <PnlUploadSection
+          batches={pnlBatches}
+          importPnlFile={importPnlFile}
+          removePnlBatch={removePnlBatch}
+          clearAllPnl={clearAllPnl}
+          onPullFromOneDrive={oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.pnl) : undefined}
+        />
         <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <SegmentAllocationEditor
             segments={pnlSegments}

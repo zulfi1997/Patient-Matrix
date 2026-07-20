@@ -8,9 +8,16 @@ interface PackageBenefitsSectionProps {
   batches: PackageBenefitBatch[];
   importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
+  /** Present only when signed in to OneDrive - pulls every file from the configured "Package Benefit Data" subfolder. */
+  onPullFromOneDrive?: () => Promise<File[]>;
 }
 
-export function PackageBenefitsSection({ batches, importPackageBenefitFile, removePackageBenefitSnapshot }: PackageBenefitsSectionProps) {
+export function PackageBenefitsSection({
+  batches,
+  importPackageBenefitFile,
+  removePackageBenefitSnapshot,
+  onPullFromOneDrive,
+}: PackageBenefitsSectionProps) {
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<PackageBenefitImportResult[]>([]);
@@ -52,6 +59,24 @@ export function PackageBenefitsSection({ batches, importPackageBenefitFile, remo
     [handleFiles],
   );
 
+  const pullFromOneDrive = useCallback(async () => {
+    if (!onPullFromOneDrive) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const files = await onPullFromOneDrive();
+      if (files.length === 0) {
+        setError('No .xls/.xlsx files found in the "Package Benefit Data" OneDrive folder.');
+        setBusy(false);
+        return;
+      }
+      await handleFiles(files);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to pull files from OneDrive.');
+      setBusy(false);
+    }
+  }, [onPullFromOneDrive, handleFiles]);
+
   return (
     <div className="flex flex-col gap-4">
       <div
@@ -70,13 +95,24 @@ export function PackageBenefitsSection({ batches, importPackageBenefitFile, remo
         <p className="text-sm text-zinc-600 dark:text-zinc-300">
           Drag & drop a "Package Benefits Detail" export (.xlsx) here, or
         </p>
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {busy ? 'Importing…' : 'Choose file'}
-        </button>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {busy ? 'Importing…' : 'Choose file'}
+          </button>
+          {onPullFromOneDrive && (
+            <button
+              onClick={pullFromOneDrive}
+              disabled={busy}
+              className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+            >
+              {busy ? 'Importing…' : 'Pull from OneDrive'}
+            </button>
+          )}
+        </div>
         <input
           ref={inputRef}
           type="file"
@@ -93,7 +129,8 @@ export function PackageBenefitsSection({ batches, importPackageBenefitFile, remo
           This is a point-in-time snapshot ("As on: &lt;date&gt;"), not transactional history - re-upload it daily
           (ideally same-day) to power the Provider Conversion dashboard's "has package benefit balance" reason
           accurately for each day. Each upload replaces that date's snapshot. Select or drop multiple files (e.g.
-          several days at once) to import them all in one go.
+          several days at once) to import them all in one go, or use "Pull from OneDrive" to import every file
+          currently in the shared "Package Benefit Data" folder.
         </p>
       </div>
 

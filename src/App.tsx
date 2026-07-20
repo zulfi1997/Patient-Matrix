@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTransactions } from './hooks/useTransactions';
 import { usePackageBenefits } from './hooks/usePackageBenefits';
 import { usePnl } from './hooks/usePnl';
+import { useOneDrive } from './hooks/useOneDrive';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
@@ -27,6 +28,7 @@ function App() {
     refresh: refreshPackageBenefits,
   } = usePackageBenefits();
   const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, clearAllPnl, refresh: refreshPnl } = usePnl();
+  const oneDrive = useOneDrive();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
 
   const clearAllData = useCallback(async () => {
@@ -222,6 +224,7 @@ function App() {
             allocationMode={allocationMode}
             pnlLineAdjustments={pnlLineAdjustments}
             setPnlLineAdjustments={setPnlLineAdjustments}
+            oneDrive={oneDrive}
           />
         )}
       </main>
