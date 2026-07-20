@@ -3,12 +3,14 @@ import type { AccountInfo } from '@azure/msal-browser';
 export function OneDriveConnectSection({
   account,
   loading,
+  signingIn,
   error,
   signIn,
   signOut,
 }: {
   account: AccountInfo | null;
   loading: boolean;
+  signingIn: boolean;
   error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -40,9 +42,10 @@ export function OneDriveConnectSection({
         ) : (
           <button
             onClick={() => signIn()}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+            disabled={signingIn}
+            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
           >
-            Sign in with Microsoft
+            {signingIn ? 'Signing in…' : 'Sign in with Microsoft'}
           </button>
         )}
       </div>

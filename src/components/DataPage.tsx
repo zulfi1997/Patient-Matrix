@@ -45,6 +45,7 @@ interface DataPageProps {
   oneDrive: {
     account: AccountInfo | null;
     loading: boolean;
+    signingIn: boolean;
     error: string | null;
     signIn: () => Promise<void>;
     signOut: () => Promise<void>;
@@ -173,6 +174,7 @@ export function DataPage({
       <OneDriveConnectSection
         account={oneDrive.account}
         loading={oneDrive.loading}
+        signingIn={oneDrive.signingIn}
         error={oneDrive.error}
         signIn={oneDrive.signIn}
         signOut={oneDrive.signOut}

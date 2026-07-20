@@ -1,7 +1,22 @@
-import { InteractionRequiredAuthError, PublicClientApplication, type AccountInfo } from '@azure/msal-browser';
+import { BrowserAuthErrorCodes, InteractionRequiredAuthError, PublicClientApplication, type AccountInfo } from '@azure/msal-browser';
 import { MSAL_CLIENT_ID, MSAL_REDIRECT_URI, MSAL_TENANT_ID, SHARED_FOLDER_URL } from './oneDriveConfig';
 
 const GRAPH_SCOPES = ['Files.Read.All', 'User.Read'];
+
+/**
+ * MSAL tracks "an interactive request is in flight" via this sessionStorage key, cleared when
+ * the request finishes. If a popup gets closed/blocked before that cleanup runs (e.g. a
+ * double-click on "Sign in", or a browser popup blocker), the flag is left stuck and every
+ * future sign-in attempt fails immediately with `interaction_in_progress` until it's cleared -
+ * there's no public MSAL API to reset it, so this clears the same key MSAL itself uses.
+ */
+function clearStuckInteractionFlag(): void {
+  sessionStorage.removeItem('msal.interaction.status');
+}
+
+function isInteractionInProgress(e: unknown): boolean {
+  return e instanceof Error && 'errorCode' in e && e.errorCode === BrowserAuthErrorCodes.interactionInProgress;
+}
 
 const msalInstance = new PublicClientApplication({
   auth: {
@@ -31,9 +46,20 @@ export async function getActiveAccount(): Promise<AccountInfo | null> {
 
 export async function signIn(): Promise<AccountInfo> {
   await ensureInitialized();
-  const result = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
-  msalInstance.setActiveAccount(result.account);
-  return result.account;
+  try {
+    const result = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
+    msalInstance.setActiveAccount(result.account);
+    return result.account;
+  } catch (e) {
+    // A previous attempt (double-click, blocked popup, closed tab mid-flow) can leave MSAL
+    // thinking an interaction is still running - clear that stale flag and retry once rather
+    // than making the user manually clear browser storage.
+    if (!isInteractionInProgress(e)) throw e;
+    clearStuckInteractionFlag();
+    const result = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
+    msalInstance.setActiveAccount(result.account);
+    return result.account;
+  }
 }
 
 export async function signOut(): Promise<void> {

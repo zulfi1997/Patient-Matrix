@@ -5,6 +5,7 @@ import { getActiveAccount, pullFilesFromOneDrive, signIn as msalSignIn, signOut 
 export function useOneDrive() {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -15,14 +16,20 @@ export function useOneDrive() {
   }, []);
 
   const signIn = useCallback(async () => {
+    // Guards against a double-click firing two overlapping popups, the most common way MSAL's
+    // "interaction already in progress" error gets triggered in the first place.
+    if (signingIn) return;
+    setSigningIn(true);
     setError(null);
     try {
       const acc = await msalSignIn();
       setAccount(acc);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Microsoft sign-in failed.');
+    } finally {
+      setSigningIn(false);
     }
-  }, []);
+  }, [signingIn]);
 
   const signOut = useCallback(async () => {
     setError(null);
@@ -36,5 +43,5 @@ export function useOneDrive() {
 
   const pullFiles = useCallback((subfolderName: string) => pullFilesFromOneDrive(subfolderName), []);
 
-  return { account, loading, error, signIn, signOut, pullFiles };
+  return { account, loading, signingIn, error, signIn, signOut, pullFiles };
 }
