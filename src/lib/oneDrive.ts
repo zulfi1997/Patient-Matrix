@@ -18,6 +18,18 @@ function isInteractionInProgress(e: unknown): boolean {
   return e instanceof Error && 'errorCode' in e && e.errorCode === BrowserAuthErrorCodes.interactionInProgress;
 }
 
+/**
+ * MSAL's default here is 60 seconds, which is how long the main window waits for the popup to
+ * finish the *entire* sign-in (not just an initial handshake) before giving up with a
+ * `timed_out` error. A real-world sign-in that requires MFA approval (an Authenticator app
+ * push, a phone call, etc.) routinely takes longer than that, especially if the notification
+ * is slow to arrive - so the popup would still be showing "Completing sign-in…" and eventually
+ * get the auth code back from Microsoft, but by then the main window had already stopped
+ * listening and the result was lost. Ten minutes comfortably covers a slow approval without
+ * leaving a genuinely abandoned popup hanging around too long.
+ */
+const POPUP_BRIDGE_TIMEOUT_MS = 10 * 60 * 1000;
+
 const msalInstance = new PublicClientApplication({
   auth: {
     clientId: MSAL_CLIENT_ID,
@@ -26,6 +38,9 @@ const msalInstance = new PublicClientApplication({
   },
   cache: {
     cacheLocation: 'localStorage',
+  },
+  system: {
+    popupBridgeTimeout: POPUP_BRIDGE_TIMEOUT_MS,
   },
 });
 
