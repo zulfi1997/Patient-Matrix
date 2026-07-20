@@ -23,8 +23,13 @@ const isAuthPopupResponse = /[#?](?:[^#&]*&)*(code|error|state)=/.test(
 if (isAuthPopupResponse) {
   document.getElementById('root')!.innerHTML =
     '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font:14px system-ui;color:#71717a;">Completing sign-in… this window should close automatically.</div>';
-  import('./lib/oneDrive').then(({ getActiveAccount }) => {
-    getActiveAccount().catch(() => {});
+  // This is the piece that actually hands the auth result back to the opener: it parses the
+  // response out of this popup's URL, posts it over the BroadcastChannel the opener's
+  // loginPopup() call is listening on, and closes this window. Without calling it, this popup
+  // was just showing a placeholder forever - nothing was ever sent back, so the opener's wait
+  // would time out no matter how long that timeout was set to.
+  import('@azure/msal-browser/redirect-bridge').then(({ broadcastResponseToMainFrame }) => {
+    broadcastResponseToMainFrame().catch(() => {});
   });
 } else {
   createRoot(document.getElementById('root')!).render(
