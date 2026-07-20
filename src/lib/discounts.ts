@@ -86,6 +86,45 @@ export function computeDiscountSummary(records: SaleRecord[], range: DateRange):
   };
 }
 
+export interface DiscountDetailRow {
+  id: string;
+  invoiceNo: string;
+  date: string;
+  patientName: string;
+  serviceName: string;
+  discountName: string | null;
+  category: DiscountCategory;
+  /** Pre-discount line price, reconstructed as amount + discountAmount. */
+  price: number;
+  discountAmount: number;
+  /** Post-discount line price, i.e. SaleRecord.amount. */
+  netPrice: number;
+}
+
+/** One row per discounted line item (invoice-level detail) - excludes Package Redemption. */
+export function computeDiscountDetails(records: SaleRecord[], range: DateRange): DiscountDetailRow[] {
+  const rows: DiscountDetailRow[] = [];
+  for (const r of records) {
+    if (!isInRange(r.date, range) || !hasDiscount(r)) continue;
+    const { category } = classifyDiscount(r.discountName);
+    if (category === 'packageRedemption') continue;
+
+    rows.push({
+      id: r.id,
+      invoiceNo: r.invoiceNo,
+      date: r.date,
+      patientName: r.patientName,
+      serviceName: r.serviceName,
+      discountName: r.discountName,
+      category,
+      price: r.amount + r.discountAmount,
+      discountAmount: r.discountAmount,
+      netPrice: r.amount,
+    });
+  }
+  return rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
 export interface DiscountBreakdownStat {
   label: string;
   category: DiscountCategory;

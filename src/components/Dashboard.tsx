@@ -11,7 +11,7 @@ import {
   summarizePatients,
   type DateRange,
 } from '../lib/metrics';
-import { computeDiscountBreakdown, computeDiscountSummary } from '../lib/discounts';
+import { computeDiscountBreakdown, computeDiscountDetails, computeDiscountSummary } from '../lib/discounts';
 import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -22,6 +22,7 @@ import { RetainedPatientsChart } from './RetainedPatientsChart';
 import { MonthlyPatientTable } from './MonthlyPatientTable';
 import { RedeemedPackagesTable } from './RedeemedPackagesTable';
 import { DiscountsBreakdownTable } from './DiscountsBreakdownTable';
+import { DiscountDetailsTable } from './DiscountDetailsTable';
 import { TopServicesChart } from './TopServicesChart';
 import { DormantServicesTable } from './DormantServicesTable';
 import { AtRiskPatientsTable } from './AtRiskPatientsTable';
@@ -75,6 +76,7 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
 
   const discountSummary = useMemo(() => computeDiscountSummary(records, range), [records, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(records, range), [records, range]);
+  const discountDetails = useMemo(() => computeDiscountDetails(records, range), [records, range]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -159,6 +161,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
       <RedeemedPackagesTable data={redeemedPackages} />
 
       <DiscountsBreakdownTable data={discountBreakdown} />
+
+      <DiscountDetailsTable data={discountDetails} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
         <PatientTrendChart data={trend} />
