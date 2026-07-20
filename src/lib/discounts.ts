@@ -29,8 +29,11 @@ export function classifyDiscount(discountName: string | null): { category: Disco
   return { category: 'other', campaignName: null };
 }
 
+// A "discount" of OMR 0 isn't a real discount (most often a "Price adjusted" label where the
+// adjustment is baked directly into Price rather than tracked as a discrete amount) - only
+// lines with an actual non-zero amount count here.
 function hasDiscount(r: SaleRecord): boolean {
-  return r.discountAmount > 0 || !!(r.discountName && r.discountName.trim());
+  return r.discountAmount > 0;
 }
 
 export interface DiscountSummary {
