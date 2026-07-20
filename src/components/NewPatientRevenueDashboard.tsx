@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { SaleRecord } from '../types';
+import type { PnlLineRecord, SaleRecord } from '../types';
 import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
 import {
   computeMonthlyTrend,
@@ -9,7 +9,8 @@ import {
   summarizePatients,
   type DateRange,
 } from '../lib/metrics';
-import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toISODate } from '../lib/format';
+import { computeAcquisitionCostInputs, wholeMonthsTouching } from '../lib/acquisitionCost';
+import { formatCurrency, formatCurrencyCompact, formatMonthLabel, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
@@ -20,7 +21,7 @@ import { NewPatientsListTable } from './NewPatientsListTable';
 
 const TREND_MONTHS_BACK = 12;
 
-export function NewPatientRevenueDashboard({ records }: { records: SaleRecord[] }) {
+export function NewPatientRevenueDashboard({ records, pnlLines }: { records: SaleRecord[]; pnlLines: PnlLineRecord[] }) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-npr-preset', 'thisMonth');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-npr-custom-range', {
     start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
@@ -57,6 +58,26 @@ export function NewPatientRevenueDashboard({ records }: { records: SaleRecord[] 
     () => computeNewPatientTopServices(records, patients, range),
     [records, patients, range],
   );
+
+  // Segment P&L data is monthly-only, so Patient Acquisition Cost is aligned to the full
+  // calendar month(s) the selected period touches, rather than the exact (possibly partial)
+  // range above - otherwise a whole month's marketing spend would get compared against a
+  // partial month's new-patient count.
+  const touchedMonths = useMemo(() => wholeMonthsTouching(range), [range]);
+  const acquisitionInputs = useMemo(
+    () => computeAcquisitionCostInputs(pnlLines, touchedMonths),
+    [pnlLines, touchedMonths],
+  );
+  const pacNewPatients = useMemo(
+    () =>
+      acquisitionInputs.effectiveRange
+        ? computeNewPatientRevenueSummary(records, patients, acquisitionInputs.effectiveRange).newPatients
+        : 0,
+    [records, patients, acquisitionInputs.effectiveRange],
+  );
+  const pacAdCampaigns = pacNewPatients > 0 ? acquisitionInputs.adCampaignSpend / pacNewPatients : null;
+  const pacTotalMarketing = pacNewPatients > 0 ? acquisitionInputs.totalMarketingSpend / pacNewPatients : null;
+  const monthsCoveredLabel = acquisitionInputs.monthsCovered.map(formatMonthLabel).join(', ');
 
   const sharePct = summary.totalRevenue > 0 ? (summary.newPatientRevenue / summary.totalRevenue) * 100 : null;
   const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
@@ -108,6 +129,29 @@ export function NewPatientRevenueDashboard({ records }: { records: SaleRecord[] 
         />
         <KpiCard label="New Patients" value={formatNumber(summary.newPatients)} />
         <KpiCard label="Share From New Patients" value={formatPercent(sharePct)} hint="Of revenue, this period" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <KpiCard
+          label="Patient Acquisition Cost (Ad Campaigns)"
+          value={acquisitionInputs.monthsCovered.length > 0 ? formatCurrencyCompact(pacAdCampaigns ?? 0) : '—'}
+          hint={
+            acquisitionInputs.monthsCovered.length === 0
+              ? 'No Segment P&L data for this period - upload monthly P&L exports on the Data tab.'
+              : `${formatCurrency(acquisitionInputs.adCampaignSpend)} Social Media Add Campaigns spend ÷ ${formatNumber(pacNewPatients)} new patients, ${monthsCoveredLabel}`
+          }
+          tone="bad"
+        />
+        <KpiCard
+          label="Patient Acquisition Cost (Total Marketing)"
+          value={acquisitionInputs.monthsCovered.length > 0 ? formatCurrencyCompact(pacTotalMarketing ?? 0) : '—'}
+          hint={
+            acquisitionInputs.monthsCovered.length === 0
+              ? 'No Segment P&L data for this period - upload monthly P&L exports on the Data tab.'
+              : `${formatCurrency(acquisitionInputs.totalMarketingSpend)} total Marketing and Promotion spend ÷ ${formatNumber(pacNewPatients)} new patients, ${monthsCoveredLabel}`
+          }
+          tone="bad"
+        />
       </div>
 
       <NewPatientRevenueChart data={trend} />

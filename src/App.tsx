@@ -168,7 +168,7 @@ function App() {
         ) : tab === 'dashboard' ? (
           <Dashboard records={analysisRecords} />
         ) : tab === 'newPatientRevenue' ? (
-          <NewPatientRevenueDashboard records={analysisRecords} />
+          <NewPatientRevenueDashboard records={analysisRecords} pnlLines={pnlLines} />
         ) : tab === 'kpi' ? (
           <KpiEvaluationDashboard
             records={analysisRecords}
