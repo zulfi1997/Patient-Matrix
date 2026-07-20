@@ -11,8 +11,8 @@ export class PnlSchemaError extends Error {
 }
 
 export class PnlDateRangeError extends Error {
-  constructor() {
-    super('Could not find the "Date From" / "Date To" range in this file\'s header.');
+  constructor(message = 'Could not find the "Date From" / "Date To" range in this file\'s header.') {
+    super(message);
   }
 }
 
@@ -105,7 +105,15 @@ export function parsePnlWorkbook(html: string): PnlParseOutcome {
   const dateMatch = /Date From\s*:\s*(\d{2}-\d{2}-\d{4})\s*-\s*Date To\s*:\s*(\d{2}-\d{2}-\d{4})/.exec(bodyText);
   if (!dateMatch) throw new PnlDateRangeError();
   const fromISO = parseDateDDMMYYYY(dateMatch[1]);
-  if (!fromISO) throw new PnlDateRangeError();
+  const toISO = parseDateDDMMYYYY(dateMatch[2]);
+  if (!fromISO || !toISO) throw new PnlDateRangeError();
+  if (fromISO.slice(0, 7) !== toISO.slice(0, 7)) {
+    throw new PnlDateRangeError(
+      `This file covers ${dateMatch[1]} to ${dateMatch[2]} - more than one calendar month. Upload one month at a ` +
+        'time (e.g. just June); Year to Date is built automatically by summing the months you upload, so a ' +
+        'combined range would overwrite one of those months with the wrong total instead of adding a new one.',
+    );
+  }
   const month = `${fromISO.slice(0, 7)}-01`;
 
   const headerCells = [...table.querySelectorAll('thead th')].map((th) => (th.textContent ?? '').trim());
