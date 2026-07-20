@@ -77,6 +77,40 @@ export function resolveMonthlyAllocationPercent(
   return ((revenue.get(segment) ?? 0) / total) * 100;
 }
 
+/**
+ * A manual, one-off correction to a specific P&L line for a specific month/segment - e.g. a
+ * posting error, or a cost the accounting export doesn't capture yet. Segment can be any target
+ * segment (added directly to that segment's own figure) or GEN: a GEN adjustment is added to
+ * GEN's own line for that month, so it then flows through the *same* allocation split (Fixed %
+ * or Revenue Share, whichever is active) as every other GEN line - it never lands only on one
+ * segment by accident.
+ */
+export interface PnlLineAdjustment {
+  id: string;
+  month: string; // ISO yyyy-mm-01
+  segment: string; // target segment code, or GENERAL_SEGMENT
+  section: PnlSection;
+  group: string | null;
+  description: string;
+  amount: number; // signed delta, same convention as PnlLineRecord.amount (expenses negative)
+  note: string;
+}
+
+/** Adjustments modeled as synthetic PnlLineRecords, appended to the real data - GEN-targeted adjustments join the pool of GEN lines that get split by allocation the same as everything else, with no special-casing needed in computeSegmentPnl. */
+function applyLineAdjustments(records: PnlLineRecord[], adjustments: PnlLineAdjustment[]): PnlLineRecord[] {
+  if (adjustments.length === 0) return records;
+  const synthetic: PnlLineRecord[] = adjustments.map((a) => ({
+    id: `adjustment:${a.id}`,
+    month: a.month,
+    segment: a.segment,
+    section: a.section,
+    group: a.group,
+    description: a.description,
+    amount: a.amount,
+  }));
+  return [...records, ...synthetic];
+}
+
 export interface PnlLineKey {
   section: PnlSection;
   group: string | null;
@@ -143,18 +177,20 @@ export function computeSegmentPnl(
   segments: string[],
   allocationRules: SegmentAllocationRule[],
   mode: AllocationMode = 'percentage',
+  adjustments: PnlLineAdjustment[] = [],
 ): SegmentPnlResult[] {
+  const effectiveRecords = applyLineAdjustments(records, adjustments);
   const monthSet = new Set(months);
   const targetSegments = segments.filter((s) => s !== GENERAL_SEGMENT);
   const results: SegmentPnlResult[] = [];
 
   for (const segment of targetSegments) {
     const percentByMonth = new Map(
-      months.map((m) => [m, resolveMonthlyAllocationPercent(records, mode, allocationRules, segment, m, targetSegments)]),
+      months.map((m) => [m, resolveMonthlyAllocationPercent(effectiveRecords, mode, allocationRules, segment, m, targetSegments)]),
     );
     const lineMap = new Map<string, SegmentPnlLine>();
 
-    for (const r of records) {
+    for (const r of effectiveRecords) {
       if (!monthSet.has(r.month)) continue;
       if (r.segment !== segment && r.segment !== GENERAL_SEGMENT) continue;
 

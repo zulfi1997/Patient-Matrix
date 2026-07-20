@@ -5,6 +5,7 @@ import {
   resolveYtdMonths,
   summarizeBatchMonths,
   type AllocationMode,
+  type PnlLineAdjustment,
   type SegmentAllocationRule,
 } from '../lib/segmentAllocation';
 import { formatMonthLabel } from '../lib/format';
@@ -19,12 +20,14 @@ export function SegmentPnlDashboard({
   allocationRules,
   allocationMode,
   setAllocationMode,
+  pnlLineAdjustments,
 }: {
   pnlLines: PnlLineRecord[];
   pnlBatches: PnlImportBatch[];
   allocationRules: SegmentAllocationRule[];
   allocationMode: AllocationMode;
   setAllocationMode: Dispatch<SetStateAction<AllocationMode>>;
+  pnlLineAdjustments: PnlLineAdjustment[];
 }) {
   const availableMonths = useMemo(() => summarizeBatchMonths(pnlBatches), [pnlBatches]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
@@ -40,8 +43,8 @@ export function SegmentPnlDashboard({
   }, [month, view, availableMonths]);
 
   const results = useMemo(
-    () => computeSegmentPnl(pnlLines, monthsForView, segments, allocationRules, allocationMode),
-    [pnlLines, monthsForView, segments, allocationRules, allocationMode],
+    () => computeSegmentPnl(pnlLines, monthsForView, segments, allocationRules, allocationMode, pnlLineAdjustments),
+    [pnlLines, monthsForView, segments, allocationRules, allocationMode, pnlLineAdjustments],
   );
 
   if (availableMonths.length === 0) {

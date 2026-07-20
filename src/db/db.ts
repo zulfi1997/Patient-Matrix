@@ -216,6 +216,14 @@ export async function deletePnlBatch(month: string): Promise<void> {
   await tx.done;
 }
 
+export async function clearAllPnl(): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['pnlLines', 'pnlBatches'], 'readwrite');
+  await tx.objectStore('pnlLines').clear();
+  await tx.objectStore('pnlBatches').clear();
+  await tx.done;
+}
+
 export async function clearAll(): Promise<void> {
   const db = await getDB();
   const tx = db.transaction(

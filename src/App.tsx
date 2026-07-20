@@ -12,7 +12,7 @@ import { SegmentPnlDashboard } from './components/SegmentPnlDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
-import type { AllocationMode, SegmentAllocationRule } from './lib/segmentAllocation';
+import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'data';
@@ -26,7 +26,7 @@ function App() {
     removePackageBenefitSnapshot,
     refresh: refreshPackageBenefits,
   } = usePackageBenefits();
-  const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, refresh: refreshPnl } = usePnl();
+  const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, clearAllPnl, refresh: refreshPnl } = usePnl();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
 
   const clearAllData = useCallback(async () => {
@@ -44,6 +44,7 @@ function App() {
   );
   const [allocationRules, setAllocationRules] = useLocalStorageState<SegmentAllocationRule[]>('pm-segment-allocation-rules', []);
   const [allocationMode, setAllocationMode] = useLocalStorageState<AllocationMode>('pm-pnl-allocation-mode', 'percentage');
+  const [pnlLineAdjustments, setPnlLineAdjustments] = useLocalStorageState<PnlLineAdjustment[]>('pm-pnl-line-adjustments', []);
   const pnlSegments = useMemo(() => [...new Set(pnlBatches.flatMap((b) => b.segments))].sort(), [pnlBatches]);
 
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
@@ -192,6 +193,7 @@ function App() {
             allocationRules={allocationRules}
             allocationMode={allocationMode}
             setAllocationMode={setAllocationMode}
+            pnlLineAdjustments={pnlLineAdjustments}
           />
         ) : (
           <DataPage
@@ -209,13 +211,17 @@ function App() {
             setRevenueAdjustments={setRevenueAdjustments}
             providerAssignmentOverrides={providerAssignmentOverrides}
             setProviderAssignmentOverrides={setProviderAssignmentOverrides}
+            pnlLines={pnlLines}
             pnlBatches={pnlBatches}
             importPnlFile={importPnlFile}
             removePnlBatch={removePnlBatch}
+            clearAllPnl={clearAllPnl}
             pnlSegments={pnlSegments}
             allocationRules={allocationRules}
             setAllocationRules={setAllocationRules}
             allocationMode={allocationMode}
+            pnlLineAdjustments={pnlLineAdjustments}
+            setPnlLineAdjustments={setPnlLineAdjustments}
           />
         )}
       </main>

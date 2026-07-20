@@ -13,27 +13,31 @@ interface PackageBenefitsSectionProps {
 export function PackageBenefitsSection({ batches, importPackageBenefitFile, removePackageBenefitSnapshot }: PackageBenefitsSectionProps) {
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<PackageBenefitImportResult | null>(null);
+  const [results, setResults] = useState<PackageBenefitImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(
-    async (file: File) => {
+  const handleFiles = useCallback(
+    async (files: File[]) => {
       setBusy(true);
       setError(null);
-      setResult(null);
-      try {
-        const res = await importPackageBenefitFile(file);
-        setResult(res);
-      } catch (e) {
-        if (e instanceof PackageBenefitSchemaError || e instanceof PackageBenefitSnapshotDateError) {
-          setError(e.message);
-        } else {
-          setError(e instanceof Error ? e.message : 'Failed to read this file.');
+      setResults([]);
+      const outcomes: PackageBenefitImportResult[] = [];
+      const errors: string[] = [];
+      for (const file of files) {
+        try {
+          outcomes.push(await importPackageBenefitFile(file));
+        } catch (e) {
+          const message =
+            e instanceof PackageBenefitSchemaError || e instanceof PackageBenefitSnapshotDateError || e instanceof Error
+              ? e.message
+              : 'Failed to read this file.';
+          errors.push(`${file.name}: ${message}`);
         }
-      } finally {
-        setBusy(false);
       }
+      setResults(outcomes);
+      if (errors.length > 0) setError(errors.join('\n'));
+      setBusy(false);
     },
     [importPackageBenefitFile],
   );
@@ -42,10 +46,10 @@ export function PackageBenefitsSection({ batches, importPackageBenefitFile, remo
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file) handleFile(file);
+      const files = [...e.dataTransfer.files];
+      if (files.length > 0) handleFiles(files);
     },
-    [handleFile],
+    [handleFiles],
   );
 
   return (
@@ -77,30 +81,36 @@ export function PackageBenefitsSection({ batches, importPackageBenefitFile, remo
           ref={inputRef}
           type="file"
           accept=".xlsx,.xls"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            const files = [...(e.target.files ?? [])];
+            if (files.length > 0) handleFiles(files);
             e.target.value = '';
           }}
         />
         <p className="mt-3 text-xs text-zinc-400">
           This is a point-in-time snapshot ("As on: &lt;date&gt;"), not transactional history - re-upload it daily
           (ideally same-day) to power the Provider Conversion dashboard's "has package benefit balance" reason
-          accurately for each day. Each upload replaces that date's snapshot.
+          accurately for each day. Each upload replaces that date's snapshot. Select or drop multiple files (e.g.
+          several days at once) to import them all in one go.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+        <div className="whitespace-pre-line rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
           {error}
         </div>
       )}
 
-      {result && (
+      {results.length > 0 && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-          <strong>{result.fileName}</strong>: {formatNumber(result.rowCount)} row(s) stored as the snapshot for{' '}
-          {formatDate(result.snapshotDate)}.
+          {results.map((result, i) => (
+            <p key={i}>
+              <strong>{result.fileName}</strong>: {formatNumber(result.rowCount)} row(s) stored as the snapshot for{' '}
+              {formatDate(result.snapshotDate)}.
+            </p>
+          ))}
         </div>
       )}
 

@@ -8,32 +8,37 @@ interface PnlUploadSectionProps {
   batches: PnlImportBatch[];
   importPnlFile: (file: File) => Promise<PnlImportResult>;
   removePnlBatch: (month: string) => Promise<void>;
+  clearAllPnl: () => Promise<void>;
 }
 
-export function PnlUploadSection({ batches, importPnlFile, removePnlBatch }: PnlUploadSectionProps) {
+export function PnlUploadSection({ batches, importPnlFile, removePnlBatch, clearAllPnl }: PnlUploadSectionProps) {
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<PnlImportResult | null>(null);
+  const [results, setResults] = useState<PnlImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(
-    async (file: File) => {
+  const handleFiles = useCallback(
+    async (files: File[]) => {
       setBusy(true);
       setError(null);
-      setResult(null);
-      try {
-        const res = await importPnlFile(file);
-        setResult(res);
-      } catch (e) {
-        if (e instanceof PnlSchemaError || e instanceof PnlDateRangeError) {
-          setError(e.message);
-        } else {
-          setError(e instanceof Error ? e.message : 'Failed to read this file.');
+      setResults([]);
+      const outcomes: PnlImportResult[] = [];
+      const errors: string[] = [];
+      for (const file of files) {
+        try {
+          outcomes.push(await importPnlFile(file));
+        } catch (e) {
+          const message =
+            e instanceof PnlSchemaError || e instanceof PnlDateRangeError || e instanceof Error
+              ? e.message
+              : 'Failed to read this file.';
+          errors.push(`${file.name}: ${message}`);
         }
-      } finally {
-        setBusy(false);
       }
+      setResults(outcomes);
+      if (errors.length > 0) setError(errors.join('\n'));
+      setBusy(false);
     },
     [importPnlFile],
   );
@@ -42,10 +47,10 @@ export function PnlUploadSection({ batches, importPnlFile, removePnlBatch }: Pnl
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file) handleFile(file);
+      const files = [...e.dataTransfer.files];
+      if (files.length > 0) handleFiles(files);
     },
-    [handleFile],
+    [handleFiles],
   );
 
   return (
@@ -77,36 +82,55 @@ export function PnlUploadSection({ batches, importPnlFile, removePnlBatch }: Pnl
           ref={inputRef}
           type="file"
           accept=".xls,.xlsx,.html"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            const files = [...(e.target.files ?? [])];
+            if (files.length > 0) handleFiles(files);
             e.target.value = '';
           }}
         />
         <p className="mt-3 text-xs text-zinc-400">
           One file per month, filtered to every segment. Each upload replaces that month's data
-          entirely - safe to re-upload if the accounting export changes.
+          entirely - safe to re-upload if the accounting export changes. Select or drop several months' files at
+          once (e.g. Jan-Jun) to import them all in one go.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+        <div className="whitespace-pre-line rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
           {error}
         </div>
       )}
 
-      {result && (
+      {results.length > 0 && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-          <strong>{result.fileName}</strong>: {formatNumber(result.lineCount)} line item(s) stored for{' '}
-          {formatMonthLabel(result.month)}, segments: {result.segments.join(', ')}.
+          {results.map((result, i) => (
+            <p key={i}>
+              <strong>{result.fileName}</strong>: {formatNumber(result.lineCount)} line item(s) stored for{' '}
+              {formatMonthLabel(result.month)}, segments: {result.segments.join(', ')}.
+            </p>
+          ))}
         </div>
       )}
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-          Segment P&amp;L Months ({formatNumber(batches.length)})
-        </h3>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            Segment P&amp;L Months ({formatNumber(batches.length)})
+          </h3>
+          <button
+            onClick={() => {
+              if (confirm('This deletes ALL uploaded Segment P&L data (every month) from this browser. This cannot be undone. Continue?')) {
+                clearAllPnl();
+              }
+            }}
+            disabled={batches.length === 0}
+            className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            Clear all Segment P&amp;L data
+          </button>
+        </div>
         {batches.length === 0 ? (
           <p className="py-6 text-center text-sm text-zinc-500">No months uploaded yet.</p>
         ) : (

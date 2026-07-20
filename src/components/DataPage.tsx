@@ -1,15 +1,16 @@
 import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ImportBatch, PackageBenefitBatch, PnlImportBatch, SaleRecord } from '../types';
+import type { ImportBatch, PackageBenefitBatch, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
-import type { AllocationMode, SegmentAllocationRule } from '../lib/segmentAllocation';
+import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from '../lib/segmentAllocation';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
 import { PnlUploadSection } from './PnlUploadSection';
 import { SegmentAllocationEditor } from './SegmentAllocationEditor';
+import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
 import { MasterControlPanel } from './MasterControlPanel';
 
 interface DataPageProps {
@@ -27,13 +28,17 @@ interface DataPageProps {
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
+  pnlLines: PnlLineRecord[];
   pnlBatches: PnlImportBatch[];
   importPnlFile: (file: File) => Promise<PnlImportResult>;
   removePnlBatch: (month: string) => Promise<void>;
+  clearAllPnl: () => Promise<void>;
   pnlSegments: string[];
   allocationRules: SegmentAllocationRule[];
   setAllocationRules: Dispatch<SetStateAction<SegmentAllocationRule[]>>;
   allocationMode: AllocationMode;
+  pnlLineAdjustments: PnlLineAdjustment[];
+  setPnlLineAdjustments: Dispatch<SetStateAction<PnlLineAdjustment[]>>;
 }
 
 function exportAllCsv(records: SaleRecord[]) {
@@ -74,13 +79,17 @@ export function DataPage({
   setRevenueAdjustments,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
+  pnlLines,
   pnlBatches,
   importPnlFile,
   removePnlBatch,
+  clearAllPnl,
   pnlSegments,
   allocationRules,
   setAllocationRules,
   allocationMode,
+  pnlLineAdjustments,
+  setPnlLineAdjustments,
 }: DataPageProps) {
   const knownStaff = useMemo(() => {
     const set = new Set<string>();
@@ -92,28 +101,29 @@ export function DataPage({
 
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ImportResult | null>(null);
+  const [results, setResults] = useState<ImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showWarnings, setShowWarnings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(
-    async (file: File) => {
+  const handleFiles = useCallback(
+    async (files: File[]) => {
       setBusy(true);
       setError(null);
-      setResult(null);
-      try {
-        const res = await importFile(file);
-        setResult(res);
-      } catch (e) {
-        if (e instanceof ImportSchemaError) {
-          setError(e.message);
-        } else {
-          setError(e instanceof Error ? e.message : 'Failed to read this file.');
+      setResults([]);
+      const outcomes: ImportResult[] = [];
+      const errors: string[] = [];
+      for (const file of files) {
+        try {
+          outcomes.push(await importFile(file));
+        } catch (e) {
+          const message = e instanceof ImportSchemaError || e instanceof Error ? e.message : 'Failed to read this file.';
+          errors.push(`${file.name}: ${message}`);
         }
-      } finally {
-        setBusy(false);
       }
+      setResults(outcomes);
+      if (errors.length > 0) setError(errors.join('\n'));
+      setBusy(false);
     },
     [importFile],
   );
@@ -122,10 +132,10 @@ export function DataPage({
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file) handleFile(file);
+      const files = [...e.dataTransfer.files];
+      if (files.length > 0) handleFiles(files);
     },
-    [handleFile],
+    [handleFiles],
   );
 
   return (
@@ -157,45 +167,51 @@ export function DataPage({
           ref={inputRef}
           type="file"
           accept=".xlsx,.xls,.csv"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            const files = [...(e.target.files ?? [])];
+            if (files.length > 0) handleFiles(files);
             e.target.value = '';
           }}
         />
         <p className="mt-3 text-xs text-zinc-400">
           Upload the full history once, then just the latest export each day — records already imported are
           detected automatically and refreshed in place (not duplicated), so it's always safe to re-upload
-          overlapping data, and doing so also re-applies any dashboard fixes/improvements to that data.
+          overlapping data, and doing so also re-applies any dashboard fixes/improvements to that data. Select or
+          drop multiple files at once to import them all in one go.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+        <div className="whitespace-pre-line rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
           {error}
         </div>
       )}
 
-      {result && (
+      {results.length > 0 && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-          <p>
-            <strong>{result.fileName}</strong>: {formatNumber(result.added)} new row(s) added,{' '}
-            {formatNumber(result.refreshed)} already-imported row(s) refreshed with current values
-            {result.skipped > 0 && `, ${formatNumber(result.skipped)} row(s) skipped (missing data)`}.
-          </p>
-          {result.warnings.length > 0 && (
+          {results.map((result, i) => (
+            <p key={i}>
+              <strong>{result.fileName}</strong>: {formatNumber(result.added)} new row(s) added,{' '}
+              {formatNumber(result.refreshed)} already-imported row(s) refreshed with current values
+              {result.skipped > 0 && `, ${formatNumber(result.skipped)} row(s) skipped (missing data)`}.
+            </p>
+          ))}
+          {results.some((r) => r.warnings.length > 0) && (
             <>
               <button onClick={() => setShowWarnings((v) => !v)} className="mt-1 text-xs underline">
                 {showWarnings ? 'Hide' : 'Show'} skipped-row details
               </button>
               {showWarnings && (
                 <ul className="mt-2 max-h-40 list-disc overflow-auto pl-5 text-xs">
-                  {result.warnings.slice(0, 200).map((w, i) => (
-                    <li key={i}>
-                      Row {w.rowNumber}: {w.message}
-                    </li>
-                  ))}
+                  {results.flatMap((result) =>
+                    result.warnings.slice(0, 200).map((w, i) => (
+                      <li key={`${result.fileName}-${i}`}>
+                        {result.fileName} row {w.rowNumber}: {w.message}
+                      </li>
+                    )),
+                  )}
                 </ul>
               )}
             </>
@@ -289,7 +305,7 @@ export function DataPage({
           Powers the "Segment P&amp;L" tab - month-on-month and year-to-date P&amp;L per business segment, with
           General overhead allocated in.
         </p>
-        <PnlUploadSection batches={pnlBatches} importPnlFile={importPnlFile} removePnlBatch={removePnlBatch} />
+        <PnlUploadSection batches={pnlBatches} importPnlFile={importPnlFile} removePnlBatch={removePnlBatch} clearAllPnl={clearAllPnl} />
         <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <SegmentAllocationEditor
             segments={pnlSegments}
@@ -297,6 +313,14 @@ export function DataPage({
             setRules={setAllocationRules}
             latestMonth={pnlBatches.length > 0 ? pnlBatches.map((b) => b.month).sort().at(-1)! : null}
             allocationMode={allocationMode}
+          />
+        </div>
+        <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <PnlLineAdjustmentsEditor
+            pnlLines={pnlLines}
+            segments={pnlSegments}
+            adjustments={pnlLineAdjustments}
+            setAdjustments={setPnlLineAdjustments}
           />
         </div>
       </div>

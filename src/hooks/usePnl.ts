@@ -57,7 +57,12 @@ export function usePnl() {
     [refresh],
   );
 
-  return { pnlLines, pnlBatches, loading, importPnlFile, removePnlBatch, refresh };
+  const clearAllPnl = useCallback(async () => {
+    await db.clearAllPnl();
+    await refresh();
+  }, [refresh]);
+
+  return { pnlLines, pnlBatches, loading, importPnlFile, removePnlBatch, clearAllPnl, refresh };
 }
 
 export { PnlSchemaError, PnlDateRangeError };
