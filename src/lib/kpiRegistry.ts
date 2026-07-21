@@ -76,6 +76,30 @@ function toISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function monthRangeForKey(monthKey: string): DateRange {
+  const [year, month] = monthKey.split('-').map(Number);
+  return { start: `${monthKey}-01`, end: toISO(new Date(year, month, 0)) };
+}
+
+/**
+ * Every distinct yyyy-mm month with any activity in `records`, excluding whatever
+ * `currentRange` covers - the denominator for a fair "average per prior month". Using only
+ * months where the specific thing being measured happened (e.g. only months with a package
+ * sale) would silently drop genuine zero-count months from the average and inflate it.
+ */
+function priorMonthKeys(records: SaleRecord[], currentRange: DateRange): string[] {
+  const months = new Set<string>();
+  for (const r of records) {
+    if (isInRange(r.date, currentRange)) continue;
+    months.add(r.date.slice(0, 7));
+  }
+  return [...months];
+}
+
+function average(values: number[]): number {
+  return values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
+}
+
 export const KPI_REGISTRY: KpiDefinition[] = [
   {
     id: 'monthlyRevenue',
@@ -93,14 +117,14 @@ export const KPI_REGISTRY: KpiDefinition[] = [
       // revenue - a growth role's target is revenue ADDED beyond the clinic's existing
       // baseline, so the actual is this month's revenue minus the average of every other
       // complete calendar month present in the data (the baseline), not the raw monthly total.
-      const priorMonthTotals = new Map<string, number>();
-      for (const r of records) {
-        if (isInRange(r.date, range)) continue;
-        const monthKey = r.date.slice(0, 7);
-        priorMonthTotals.set(monthKey, (priorMonthTotals.get(monthKey) ?? 0) + r.amount);
-      }
-      const totals = [...priorMonthTotals.values()];
-      const averagePriorMonthly = totals.length > 0 ? totals.reduce((sum, v) => sum + v, 0) / totals.length : 0;
+      // Every prior month with any activity counts toward the average, including a genuine
+      // zero-revenue month, not just months that happen to have a matching record.
+      const months = priorMonthKeys(records, range);
+      const perMonthRevenue = months.map((monthKey) => {
+        const mRange = monthRangeForKey(monthKey);
+        return records.filter((r) => isInRange(r.date, mRange)).reduce((sum, r) => sum + r.amount, 0);
+      });
+      const averagePriorMonthly = average(perMonthRevenue);
 
       const actual = currentMonthRevenue - averagePriorMonthly;
       return {
@@ -110,7 +134,7 @@ export const KPI_REGISTRY: KpiDefinition[] = [
         periodLabel: 'this month vs. average of prior months',
         breakdown: [
           { label: 'This month', value: currentMonthRevenue, unit: 'currency' },
-          { label: `Prior months avg (${totals.length})`, value: averagePriorMonthly, unit: 'currency' },
+          { label: `Prior months avg (${months.length})`, value: averagePriorMonthly, unit: 'currency' },
         ],
       };
     },
@@ -170,12 +194,23 @@ export const KPI_REGISTRY: KpiDefinition[] = [
     isQuarterly: false,
     compute: (records, _patients, target, asOfISO) => {
       const range = monthRange(asOfISO);
-      const monthRecords = records.filter((r) => isInRange(r.date, range));
-      const invoicesWithPackage = new Set(
-        monthRecords.filter((r) => r.itemType === 'Package').map((r) => r.invoiceNo),
-      );
-      const actual = invoicesWithPackage.size;
-      return { actual, unit: 'count', status: statusFor(actual, target), periodLabel: 'this month' };
+      const countPackageInvoices = (r: DateRange) =>
+        new Set(records.filter((rec) => isInRange(rec.date, r) && rec.itemType === 'Package').map((rec) => rec.invoiceNo)).size;
+      const actual = countPackageInvoices(range);
+
+      const months = priorMonthKeys(records, range);
+      const averagePriorMonthly = average(months.map((monthKey) => countPackageInvoices(monthRangeForKey(monthKey))));
+
+      return {
+        actual,
+        unit: 'count',
+        status: statusFor(actual, target),
+        periodLabel: 'this month',
+        breakdown: [
+          { label: 'This month', value: actual, unit: 'count' },
+          { label: `Prior months avg (${months.length})`, value: averagePriorMonthly, unit: 'count' },
+        ],
+      };
     },
   },
   {
@@ -184,14 +219,32 @@ export const KPI_REGISTRY: KpiDefinition[] = [
     unit: 'count',
     isQuarterly: false,
     compute: (records, patients, target, asOfISO) => {
+      const countNewPatients = (r: DateRange) => {
+        const activeSet = new Set(records.filter((rec) => isInRange(rec.date, r)).map((rec) => rec.patientId));
+        let count = 0;
+        for (const id of activeSet) {
+          const s = patients.get(id);
+          if (s && isInRange(s.firstVisit, r)) count++;
+        }
+        return count;
+      };
+
       const range = monthRange(asOfISO);
-      const activeSet = new Set(records.filter((r) => isInRange(r.date, range)).map((r) => r.patientId));
-      let actual = 0;
-      for (const id of activeSet) {
-        const s = patients.get(id);
-        if (s && isInRange(s.firstVisit, range)) actual++;
-      }
-      return { actual, unit: 'count', status: statusFor(actual, target), periodLabel: 'this month' };
+      const actual = countNewPatients(range);
+
+      const months = priorMonthKeys(records, range);
+      const averagePriorMonthly = average(months.map((monthKey) => countNewPatients(monthRangeForKey(monthKey))));
+
+      return {
+        actual,
+        unit: 'count',
+        status: statusFor(actual, target),
+        periodLabel: 'this month',
+        breakdown: [
+          { label: 'This month', value: actual, unit: 'count' },
+          { label: `Prior months avg (${months.length})`, value: averagePriorMonthly, unit: 'count' },
+        ],
+      };
     },
   },
   {
