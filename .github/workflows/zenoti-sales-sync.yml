@@ -1,0 +1,63 @@
+name: Zenoti Sales Sync
+
+on:
+  schedule:
+    # Daily at 02:00 UTC - pulls everything since the last successful run.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      sync_back_amount:
+        description: 'How far back to resync (leave both fields blank for a normal "since last sync" run)'
+        required: false
+        type: string
+      sync_back_unit:
+        description: 'Unit for sync_back_amount'
+        required: false
+        type: choice
+        options:
+          - days
+          - months
+          - years
+        default: days
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zenoti-sales-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node scripts/zenotiSync.mjs
+        env:
+          ZENOTI_ACCESS_TOKEN: ${{ secrets.ZENOTI_ACCESS_TOKEN }}
+          ZENOTI_CENTER_IDS: ${{ secrets.ZENOTI_CENTER_IDS }}
+          ZENOTI_API_HOST: ${{ vars.ZENOTI_API_HOST }}
+          GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
+          ONEDRIVE_SHARED_FOLDER_URL: ${{ vars.ONEDRIVE_SHARED_FOLDER_URL }}
+          SYNC_BACK_AMOUNT: ${{ inputs.sync_back_amount }}
+          SYNC_BACK_UNIT: ${{ inputs.sync_back_unit }}
+      # Commits the updated "last synced" watermark back to the repo so the next scheduled
+      # run knows where to resume from. A manual backfill run doesn't touch this file (see
+      # scripts/zenotiSync.mjs), so there's nothing to commit on those runs.
+      - run: |
+          if ! git diff --quiet -- scripts/zenoti/sync-state.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add scripts/zenoti/sync-state.json
+            git commit -m "Update Zenoti sync watermark [skip ci]"
+            git push
+          else
+            echo "No sync-state change to commit."
+          fi
