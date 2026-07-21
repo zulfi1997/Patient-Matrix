@@ -2,12 +2,17 @@ name: Zenoti Sales Sync
 
 on:
   schedule:
-    # Daily at 02:00 UTC - pulls everything since the last successful run.
-    - cron: '0 2 * * *'
+    # Daily at 12:00pm Oman time (UTC+4, no DST) - pulls everything since the last successful
+    # run, which in practice means "yesterday's sales, pulled the following day at noon."
+    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
+      since_date:
+        description: 'Pull from this exact date onward (YYYY-MM-DD) - for seeding the first run after a manual-upload cutover. Takes priority over sync_back_amount/unit.'
+        required: false
+        type: string
       sync_back_amount:
-        description: 'How far back to resync (leave both fields blank for a normal "since last sync" run)'
+        description: 'How far back to resync (leave since_date and both these fields blank for a normal "since last sync" run)'
         required: false
         type: string
       sync_back_unit:
@@ -51,12 +56,13 @@ jobs:
           GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
           GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           ONEDRIVE_SHARED_FOLDER_URL: ${{ vars.ONEDRIVE_SHARED_FOLDER_URL }}
+          SINCE_DATE: ${{ inputs.since_date }}
           SYNC_BACK_AMOUNT: ${{ inputs.sync_back_amount }}
           SYNC_BACK_UNIT: ${{ inputs.sync_back_unit }}
           DRY_RUN: ${{ inputs.dry_run }}
-      # Commits the updated "last synced" watermark back to the repo so the next scheduled
-      # run knows where to resume from. A manual backfill or dry run doesn't touch this file
-      # (see scripts/zenotiSync.mjs), so there's nothing to commit on those runs.
+      # Commits the updated "last synced" watermark back to the repo so the next scheduled run
+      # knows where to resume from. Every successful non-dry-run run advances it (see
+      # scripts/zenotiSync.mjs) - a dry run is the only case that doesn't touch this file.
       - run: |
           if ! git diff --quiet -- scripts/zenoti/sync-state.json; then
             git config user.name "github-actions[bot]"

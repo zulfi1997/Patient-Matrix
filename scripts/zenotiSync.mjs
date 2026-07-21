@@ -32,17 +32,18 @@ async function main() {
   const clientSecret = isDryRun ? process.env.GRAPH_CLIENT_SECRET : requireEnv('GRAPH_CLIENT_SECRET');
   const sharedFolderUrl = isDryRun ? process.env.ONEDRIVE_SHARED_FOLDER_URL : requireEnv('ONEDRIVE_SHARED_FOLDER_URL');
 
+  const sinceDate = process.env.SINCE_DATE || null;
   const syncBackAmount = process.env.SYNC_BACK_AMOUNT || null;
   const syncBackUnit = process.env.SYNC_BACK_UNIT || null;
 
   const now = new Date();
-  const window = await resolveSyncWindow({ syncBackAmount, syncBackUnit, now });
+  const window = await resolveSyncWindow({ sinceDate, syncBackAmount, syncBackUnit, now });
   let { since, until, mode } = window;
   // A dry run is just for eyeballing field values, not a real pull - unless the caller
-  // explicitly asked for a specific backfill window, keep it small and fast by default rather
-  // than fetching whatever the normal incremental/initial-default window would be.
+  // explicitly asked for a specific window, keep it small and fast by default rather than
+  // fetching whatever the normal incremental/initial-default window would be.
   const DRY_RUN_DEFAULT_DAYS = 3;
-  if (isDryRun && mode !== 'manual-backfill') {
+  if (isDryRun && mode !== 'manual-backfill' && mode !== 'seed-from-date') {
     since = new Date(Math.max(since.getTime(), now.getTime() - DRY_RUN_DEFAULT_DAYS * 86_400_000));
   }
   console.log(`[zenoti-sync] mode=${mode} dryRun=${isDryRun} since=${since.toISOString()} until=${until.toISOString()} centers=${centerIds.join(',')}`);
@@ -78,13 +79,11 @@ async function main() {
     console.log(`[zenoti-sync] uploaded ${fileName} (${exportRows.length} rows) to the "Sales Data" OneDrive folder`);
   }
 
-  // Only advance the watermark on a normal incremental/default run - a manual backfill
-  // (explicit sync_back_amount/unit) re-pulls an arbitrary window on demand and shouldn't
-  // move where the *next* scheduled incremental run picks up from.
-  if (mode !== 'manual-backfill') {
-    await writeLastSyncedAt(now.toISOString());
-    console.log(`[zenoti-sync] advanced sync watermark to ${now.toISOString()}`);
-  }
+  // `until` is always `now`, in every mode - so a successful run has always fetched everything
+  // through the present regardless of how far back `since` reached, meaning it's always
+  // correct to advance the watermark to `now` here (including a one-off backfill/seed run).
+  await writeLastSyncedAt(now.toISOString());
+  console.log(`[zenoti-sync] advanced sync watermark to ${now.toISOString()}`);
 }
 
 main().catch((err) => {

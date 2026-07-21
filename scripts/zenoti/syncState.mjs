@@ -26,13 +26,25 @@ export async function writeLastSyncedAt(iso) {
 }
 
 /**
- * Resolves the [since, until] window for this run:
- *  - an explicit `syncBackAmount`+`syncBackUnit` (from the workflow's manual "Run workflow"
- *    inputs) always wins, for on-demand historical resyncs;
- *  - otherwise, since = the last successful run's timestamp (state file), or a 30-day
- *    default lookback the very first time this runs with no prior state.
+ * Resolves the [since, until] window for this run, in priority order:
+ *  1. An explicit `sinceDate` (YYYY-MM-DD, from the workflow's manual "Run workflow" input) -
+ *     for seeding an exact starting point, e.g. "I've manually uploaded through the 19th, only
+ *     pull from the 20th onward."
+ *  2. An explicit `syncBackAmount`+`syncBackUnit` - for a relative on-demand historical resync.
+ *  3. Otherwise, since = the last successful run's timestamp (state file), or a 30-day default
+ *     lookback the very first time this runs with no prior state.
+ *
+ * `until` is always `now` in every case - every run fetches through the present, so advancing
+ * the watermark to `now` after a successful run is always correct regardless of which of the
+ * above determined `since`.
  */
-export async function resolveSyncWindow({ syncBackAmount, syncBackUnit, now = new Date() }) {
+export async function resolveSyncWindow({ sinceDate, syncBackAmount, syncBackUnit, now = new Date() }) {
+  if (sinceDate) {
+    const since = new Date(`${sinceDate}T00:00:00Z`);
+    if (Number.isNaN(since.getTime())) throw new Error(`Invalid since_date "${sinceDate}" - expected YYYY-MM-DD.`);
+    return { since, until: now, mode: 'seed-from-date' };
+  }
+
   if (syncBackAmount && syncBackUnit) {
     const ms = UNIT_TO_MS[syncBackUnit];
     if (!ms) throw new Error(`Unknown sync_back_unit "${syncBackUnit}" - expected days, months, or years.`);
