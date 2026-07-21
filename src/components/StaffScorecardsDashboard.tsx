@@ -369,6 +369,17 @@ export function StaffScorecardsDashboard({
             e.target.value = '';
           }}
         />
+        <p className="mt-3 text-xs text-zinc-400">
+          Writing a new offer letter?{' '}
+          <a
+            href={`${import.meta.env.BASE_URL}offer-letter-kpi-template.docx`}
+            download
+            className="font-medium text-indigo-600 underline hover:text-indigo-500 dark:text-indigo-400"
+          >
+            Download the KPI template (.docx)
+          </a>{' '}
+          - it keeps the section/table structure this importer expects, so you only need to fill in the names and targets.
+        </p>
       </div>
 
       {error && (
