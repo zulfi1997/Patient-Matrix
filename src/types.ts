@@ -152,3 +152,20 @@ export interface StaffScorecard {
   uploadedAt: string; // ISO datetime
   kpis: StaffScorecardKpi[];
 }
+
+/**
+ * A manually-logged value for a KPI that can't be computed from clinic sales data (leads, NPS,
+ * partnerships, etc.) - scoped to one scorecard + metric + month, since these are typically
+ * things the staff member personally did/logged (a lead they generated, an event they attended),
+ * unlike the auto-computed KPIs which are measured against overall clinic performance.
+ */
+export interface ManualKpiEntry {
+  /** `${scorecardId}|${metric}|${month}` */
+  id: string;
+  scorecardId: string;
+  metric: string;
+  month: string; // yyyy-mm
+  value: number;
+  note: string | null;
+  updatedAt: string; // ISO datetime
+}

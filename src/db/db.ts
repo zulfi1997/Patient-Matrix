@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
   ImportBatch,
+  ManualKpiEntry,
   PackageBenefitBatch,
   PackageBenefitRecord,
   PnlImportBatch,
@@ -41,10 +42,15 @@ interface PatientMatrixDB extends DBSchema {
     key: string;
     value: StaffScorecard;
   };
+  manualKpiEntries: {
+    key: string;
+    value: ManualKpiEntry;
+    indexes: { 'by-scorecard': string };
+  };
 }
 
 const DB_NAME = 'patient-matrix';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBPDatabase<PatientMatrixDB>> | null = null;
 
@@ -70,6 +76,10 @@ function getDB() {
         }
         if (oldVersion < 4) {
           db.createObjectStore('staffScorecards', { keyPath: 'id' });
+        }
+        if (oldVersion < 5) {
+          const manual = db.createObjectStore('manualKpiEntries', { keyPath: 'id' });
+          manual.createIndex('by-scorecard', 'scorecardId');
         }
       },
     });
@@ -269,4 +279,22 @@ export async function addStaffScorecard(scorecard: StaffScorecard): Promise<void
 export async function deleteStaffScorecard(id: string): Promise<void> {
   const db = await getDB();
   await db.delete('staffScorecards', id);
+  const tx = db.transaction('manualKpiEntries', 'readwrite');
+  const index = tx.objectStore('manualKpiEntries').index('by-scorecard');
+  let cursor = await index.openCursor(IDBKeyRange.only(id));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+}
+
+export async function getAllManualKpiEntries(): Promise<ManualKpiEntry[]> {
+  const db = await getDB();
+  return db.getAll('manualKpiEntries');
+}
+
+export async function setManualKpiEntry(entry: ManualKpiEntry): Promise<void> {
+  const db = await getDB();
+  await db.put('manualKpiEntries', entry);
 }

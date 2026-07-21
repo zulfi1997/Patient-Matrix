@@ -27,7 +27,7 @@ export function parseTarget(text: string): ParsedTarget {
 
 export type KpiStatus = 'meets' | 'below' | 'unknown';
 
-function statusFor(actual: number, target: ParsedTarget): KpiStatus {
+export function statusFor(actual: number, target: ParsedTarget): KpiStatus {
   if (target.min == null && target.max == null) return 'unknown';
   if (target.min != null && actual < target.min) return 'below';
   if (target.max != null && target.min == null && actual > target.max) return 'unknown'; // a pure ceiling target isn't a shortfall to flag as "below"

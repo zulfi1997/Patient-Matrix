@@ -4,6 +4,7 @@ import { usePackageBenefits } from './hooks/usePackageBenefits';
 import { usePnl } from './hooks/usePnl';
 import { useOneDrive } from './hooks/useOneDrive';
 import { useStaffScorecards } from './hooks/useStaffScorecards';
+import { useManualKpiEntries } from './hooks/useManualKpiEntries';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
@@ -39,9 +40,18 @@ function App() {
     refresh: refreshPackageBenefits,
   } = usePackageBenefits();
   const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, clearAllPnl, refresh: refreshPnl } = usePnl();
-  const { scorecards, importOfferLetter, removeScorecard } = useStaffScorecards();
+  const { scorecards, importOfferLetter, removeScorecard: removeScorecardOnly } = useStaffScorecards();
+  const { entries: manualKpiEntries, setManualKpiValue, refresh: refreshManualKpiEntries } = useManualKpiEntries();
   const oneDrive = useOneDrive();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
+
+  const removeScorecard = useCallback(
+    async (id: string) => {
+      await removeScorecardOnly(id);
+      await refreshManualKpiEntries();
+    },
+    [removeScorecardOnly, refreshManualKpiEntries],
+  );
 
   const clearAllData = useCallback(async () => {
     await clearAllTransactions();
@@ -223,8 +233,10 @@ function App() {
             records={analysisRecords}
             patients={patients}
             scorecards={scorecards}
+            manualEntries={manualKpiEntries}
             importOfferLetter={importOfferLetter}
             removeScorecard={removeScorecard}
+            setManualKpiValue={setManualKpiValue}
           />
         ) : (
           <DataPage
