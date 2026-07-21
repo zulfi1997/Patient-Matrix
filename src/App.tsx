@@ -3,6 +3,7 @@ import { useTransactions } from './hooks/useTransactions';
 import { usePackageBenefits } from './hooks/usePackageBenefits';
 import { usePnl } from './hooks/usePnl';
 import { useOneDrive } from './hooks/useOneDrive';
+import { useStaffScorecards } from './hooks/useStaffScorecards';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
@@ -10,13 +11,15 @@ import { FlaggedTransactionsDashboard } from './components/FlaggedTransactionsDa
 import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
 import { ProviderConversionDashboard } from './components/ProviderConversionDashboard';
 import { SegmentPnlDashboard } from './components/SegmentPnlDashboard';
+import { StaffScorecardsDashboard } from './components/StaffScorecardsDashboard';
 import { DataPage } from './components/DataPage';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
+import { summarizePatients } from './lib/metrics';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
-type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'data';
 
 function App() {
   const {
@@ -36,6 +39,7 @@ function App() {
     refresh: refreshPackageBenefits,
   } = usePackageBenefits();
   const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, clearAllPnl, refresh: refreshPnl } = usePnl();
+  const { scorecards, importOfferLetter, removeScorecard } = useStaffScorecards();
   const oneDrive = useOneDrive();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
 
@@ -60,6 +64,7 @@ function App() {
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
   // the Data tab still shows true totals for every row that was imported.
   const baseAnalysisRecords = useMemo(() => toAnalysisRecords(records), [records]);
+  const patients = useMemo(() => summarizePatients(records), [records]);
 
   // The "Exclude" toggle only affects the Dashboard/New Patient Revenue tabs - the YB111
   // Analytics tab always shows flagged transactions regardless, since that's its purpose.
@@ -125,6 +130,12 @@ function App() {
               Segment P&amp;L
             </button>
             <button
+              onClick={() => setTab('staffScorecards')}
+              className={`px-4 py-1.5 ${tab === 'staffScorecards' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              Staff Scorecards
+            </button>
+            <button
               onClick={() => setTab('data')}
               className={`px-4 py-1.5 ${tab === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
@@ -132,7 +143,7 @@ function App() {
             </button>
           </nav>
         </div>
-        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'segmentPnl' && (
+        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'segmentPnl' && tab !== 'staffScorecards' && (
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
@@ -164,7 +175,7 @@ function App() {
       <main className="mx-auto max-w-6xl px-4 py-6">
         {loading ? (
           <p className="py-20 text-center text-sm text-zinc-500">Loading…</p>
-        ) : records.length === 0 && tab !== 'data' && tab !== 'segmentPnl' ? (
+        ) : records.length === 0 && tab !== 'data' && tab !== 'segmentPnl' && tab !== 'staffScorecards' ? (
           <div className="rounded-xl border border-zinc-200 bg-white p-10 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <p className="text-sm text-zinc-600 dark:text-zinc-300">
               No data yet. Upload your sales export on the <strong>Data</strong> tab to get started.
@@ -204,6 +215,14 @@ function App() {
             allocationMode={allocationMode}
             setAllocationMode={setAllocationMode}
             pnlLineAdjustments={pnlLineAdjustments}
+          />
+        ) : tab === 'staffScorecards' ? (
+          <StaffScorecardsDashboard
+            records={baseAnalysisRecords}
+            patients={patients}
+            scorecards={scorecards}
+            importOfferLetter={importOfferLetter}
+            removeScorecard={removeScorecard}
           />
         ) : (
           <DataPage

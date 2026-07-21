@@ -1,5 +1,13 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ImportBatch, PackageBenefitBatch, PackageBenefitRecord, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
+import type {
+  ImportBatch,
+  PackageBenefitBatch,
+  PackageBenefitRecord,
+  PnlImportBatch,
+  PnlLineRecord,
+  SaleRecord,
+  StaffScorecard,
+} from '../types';
 
 interface PatientMatrixDB extends DBSchema {
   transactions: {
@@ -29,10 +37,14 @@ interface PatientMatrixDB extends DBSchema {
     key: string;
     value: PnlImportBatch;
   };
+  staffScorecards: {
+    key: string;
+    value: StaffScorecard;
+  };
 }
 
 const DB_NAME = 'patient-matrix';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBPDatabase<PatientMatrixDB>> | null = null;
 
@@ -55,6 +67,9 @@ function getDB() {
           const pnl = db.createObjectStore('pnlLines', { keyPath: 'id' });
           pnl.createIndex('by-month', 'month');
           db.createObjectStore('pnlBatches', { keyPath: 'month' });
+        }
+        if (oldVersion < 4) {
+          db.createObjectStore('staffScorecards', { keyPath: 'id' });
         }
       },
     });
@@ -238,4 +253,20 @@ export async function clearAllTransactions(): Promise<void> {
   await tx.objectStore('transactions').clear();
   await tx.objectStore('batches').clear();
   await tx.done;
+}
+
+export async function getAllStaffScorecards(): Promise<StaffScorecard[]> {
+  const db = await getDB();
+  const all = await db.getAll('staffScorecards');
+  return all.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+}
+
+export async function addStaffScorecard(scorecard: StaffScorecard): Promise<void> {
+  const db = await getDB();
+  await db.put('staffScorecards', scorecard);
+}
+
+export async function deleteStaffScorecard(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('staffScorecards', id);
 }

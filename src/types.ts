@@ -134,3 +134,21 @@ export interface PnlImportBatch {
   segments: string[];
   lineCount: number;
 }
+
+/** One KPI row extracted from an uploaded offer letter's KPI table(s). */
+export interface StaffScorecardKpi {
+  category: string;
+  metric: string;
+  target: string;
+  measurementMethod: string;
+}
+
+/** A staff member's KPI scorecard, parsed from an uploaded offer letter (.docx). */
+export interface StaffScorecard {
+  id: string;
+  employeeName: string;
+  roleTitle: string;
+  fileName: string;
+  uploadedAt: string; // ISO datetime
+  kpis: StaffScorecardKpi[];
+}
