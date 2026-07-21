@@ -11,6 +11,7 @@ import {
 import { formatMonthLabel } from '../lib/format';
 import { SegmentPnlSummaryTable } from './SegmentPnlSummaryTable';
 import { SegmentPnlDetailTable } from './SegmentPnlDetailTable';
+import { InfoTooltip } from './InfoTooltip';
 
 type ViewMode = 'monthly' | 'ytd';
 
@@ -89,7 +90,10 @@ export function SegmentPnlDashboard({
             </button>
           </div>
           <div>
-            <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400">Allocate GEN by</label>
+            <label className="flex items-center gap-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              <span>Allocate GEN by</span>
+              <InfoTooltip text="How each segment's share of General/overhead (GEN) costs is calculated before being merged into that segment's own figures. Fixed %: uses the per-segment percentages set on the Data tab. Revenue Share: splits GEN by each segment's share of that month's own revenue, so segments having a bigger month absorb a bigger slice of overhead." />
+            </label>
             <div className="mt-0.5 flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
               <button
                 onClick={() => setAllocationMode('percentage')}

@@ -322,14 +322,51 @@ export function ProviderConversionDashboard({
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard label="Total Patients" value={formatNumber(summary.overall.total)} />
-        <KpiCard label="New Unconverted" value={formatNumber(summary.overall.newUnconverted)} tone="bad" />
-        <KpiCard label="New Converted" value={formatNumber(summary.overall.newConverted)} tone="good" />
-        <KpiCard label="Repeat Unconverted" value={formatNumber(summary.overall.repeatUnconverted)} tone="bad" />
-        <KpiCard label="Repeat Converted" value={formatNumber(summary.overall.repeatConverted)} tone="good" />
-        <KpiCard label="Follow-up / Direct Service" value={formatNumber(summary.overall.followUp)} />
-        <KpiCard label="Conversion Rate" value={formatPercent(summary.overall.conversionRate, 1)} tone="neutral" />
-        <KpiCard label="Revenue" value={formatCurrencyCompact(summary.overall.revenue)} />
+        <KpiCard
+          label="Total Patients"
+          value={formatNumber(summary.overall.total)}
+          help="Every patient-provider visit in the selected period/day, across all five categories below (one row per patient seen by a given provider on a given day)."
+        />
+        <KpiCard
+          label="New Unconverted"
+          value={formatNumber(summary.overall.newUnconverted)}
+          help="Patient's very first-ever visit, but it produced no revenue that day (e.g. a free consultation with nothing purchased)."
+          tone="bad"
+        />
+        <KpiCard
+          label="New Converted"
+          value={formatNumber(summary.overall.newConverted)}
+          help="Patient's very first-ever visit, and it produced revenue that day (a consultation that turned into a sale)."
+          tone="good"
+        />
+        <KpiCard
+          label="Repeat Unconverted"
+          value={formatNumber(summary.overall.repeatUnconverted)}
+          help={`Not the patient's first visit, no revenue that day, and not explained by a package redemption, an outstanding package balance, or a "YB111" flag - a repeat visit that didn't convert into a new sale.`}
+          tone="bad"
+        />
+        <KpiCard
+          label="Repeat Converted"
+          value={formatNumber(summary.overall.repeatConverted)}
+          help="Not the patient's first visit, and it produced revenue that day - a returning patient buying something new."
+          tone="good"
+        />
+        <KpiCard
+          label="Follow-up / Direct Service"
+          value={formatNumber(summary.overall.followUp)}
+          help={`Visits excluded from the conversion math because they're expected to show no new revenue: redeeming a previously-sold package, a patient with a remaining package balance, or a "YB111"-flagged line item.`}
+        />
+        <KpiCard
+          label="Conversion Rate"
+          value={formatPercent(summary.overall.conversionRate, 1)}
+          help="(New Converted + Repeat Converted) ÷ (New Unconverted + New Converted + Repeat Unconverted + Repeat Converted) - Follow-up / Direct Service visits are excluded from both the top and bottom of this ratio."
+          tone="neutral"
+        />
+        <KpiCard
+          label="Revenue"
+          value={formatCurrencyCompact(summary.overall.revenue)}
+          help="Total revenue (Sales Exc. Tax) across every visit shown above, for the selected period/day."
+        />
       </div>
 
       <ConversionTrendChart data={trend} />

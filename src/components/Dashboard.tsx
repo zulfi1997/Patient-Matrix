@@ -124,43 +124,63 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
           label="Revenue"
           value={formatCurrencyCompact(kpis.periodRevenue)}
           hint={`${formatCurrency(kpis.periodRevenue)} · ${formatNumber(kpis.periodTransactions)} line items`}
+          help="Sales (Exc. Tax) for the selected period, minus any portion redeemed from a previously sold package - that redeemed value is broken out separately below so it isn't counted as new revenue twice."
         />
         <KpiCard
           label="Redeemed Revenue"
           value={formatCurrencyCompact(kpis.periodRedeemedRevenue)}
           hint={`${formatCurrency(kpis.periodRedeemedRevenue)} · value delivered via package redemption, not new cash`}
+          help="Value of previously-sold package sessions used up this period. It's already counted as revenue at the time the package itself was sold, so it's shown separately here rather than added into Revenue above."
         />
-        <KpiCard label="Active Patients" value={formatNumber(kpis.activePatients)} />
-        <KpiCard label="New Patients" value={formatNumber(kpis.newPatients)} tone="good" />
-        <KpiCard label="Returning Patients" value={formatNumber(kpis.returningPatients)} />
+        <KpiCard
+          label="Active Patients"
+          value={formatNumber(kpis.activePatients)}
+          help="Distinct patients with at least one visit (line item) during the selected period."
+        />
+        <KpiCard
+          label="New Patients"
+          value={formatNumber(kpis.newPatients)}
+          tone="good"
+          help="Active patients this period whose very first-ever visit fell within the selected period."
+        />
+        <KpiCard
+          label="Returning Patients"
+          value={formatNumber(kpis.returningPatients)}
+          help="Active patients this period who had already visited at least once before the period started."
+        />
         <KpiCard
           label="Retention Rate"
           value={formatPercent(kpis.retentionRate)}
           hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} prior-period patients returned - a fixed period-over-period comparison, not affected by the inactivity threshold below`}
+          help="Of the patients active in the prior equivalent period, the % who also visited in the selected period. A period-over-period comparison, unrelated to the inactivity threshold below."
           tone={kpis.retentionRate != null && kpis.retentionRate < 50 ? 'bad' : 'good'}
         />
         <KpiCard
           label="Turnover Rate"
           value={formatPercent(kpis.turnoverRate)}
           hint="Prior-period patients who did not return - also not affected by the inactivity threshold"
+          help="Of the patients active in the prior equivalent period, the % who did not visit again in the selected period - the inverse of Retention Rate."
           tone={kpis.turnoverRate != null && kpis.turnoverRate > 50 ? 'bad' : 'neutral'}
         />
         <KpiCard
           label="Stopped Visiting"
           value={formatNumber(kpis.stoppedVisiting)}
           hint={`As of today, inactive ${inactivityDays}+ days - this is the number that responds to the threshold above`}
+          help='Patients with no visit in the last N days (set via the "Stopped visiting after" dropdown above), measured as of today - not scoped to the selected period.'
           tone="bad"
         />
         <KpiCard
           label="Total Discount"
           value={formatCurrencyCompact(discountSummary.totalDiscount)}
           hint={`${formatCurrency(discountSummary.totalDiscount)} · manual + campaign + price adjustments, excludes package redemption`}
+          help="Sum of manual discounts, campaign discounts (e.g. Buy 1 Get 1 Free), and price adjustments applied this period. Package redemption isn't a discount, so it's excluded here."
           tone="bad"
         />
         <KpiCard
           label="Discount %"
           value={formatPercent(discountSummary.discountPct)}
           hint="Total discount as a share of gross (pre-discount) sales this period"
+          help="Total Discount divided by gross sales before any discount was applied (Price, not Sales Exc. Tax) - i.e. how much of the original sticker price was given away this period."
         />
       </div>
 

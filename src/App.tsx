@@ -14,6 +14,7 @@ import { ProviderConversionDashboard } from './components/ProviderConversionDash
 import { SegmentPnlDashboard } from './components/SegmentPnlDashboard';
 import { StaffScorecardsDashboard } from './components/StaffScorecardsDashboard';
 import { DataPage } from './components/DataPage';
+import { InfoTooltip } from './components/InfoTooltip';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
 import { summarizePatients } from './lib/metrics';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
@@ -166,11 +167,9 @@ function App() {
               />
               Exclude "YB111"-flagged transactions
               {flaggedCount > 0 && ` (${formatNumber(flaggedCount)} rows)`}
+              <InfoTooltip text={`Removes every line item whose Invoice Notes mention "YB111" (any case) from this tab's figures before anything else is computed. The dedicated "YB111" Analytics tab always shows these transactions regardless of this toggle.`} />
             </label>
-            <label
-              className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300"
-              title="Excludes line items with no revenue and no package redemption (e.g. a complimentary service) from patient activity - New/Returning/Active/Retention/Turnover/Stopped Visiting. Package sessions redeemed from a previously-sold package still count as real visits."
-            >
+            <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
                 type="checkbox"
                 checked={excludeZeroValue}
@@ -179,6 +178,7 @@ function App() {
               />
               Exclude zero-revenue visits (e.g. complimentary services)
               {zeroValueCount > 0 && ` (${formatNumber(zeroValueCount)} rows)`}
+              <InfoTooltip text="Excludes line items with no revenue and no package redemption (e.g. a complimentary service) from patient activity - New/Returning/Active/Retention/Turnover/Stopped Visiting. Package sessions redeemed from a previously-sold package still count as real visits." />
             </label>
           </div>
         )}

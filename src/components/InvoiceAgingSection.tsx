@@ -92,17 +92,29 @@ export function InvoiceAgingSection({
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard label="Total Due" value={formatCurrency(totalDue)} hint={`${formatNumber(rows.length)} invoices`} tone="bad" />
-        <KpiCard label="Oldest Invoice" value={`${formatNumber(oldest)} days`} />
+        <KpiCard
+          label="Total Due"
+          value={formatCurrency(totalDue)}
+          hint={`${formatNumber(rows.length)} invoices`}
+          help="Sum of the outstanding (unpaid) balance across every invoice with a due amount, regardless of sale date."
+          tone="bad"
+        />
+        <KpiCard
+          label="Oldest Invoice"
+          value={`${formatNumber(oldest)} days`}
+          help="Age (in days from Sale Date to today) of the single oldest invoice that still has an outstanding balance."
+        />
         <KpiCard
           label="60+ Days Due"
           value={formatCurrency(overSixty?.amount ?? 0)}
           hint={`${formatNumber(overSixty?.count ?? 0)} invoices`}
+          help="Outstanding balance on invoices aged 60 days or more since their Sale Date."
           tone={overSixty && overSixty.amount > 0 ? 'bad' : 'neutral'}
         />
         <KpiCard
           label="Avg Age"
           value={rows.length === 0 ? '—' : `${formatNumber(Math.round(rows.reduce((s, r) => s + r.ageDays, 0) / rows.length))} days`}
+          help="Average age (in days) across every invoice with an outstanding balance."
         />
       </div>
 

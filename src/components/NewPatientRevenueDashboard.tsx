@@ -120,15 +120,26 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
           label="New Patient Revenue"
           value={formatCurrencyCompact(summary.newPatientRevenue)}
           hint={formatCurrency(summary.newPatientRevenue)}
+          help="Revenue from patients whose very first-ever visit fell within the selected period."
           tone="good"
         />
         <KpiCard
           label="Returning Patient Revenue"
           value={formatCurrencyCompact(summary.returningPatientRevenue)}
           hint={formatCurrency(summary.returningPatientRevenue)}
+          help="Revenue from patients who had already visited before the selected period started."
         />
-        <KpiCard label="New Patients" value={formatNumber(summary.newPatients)} />
-        <KpiCard label="Share From New Patients" value={formatPercent(sharePct)} hint="Of revenue, this period" />
+        <KpiCard
+          label="New Patients"
+          value={formatNumber(summary.newPatients)}
+          help="Distinct patients whose very first-ever visit fell within the selected period."
+        />
+        <KpiCard
+          label="Share From New Patients"
+          value={formatPercent(sharePct)}
+          hint="Of revenue, this period"
+          help="New Patient Revenue as a % of total revenue (new + returning) this period."
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -140,6 +151,7 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
               ? 'No Segment P&L data for this period - upload monthly P&L exports on the Data tab.'
               : `${formatCurrency(acquisitionInputs.adCampaignSpend)} Social Media Add Campaigns spend ÷ ${formatNumber(pacNewPatients)} new patients, ${monthsCoveredLabel}`
           }
+          help="Social Media Ad Campaigns spend (from the Segment P&L upload) for the whole calendar month(s) touched by the selected period, divided by new patients in that same full-month window - not the exact partial period above, since a month's ad spend shouldn't be compared against a partial month's new patients."
           tone="bad"
         />
         <KpiCard
@@ -150,6 +162,7 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
               ? 'No Segment P&L data for this period - upload monthly P&L exports on the Data tab.'
               : `${formatCurrency(acquisitionInputs.totalMarketingSpend)} total Marketing and Promotion spend ÷ ${formatNumber(pacNewPatients)} new patients, ${monthsCoveredLabel}`
           }
+          help="Same as the Ad Campaigns figure, but using total Marketing and Promotion spend (all campaigns, not just Social Media Ad Campaigns) for the whole calendar month(s) touched by the selected period."
           tone="bad"
         />
       </div>

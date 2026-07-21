@@ -1,6 +1,7 @@
 import type { KpiDefinition, KpiPeriodValue, KpiPoint } from '../lib/kpiCatalog';
 import { formatKpiValue } from '../lib/kpiCatalog';
 import { KpiSparkline } from './KpiSparkline';
+import { InfoTooltip } from './InfoTooltip';
 
 const CATEGORY_COLORS: Record<string, string> = {
   revenue: '#10b981',
@@ -29,7 +30,10 @@ export function KpiScorecardCard({
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{kpi.label}</div>
+      <div className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        <span>{kpi.label}</span>
+        <InfoTooltip text={kpi.description} />
+      </div>
       <div className="mt-1 flex items-baseline gap-2">
         <span className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
           {formatKpiValue(periodValue.current, kpi.unit)}

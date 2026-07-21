@@ -82,18 +82,33 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <KpiCard label="Flagged Transactions" value={formatNumber(summary.count)} tone="bad" />
+        <KpiCard
+          label="Flagged Transactions"
+          value={formatNumber(summary.count)}
+          help='Count of line items whose Invoice Notes mention "YB111" (any case), in the selected period.'
+          tone="bad"
+        />
         <KpiCard
           label="Flagged Value"
           value={formatCurrencyCompact(summary.amount)}
           hint={formatCurrency(summary.amount)}
+          help="Total revenue (Sales Exc. Tax) across the flagged line items above."
         />
-        <KpiCard label="Distinct Patients" value={formatNumber(summary.distinctPatients)} />
-        <KpiCard label="Distinct Staff" value={formatNumber(summary.distinctStaff)} />
+        <KpiCard
+          label="Distinct Patients"
+          value={formatNumber(summary.distinctPatients)}
+          help="Number of different patients who have at least one flagged line item in the selected period."
+        />
+        <KpiCard
+          label="Distinct Staff"
+          value={formatNumber(summary.distinctStaff)}
+          help="Number of different staff members who sold at least one flagged line item in the selected period."
+        />
         <KpiCard
           label="Due to Be Settled"
           value={formatCurrencyCompact(totalDue)}
           hint={`${formatCurrency(totalDue)} · ${formatNumber(dueInvoices.length)} invoice(s)`}
+          help="Outstanding (unpaid) balance still owed on invoices that contain a flagged line item - independent of the period selected above, since a due balance doesn't stop being owed just because the sale date falls outside the window."
           tone={dueInvoices.length > 0 ? 'bad' : 'neutral'}
         />
       </div>
