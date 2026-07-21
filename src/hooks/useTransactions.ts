@@ -77,7 +77,7 @@ export function useTransactions() {
   );
 
   const clearAllData = useCallback(async () => {
-    await db.clearAll();
+    await db.clearAllTransactions();
     await refresh();
   }, [refresh]);
 

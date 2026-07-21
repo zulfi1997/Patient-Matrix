@@ -224,17 +224,10 @@ export async function clearAllPnl(): Promise<void> {
   await tx.done;
 }
 
-export async function clearAll(): Promise<void> {
+export async function clearAllTransactions(): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(
-    ['transactions', 'batches', 'packageBenefits', 'packageBenefitBatches', 'pnlLines', 'pnlBatches'],
-    'readwrite',
-  );
+  const tx = db.transaction(['transactions', 'batches'], 'readwrite');
   await tx.objectStore('transactions').clear();
   await tx.objectStore('batches').clear();
-  await tx.objectStore('packageBenefits').clear();
-  await tx.objectStore('packageBenefitBatches').clear();
-  await tx.objectStore('pnlLines').clear();
-  await tx.objectStore('pnlBatches').clear();
   await tx.done;
 }

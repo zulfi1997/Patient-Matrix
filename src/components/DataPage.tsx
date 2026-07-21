@@ -286,14 +286,14 @@ export function DataPage({
             </button>
             <button
               onClick={() => {
-                if (confirm('This deletes ALL uploaded data from this browser. This cannot be undone. Continue?')) {
+                if (confirm('This deletes all Sales data (transactions and import history) from this browser. Package Benefits and Segment P&L data are not affected. This cannot be undone. Continue?')) {
                   clearAllData();
                 }
               }}
               disabled={records.length === 0}
               className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
             >
-              Clear all data
+              Clear all Sales data
             </button>
           </div>
         </div>
