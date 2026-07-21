@@ -108,6 +108,14 @@ export async function addBatch(
   return { added, refreshed };
 }
 
+/** Deletes specific transaction rows by id, leaving the rest of their batch (and everything else) untouched. */
+export async function removeTransactionsByIds(ids: string[]): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction('transactions', 'readwrite');
+  await Promise.all(ids.map((id) => tx.objectStore('transactions').delete(id)));
+  await tx.done;
+}
+
 export async function deleteBatch(batchId: string): Promise<void> {
   const db = await getDB();
   const tx = db.transaction(['transactions', 'batches'], 'readwrite');

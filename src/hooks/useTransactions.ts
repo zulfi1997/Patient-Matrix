@@ -81,7 +81,15 @@ export function useTransactions() {
     await refresh();
   }, [refresh]);
 
-  return { records, batches, loading, importFile, removeBatch, clearAllData, refresh };
+  const removeTransactionsByIds = useCallback(
+    async (ids: string[]) => {
+      await db.removeTransactionsByIds(ids);
+      await refresh();
+    },
+    [refresh],
+  );
+
+  return { records, batches, loading, importFile, removeBatch, clearAllData, removeTransactionsByIds, refresh };
 }
 
 export { ImportSchemaError };

@@ -19,7 +19,15 @@ import { formatNumber } from './lib/format';
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'data';
 
 function App() {
-  const { records, batches, loading, importFile, removeBatch, clearAllData: clearAllTransactions } = useTransactions();
+  const {
+    records,
+    batches,
+    loading,
+    importFile,
+    removeBatch,
+    clearAllData: clearAllTransactions,
+    removeTransactionsByIds,
+  } = useTransactions();
   const {
     packageBenefits,
     packageBenefitBatches,
@@ -204,6 +212,7 @@ function App() {
             importFile={importFile}
             removeBatch={removeBatch}
             clearAllData={clearAllData}
+            removeTransactionsByIds={removeTransactionsByIds}
             packageBenefitBatches={packageBenefitBatches}
             importPackageBenefitFile={importPackageBenefitFile}
             removePackageBenefitSnapshot={removePackageBenefitSnapshot}

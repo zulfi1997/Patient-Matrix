@@ -15,6 +15,7 @@ import { SegmentAllocationEditor } from './SegmentAllocationEditor';
 import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
 import { OneDriveConnectSection } from './OneDriveConnectSection';
 import { MasterControlPanel } from './MasterControlPanel';
+import { DuplicateInvoiceLinesPanel } from './DuplicateInvoiceLinesPanel';
 
 interface DataPageProps {
   records: SaleRecord[];
@@ -22,6 +23,7 @@ interface DataPageProps {
   importFile: (file: File) => Promise<ImportResult>;
   removeBatch: (id: string) => Promise<void>;
   clearAllData: () => Promise<void>;
+  removeTransactionsByIds: (ids: string[]) => Promise<void>;
   packageBenefitBatches: PackageBenefitBatch[];
   importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
@@ -82,6 +84,7 @@ export function DataPage({
   importFile,
   removeBatch,
   clearAllData,
+  removeTransactionsByIds,
   packageBenefitBatches,
   importPackageBenefitFile,
   removePackageBenefitSnapshot,
@@ -270,6 +273,8 @@ export function DataPage({
           )}
         </div>
       )}
+
+      <DuplicateInvoiceLinesPanel records={records} batches={batches} onRemove={removeTransactionsByIds} />
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mb-3 flex items-center justify-between">
