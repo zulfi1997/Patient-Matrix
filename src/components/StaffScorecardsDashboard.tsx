@@ -16,10 +16,14 @@ const STATUS_LABEL: Record<'meets' | 'below' | 'unknown', string> = {
   unknown: 'No target range detected',
 };
 
+function formatByUnit(value: number, unit: 'currency' | 'percent' | 'count'): string {
+  if (unit === 'currency') return formatCurrency(value);
+  if (unit === 'percent') return formatPercent(value, 1);
+  return formatNumber(Math.round(value));
+}
+
 function formatComputed(computation: KpiComputation): string {
-  if (computation.unit === 'currency') return formatCurrency(computation.actual);
-  if (computation.unit === 'percent') return formatPercent(computation.actual, 1);
-  return formatNumber(Math.round(computation.actual));
+  return formatByUnit(computation.actual, computation.unit);
 }
 
 function KpiRow({ kpi, records, patients, asOfISO }: { kpi: StaffScorecardKpi; records: SaleRecord[]; patients: Map<string, PatientVisitSummary>; asOfISO: string }) {
@@ -36,6 +40,16 @@ function KpiRow({ kpi, records, patients, asOfISO }: { kpi: StaffScorecardKpi; r
           <>
             {formatComputed(computation)}
             <div className="text-xs text-zinc-400">{computation.periodLabel}</div>
+            {computation.breakdown && (
+              <div className="mt-0.5 text-xs text-zinc-400">
+                {computation.breakdown.map((b, i) => (
+                  <span key={b.label}>
+                    {i > 0 && ' · '}
+                    {b.label}: {formatByUnit(b.value, b.unit)}
+                  </span>
+                ))}
+              </div>
+            )}
           </>
         ) : (
           <span className="text-xs text-zinc-400">not tracked in this dashboard</span>

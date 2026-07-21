@@ -39,6 +39,8 @@ export interface KpiComputation {
   unit: 'currency' | 'percent' | 'count';
   status: KpiStatus;
   periodLabel: string;
+  /** The underlying figures the actual was derived from (e.g. this month's total and the prior-months average it's compared against), shown alongside the computed result rather than hidden behind it. */
+  breakdown?: { label: string; value: number; unit: 'currency' | 'percent' | 'count' }[];
 }
 
 export interface KpiDefinition {
@@ -101,7 +103,16 @@ export const KPI_REGISTRY: KpiDefinition[] = [
       const averagePriorMonthly = totals.length > 0 ? totals.reduce((sum, v) => sum + v, 0) / totals.length : 0;
 
       const actual = currentMonthRevenue - averagePriorMonthly;
-      return { actual, unit: 'currency', status: statusFor(actual, target), periodLabel: 'this month vs. average of prior months' };
+      return {
+        actual,
+        unit: 'currency',
+        status: statusFor(actual, target),
+        periodLabel: 'this month vs. average of prior months',
+        breakdown: [
+          { label: 'This month', value: currentMonthRevenue, unit: 'currency' },
+          { label: `Prior months avg (${totals.length})`, value: averagePriorMonthly, unit: 'currency' },
+        ],
+      };
     },
   },
   {
@@ -115,7 +126,16 @@ export const KPI_REGISTRY: KpiDefinition[] = [
       const current = records.filter((r) => isInRange(r.date, range)).reduce((sum, r) => sum + r.amount, 0);
       const prev = records.filter((r) => isInRange(r.date, prevRange)).reduce((sum, r) => sum + r.amount, 0);
       const actual = prev > 0 ? ((current - prev) / prev) * 100 : 0;
-      return { actual, unit: 'percent', status: statusFor(actual, target), periodLabel: 'this quarter vs last' };
+      return {
+        actual,
+        unit: 'percent',
+        status: statusFor(actual, target),
+        periodLabel: 'this quarter vs last',
+        breakdown: [
+          { label: 'This quarter', value: current, unit: 'currency' },
+          { label: 'Last quarter', value: prev, unit: 'currency' },
+        ],
+      };
     },
   },
   {
@@ -131,7 +151,16 @@ export const KPI_REGISTRY: KpiDefinition[] = [
       const curAvg = cur.length > 0 ? cur.reduce((s, r) => s + r.amount, 0) / cur.length : 0;
       const prevAvg = prev.length > 0 ? prev.reduce((s, r) => s + r.amount, 0) / prev.length : 0;
       const actual = prevAvg > 0 ? ((curAvg - prevAvg) / prevAvg) * 100 : 0;
-      return { actual, unit: 'percent', status: statusFor(actual, target), periodLabel: 'this quarter vs last' };
+      return {
+        actual,
+        unit: 'percent',
+        status: statusFor(actual, target),
+        periodLabel: 'this quarter vs last',
+        breakdown: [
+          { label: 'This quarter avg', value: curAvg, unit: 'currency' },
+          { label: 'Last quarter avg', value: prevAvg, unit: 'currency' },
+        ],
+      };
     },
   },
   {
@@ -182,7 +211,16 @@ export const KPI_REGISTRY: KpiDefinition[] = [
         if (s && s.lifetimeVisits > 1) retained++;
       }
       const actual = cohort.size > 0 ? (retained / cohort.size) * 100 : 0;
-      return { actual, unit: 'percent', status: statusFor(actual, target), periodLabel: 'last 6 months' };
+      return {
+        actual,
+        unit: 'percent',
+        status: statusFor(actual, target),
+        periodLabel: 'last 6 months',
+        breakdown: [
+          { label: 'Returned', value: retained, unit: 'count' },
+          { label: 'Cohort (active 6mo ago)', value: cohort.size, unit: 'count' },
+        ],
+      };
     },
   },
 ];
