@@ -85,8 +85,23 @@ export const KPI_REGISTRY: KpiDefinition[] = [
     isQuarterly: false,
     compute: (records, _patients, target, asOfISO) => {
       const range = monthRange(asOfISO);
-      const actual = records.filter((r) => isInRange(r.date, range)).reduce((sum, r) => sum + r.amount, 0);
-      return { actual, unit: 'currency', status: statusFor(actual, target), periodLabel: 'this month' };
+      const currentMonthRevenue = records.filter((r) => isInRange(r.date, range)).reduce((sum, r) => sum + r.amount, 0);
+
+      // This is an "Additional"/incremental contribution target, not a share of total clinic
+      // revenue - a growth role's target is revenue ADDED beyond the clinic's existing
+      // baseline, so the actual is this month's revenue minus the average of every other
+      // complete calendar month present in the data (the baseline), not the raw monthly total.
+      const priorMonthTotals = new Map<string, number>();
+      for (const r of records) {
+        if (isInRange(r.date, range)) continue;
+        const monthKey = r.date.slice(0, 7);
+        priorMonthTotals.set(monthKey, (priorMonthTotals.get(monthKey) ?? 0) + r.amount);
+      }
+      const totals = [...priorMonthTotals.values()];
+      const averagePriorMonthly = totals.length > 0 ? totals.reduce((sum, v) => sum + v, 0) / totals.length : 0;
+
+      const actual = currentMonthRevenue - averagePriorMonthly;
+      return { actual, unit: 'currency', status: statusFor(actual, target), periodLabel: 'this month vs. average of prior months' };
     },
   },
   {

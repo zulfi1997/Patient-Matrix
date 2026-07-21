@@ -64,10 +64,10 @@ function App() {
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
   // the Data tab still shows true totals for every row that was imported.
   const baseAnalysisRecords = useMemo(() => toAnalysisRecords(records), [records]);
-  const patients = useMemo(() => summarizePatients(records), [records]);
 
-  // The "Exclude" toggle only affects the Dashboard/New Patient Revenue tabs - the YB111
-  // Analytics tab always shows flagged transactions regardless, since that's its purpose.
+  // The "Exclude" toggles apply on the Dashboard/New Patient Revenue/KPI Evaluation/Staff
+  // Scorecards tabs - the YB111 Analytics tab always shows flagged transactions regardless,
+  // since that's its purpose.
   const flaggedFilteredRecords = useMemo(
     () => (excludeFlagged ? excludeFlaggedRecords(baseAnalysisRecords) : baseAnalysisRecords),
     [baseAnalysisRecords, excludeFlagged],
@@ -80,6 +80,8 @@ function App() {
     () => (excludeZeroValue ? excludeZeroValueRecords(flaggedFilteredRecords) : flaggedFilteredRecords),
     [flaggedFilteredRecords, excludeZeroValue],
   );
+
+  const patients = useMemo(() => summarizePatients(analysisRecords), [analysisRecords]);
 
   const flaggedCount = useMemo(() => records.filter(hasFlaggedNote).length, [records]);
   const zeroValueCount = useMemo(() => baseAnalysisRecords.filter((r) => !hasVisitValue(r)).length, [baseAnalysisRecords]);
@@ -143,7 +145,7 @@ function App() {
             </button>
           </nav>
         </div>
-        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'segmentPnl' && tab !== 'staffScorecards' && (
+        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'segmentPnl' && (
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
@@ -218,7 +220,7 @@ function App() {
           />
         ) : tab === 'staffScorecards' ? (
           <StaffScorecardsDashboard
-            records={baseAnalysisRecords}
+            records={analysisRecords}
             patients={patients}
             scorecards={scorecards}
             importOfferLetter={importOfferLetter}
