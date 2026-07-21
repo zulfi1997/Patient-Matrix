@@ -7,10 +7,9 @@
  * status, and discount_name all come through as real fields here, unlike the older
  * /v1/sales/salesreport endpoint this was originally built against.
  *
- * One thing still worth confirming against real production data (not just Zenoti's docs
- * examples): whether `guest_code` is reliably populated with the same alphanumeric codes your
- * manual exports use (e.g. "MUS5738"), so patient identity lines up across both sources. The
- * fallback to guest_id below only kicks in when guest_code is blank.
+ * Confirmed against real production data (2026-07-21): guest_code reliably matches the
+ * alphanumeric codes ("MUS5215" etc.) used in the manual exports, so patient identity lines up
+ * across both sources without needing the guest_id fallback in practice.
  */
 
 /** guest_code is sometimes blank - fall back to the always-present guest_id (a UUID) rather than an empty patient identifier. */
@@ -26,13 +25,12 @@ function dateOnly(isoDateTime) {
 }
 
 export function zenotiRowToExportRow(row) {
-  const redeemed = row.redeemed ?? 0;
-  const isRedemption = redeemed > 0;
-  // No dedicated "package name" field on this endpoint - the redeemed item's own name is the
-  // closest available label, reconstructed to match the manual export's "Payment Type starts
-  // with 'Package'" convention that excelParser.ts already relies on.
-  const paymentType = isRedemption ? `Package - ${row.item_name || 'Package'}` : row.payment_type || null;
-
+  // Zenoti's own payment_type already says "Package - <name>" when a line is a previously-sold
+  // package's session being consumed, and something else (e.g. "Prepaid Card(...)") when
+  // `redeemed` reflects paying for a *new* purchase via redeemed stored value instead - these
+  // are different things `redeemed` doesn't distinguish on its own, so payment_type must be
+  // passed through as-is rather than re-derived from whether redeemed > 0. excelParser.ts's
+  // existing "Payment Type starts with 'Package'" check already handles the rest correctly.
   return {
     'Invoice No': row.invoice_no ?? '',
     'Guest Code': resolveGuestCode(row),
@@ -46,8 +44,8 @@ export function zenotiRowToExportRow(row) {
     'Sales (Exc. Tax)': row.sales_exc_tax ?? 0,
     'Sales(Inc. Tax)': row.sales_inc_tax ?? row.sales_exc_tax ?? 0,
     Tax: row.tax ?? 0,
-    'Payment Type': paymentType,
-    Redeemed: isRedemption ? redeemed : 0,
+    'Payment Type': row.payment_type || null,
+    Redeemed: row.redeemed ?? 0,
     Due: row.due ?? 0,
     'Discount Name': row.discount_name || null,
     Discount: row.discount ?? 0,
