@@ -155,10 +155,22 @@ export function rowsToRecords(
     // uploads. An occurrence counter distinguishes genuine repeats of the
     // identical item within one invoice (e.g. two sessions of the same
     // service billed on one invoice).
-    const baseKey = [invoiceNo, serviceKey, itemName, get(row, headerMap, 'Qty'), get(row, headerMap, 'Sales (Exc. Tax)')].join('|');
-    const occCount = (occurrence.get(baseKey) ?? 0) + 1;
-    occurrence.set(baseKey, occCount);
-    const id = hashString(`${baseKey}|${occCount}`);
+    //
+    // When the source provides its own stable per-line ID - only the automated Zenoti API
+    // sync does this; manual exports have no such column - that's used directly instead of
+    // the derived key above. It doesn't change when a line's price or discount is corrected
+    // later in Zenoti, so re-syncing that invoice refreshes the existing row in place instead
+    // of adding a duplicate alongside the original (pre-correction) value.
+    const stableLineItemId = String(get(row, headerMap, 'Invoice Item ID') ?? '').trim();
+    let id: string;
+    if (stableLineItemId) {
+      id = `zenoti-item:${stableLineItemId}`;
+    } else {
+      const baseKey = [invoiceNo, serviceKey, itemName, get(row, headerMap, 'Qty'), get(row, headerMap, 'Sales (Exc. Tax)')].join('|');
+      const occCount = (occurrence.get(baseKey) ?? 0) + 1;
+      occurrence.set(baseKey, occCount);
+      id = hashString(`${baseKey}|${occCount}`);
+    }
 
     const salesExcTax = parseNumber(get(row, headerMap, 'Sales (Exc. Tax)'));
     const amountIncTax = parseNumber(get(row, headerMap, 'Sales(Inc. Tax)')) || salesExcTax;

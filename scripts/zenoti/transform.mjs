@@ -10,6 +10,12 @@
  * Confirmed against real production data (2026-07-21): guest_code reliably matches the
  * alphanumeric codes ("MUS5215" etc.) used in the manual exports, so patient identity lines up
  * across both sources without needing the guest_id fallback in practice.
+ *
+ * Also includes `invoice_item_id` (present on real responses, though not listed in Zenoti's
+ * published field docs for this endpoint) as an "Invoice Item ID" column - a stable per-line
+ * identifier that excelParser.ts uses in place of its usual derived dedup key when present, so
+ * a later discount/price correction on an already-synced line updates that row in place
+ * instead of being counted as a second, separate line.
  */
 
 /** guest_code is sometimes blank - fall back to the always-present guest_id (a UUID) rather than an empty patient identifier. */
@@ -32,6 +38,7 @@ export function zenotiRowToExportRow(row) {
   // passed through as-is rather than re-derived from whether redeemed > 0. excelParser.ts's
   // existing "Payment Type starts with 'Package'" check already handles the rest correctly.
   return {
+    'Invoice Item ID': row.invoice_item_id ?? '',
     'Invoice No': row.invoice_no ?? '',
     'Guest Code': resolveGuestCode(row),
     'Guest Name': row.guest_name ?? '',
