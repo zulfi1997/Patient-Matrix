@@ -26,37 +26,51 @@ export async function writeLastSyncedAt(iso) {
 }
 
 /**
- * Resolves the [since, until] window for this run, in priority order:
- *  1. An explicit `sinceDate` (YYYY-MM-DD, from the workflow's manual "Run workflow" input) -
- *     for seeding an exact starting point, e.g. "I've manually uploaded through the 19th, only
- *     pull from the 20th onward."
- *  2. An explicit `syncBackAmount`+`syncBackUnit` - for a relative on-demand historical resync.
- *  3. Otherwise, since = the last successful run's timestamp (state file), or a 30-day default
- *     lookback the very first time this runs with no prior state.
+ * Resolves the [since, until] window for this run.
  *
- * `until` is always `now` in every case - every run fetches through the present, so advancing
- * the watermark to `now` after a successful run is always correct regardless of which of the
- * above determined `since`.
+ * `until` defaults to `now`, but an explicit `untilDate` (YYYY-MM-DD, end of that day) bounds a
+ * resync so it stops at a fixed point instead of always reaching the present - e.g. re-checking
+ * a specific past period without pulling in today's still-accumulating data. This makes that
+ * run a "bounded-resync": since it doesn't reach `now`, it must NOT advance the sync watermark
+ * afterward (that's reserved for runs that genuinely cover through the present), so the ongoing
+ * incremental schedule continues completely unaffected by it.
+ *
+ * `since` is resolved in priority order:
+ *  1. An explicit `sinceDate` (YYYY-MM-DD) - for seeding an exact starting point, e.g. "I've
+ *     manually uploaded through the 19th, only pull from the 20th onward."
+ *  2. An explicit `syncBackAmount`+`syncBackUnit`, relative to `until` (so pairing it with
+ *     `untilDate` means "N units before that date", not before today).
+ *  3. Otherwise, since = the last successful run's timestamp (state file), or a 30-day default
+ *     lookback the very first time this runs with no prior state - `untilDate` isn't meaningful
+ *     combined with this fallback, so it's rejected rather than silently ignored.
  */
-export async function resolveSyncWindow({ sinceDate, syncBackAmount, syncBackUnit, now = new Date() }) {
+export async function resolveSyncWindow({ sinceDate, untilDate, syncBackAmount, syncBackUnit, now = new Date() }) {
+  const until = untilDate ? new Date(`${untilDate}T23:59:59Z`) : now;
+  if (untilDate && Number.isNaN(until.getTime())) throw new Error(`Invalid until_date "${untilDate}" - expected YYYY-MM-DD.`);
+  const bounded = !!untilDate;
+
   if (sinceDate) {
     const since = new Date(`${sinceDate}T00:00:00Z`);
     if (Number.isNaN(since.getTime())) throw new Error(`Invalid since_date "${sinceDate}" - expected YYYY-MM-DD.`);
-    return { since, until: now, mode: 'seed-from-date' };
+    return { since, until, mode: bounded ? 'bounded-resync' : 'seed-from-date' };
   }
 
   if (syncBackAmount && syncBackUnit) {
     const ms = UNIT_TO_MS[syncBackUnit];
     if (!ms) throw new Error(`Unknown sync_back_unit "${syncBackUnit}" - expected days, months, or years.`);
-    const since = new Date(now.getTime() - Number(syncBackAmount) * ms);
-    return { since, until: now, mode: 'manual-backfill' };
+    const since = new Date(until.getTime() - Number(syncBackAmount) * ms);
+    return { since, until, mode: bounded ? 'bounded-resync' : 'manual-backfill' };
+  }
+
+  if (bounded) {
+    throw new Error('until_date needs since_date or sync_back_amount/sync_back_unit set too - there is nothing to bound otherwise.');
   }
 
   const lastSyncedAt = await readLastSyncedAt();
   if (lastSyncedAt) {
-    return { since: new Date(lastSyncedAt), until: now, mode: 'incremental' };
+    return { since: new Date(lastSyncedAt), until, mode: 'incremental' };
   }
 
   const since = new Date(now.getTime() - INITIAL_LOOKBACK_DAYS * UNIT_TO_MS.days);
-  return { since, until: now, mode: 'initial-default' };
+  return { since, until, mode: 'initial-default' };
 }

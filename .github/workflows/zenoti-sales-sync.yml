@@ -11,6 +11,10 @@ on:
         description: 'Pull from this exact date onward (YYYY-MM-DD) - for seeding the first run after a manual-upload cutover. Takes priority over sync_back_amount/unit.'
         required: false
         type: string
+      until_date:
+        description: 'Stop at this date (YYYY-MM-DD) instead of reaching today - for re-checking a past period without touching todays still-accumulating data or disturbing the daily schedule. Needs since_date or sync_back_amount/unit set too.'
+        required: false
+        type: string
       sync_back_amount:
         description: 'How far back to resync (leave since_date and both these fields blank for a normal "since last sync" run)'
         required: false
@@ -57,12 +61,13 @@ jobs:
           GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           ONEDRIVE_SHARED_FOLDER_URL: ${{ vars.ONEDRIVE_SHARED_FOLDER_URL }}
           SINCE_DATE: ${{ inputs.since_date }}
+          UNTIL_DATE: ${{ inputs.until_date }}
           SYNC_BACK_AMOUNT: ${{ inputs.sync_back_amount }}
           SYNC_BACK_UNIT: ${{ inputs.sync_back_unit }}
           DRY_RUN: ${{ inputs.dry_run }}
       # Commits the updated "last synced" watermark back to the repo so the next scheduled run
-      # knows where to resume from. Every successful non-dry-run run advances it (see
-      # scripts/zenotiSync.mjs) - a dry run is the only case that doesn't touch this file.
+      # knows where to resume from. A dry run or a bounded resync (until_date set) doesn't touch
+      # this file (see scripts/zenotiSync.mjs) - every other successful run advances it.
       - run: |
           if ! git diff --quiet -- scripts/zenoti/sync-state.json; then
             git config user.name "github-actions[bot]"

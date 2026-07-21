@@ -33,17 +33,19 @@ async function main() {
   const sharedFolderUrl = isDryRun ? process.env.ONEDRIVE_SHARED_FOLDER_URL : requireEnv('ONEDRIVE_SHARED_FOLDER_URL');
 
   const sinceDate = process.env.SINCE_DATE || null;
+  const untilDate = process.env.UNTIL_DATE || null;
   const syncBackAmount = process.env.SYNC_BACK_AMOUNT || null;
   const syncBackUnit = process.env.SYNC_BACK_UNIT || null;
 
   const now = new Date();
-  const window = await resolveSyncWindow({ sinceDate, syncBackAmount, syncBackUnit, now });
+  const window = await resolveSyncWindow({ sinceDate, untilDate, syncBackAmount, syncBackUnit, now });
   let { since, until, mode } = window;
+  const isExplicitWindow = mode === 'manual-backfill' || mode === 'seed-from-date' || mode === 'bounded-resync';
   // A dry run is just for eyeballing field values, not a real pull - unless the caller
   // explicitly asked for a specific window, keep it small and fast by default rather than
   // fetching whatever the normal incremental/initial-default window would be.
   const DRY_RUN_DEFAULT_DAYS = 3;
-  if (isDryRun && mode !== 'manual-backfill' && mode !== 'seed-from-date') {
+  if (isDryRun && !isExplicitWindow) {
     since = new Date(Math.max(since.getTime(), now.getTime() - DRY_RUN_DEFAULT_DAYS * 86_400_000));
   }
   console.log(`[zenoti-sync] mode=${mode} dryRun=${isDryRun} since=${since.toISOString()} until=${until.toISOString()} centers=${centerIds.join(',')}`);
@@ -79,11 +81,15 @@ async function main() {
     console.log(`[zenoti-sync] uploaded ${fileName} (${exportRows.length} rows) to the "Sales Data" OneDrive folder`);
   }
 
-  // `until` is always `now`, in every mode - so a successful run has always fetched everything
-  // through the present regardless of how far back `since` reached, meaning it's always
-  // correct to advance the watermark to `now` here (including a one-off backfill/seed run).
-  await writeLastSyncedAt(now.toISOString());
-  console.log(`[zenoti-sync] advanced sync watermark to ${now.toISOString()}`);
+  // A "bounded-resync" (explicit until_date) stops short of `now` by design, so it must NOT
+  // move the watermark - the ongoing incremental schedule continues exactly as if this run
+  // never happened. Every other mode fetches through `now`, so advancing to `now` is correct.
+  if (mode === 'bounded-resync') {
+    console.log('[zenoti-sync] bounded resync - leaving the sync watermark untouched');
+  } else {
+    await writeLastSyncedAt(now.toISOString());
+    console.log(`[zenoti-sync] advanced sync watermark to ${now.toISOString()}`);
+  }
 }
 
 main().catch((err) => {
