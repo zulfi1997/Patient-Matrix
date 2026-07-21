@@ -179,7 +179,7 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
 
       <RetainedPatientsChart data={trend} />
 
-      <MonthlyPatientTable data={trend} />
+      <MonthlyPatientTable data={trend} records={records} patients={patients} />
 
       <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
         <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Category:</span>

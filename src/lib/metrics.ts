@@ -239,6 +239,56 @@ export function computeMonthlyTrend(
   return points;
 }
 
+export interface MonthPatientListEntry {
+  patientId: string;
+  patientName: string;
+  type: 'New' | 'Repeat';
+  firstVisitDate: string;
+  visitsThisMonth: number;
+  revenueThisMonth: number;
+}
+
+/** The individual patients behind one month's New/Repeat counts in computeMonthlyTrend, for a downloadable "who are they" list. */
+export function computeMonthPatientList(
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  monthISO: string,
+): MonthPatientListEntry[] {
+  const monthStart = new Date(`${monthISO}T00:00:00`);
+  const range: DateRange = {
+    start: toISODate(monthStart),
+    end: toISODate(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0)),
+  };
+  const monthRecords = records.filter((r) => isInRange(r.date, range));
+
+  const byPatient = new Map<string, { visits: Set<string>; revenue: number }>();
+  for (const r of monthRecords) {
+    let agg = byPatient.get(r.patientId);
+    if (!agg) {
+      agg = { visits: new Set(), revenue: 0 };
+      byPatient.set(r.patientId, agg);
+    }
+    agg.visits.add(r.date);
+    agg.revenue += r.amount;
+  }
+
+  const result: MonthPatientListEntry[] = [];
+  for (const [patientId, agg] of byPatient) {
+    const s = patients.get(patientId);
+    if (!s) continue;
+    result.push({
+      patientId,
+      patientName: s.patientName,
+      type: isInRange(s.firstVisit, range) ? 'New' : 'Repeat',
+      firstVisitDate: s.firstVisit,
+      visitsThisMonth: agg.visits.size,
+      revenueThisMonth: agg.revenue,
+    });
+  }
+
+  return result.sort((a, b) => (a.type !== b.type ? (a.type === 'New' ? -1 : 1) : b.revenueThisMonth - a.revenueThisMonth));
+}
+
 export interface ServiceStat {
   serviceKey: string;
   serviceName: string;
