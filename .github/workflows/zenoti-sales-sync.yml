@@ -19,6 +19,11 @@ on:
           - months
           - years
         default: days
+      dry_run:
+        description: 'Dry run: fetch a small sample from Zenoti and print it (raw + transformed), no OneDrive upload, no watermark change'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -39,7 +44,7 @@ jobs:
       - run: npm ci
       - run: node scripts/zenotiSync.mjs
         env:
-          ZENOTI_ACCESS_TOKEN: ${{ secrets.ZENOTI_ACCESS_TOKEN }}
+          ZENOTI_API_KEY: ${{ secrets.ZENOTI_API_KEY }}
           ZENOTI_CENTER_IDS: ${{ secrets.ZENOTI_CENTER_IDS }}
           ZENOTI_API_HOST: ${{ vars.ZENOTI_API_HOST }}
           GRAPH_TENANT_ID: ${{ secrets.GRAPH_TENANT_ID }}
@@ -48,9 +53,10 @@ jobs:
           ONEDRIVE_SHARED_FOLDER_URL: ${{ vars.ONEDRIVE_SHARED_FOLDER_URL }}
           SYNC_BACK_AMOUNT: ${{ inputs.sync_back_amount }}
           SYNC_BACK_UNIT: ${{ inputs.sync_back_unit }}
+          DRY_RUN: ${{ inputs.dry_run }}
       # Commits the updated "last synced" watermark back to the repo so the next scheduled
-      # run knows where to resume from. A manual backfill run doesn't touch this file (see
-      # scripts/zenotiSync.mjs), so there's nothing to commit on those runs.
+      # run knows where to resume from. A manual backfill or dry run doesn't touch this file
+      # (see scripts/zenotiSync.mjs), so there's nothing to commit on those runs.
       - run: |
           if ! git diff --quiet -- scripts/zenoti/sync-state.json; then
             git config user.name "github-actions[bot]"

@@ -19,26 +19,45 @@ function buildWorkbookBuffer(rows) {
 }
 
 async function main() {
-  const accessToken = requireEnv('ZENOTI_ACCESS_TOKEN');
+  const apiKey = requireEnv('ZENOTI_API_KEY');
   const centerIds = requireEnv('ZENOTI_CENTER_IDS').split(',').map((s) => s.trim()).filter(Boolean);
   const host = process.env.ZENOTI_API_HOST || undefined;
-  const itemType = process.env.ZENOTI_ITEM_TYPE || undefined;
-  const status = process.env.ZENOTI_STATUS || undefined;
 
-  const tenantId = requireEnv('GRAPH_TENANT_ID');
-  const clientId = requireEnv('GRAPH_CLIENT_ID');
-  const clientSecret = requireEnv('GRAPH_CLIENT_SECRET');
-  const sharedFolderUrl = requireEnv('ONEDRIVE_SHARED_FOLDER_URL');
+  const isDryRun = process.env.DRY_RUN === 'true';
+
+  // Uploading to OneDrive isn't needed for a dry run, so those credentials are only required
+  // for a real sync - lets someone verify the Zenoti side alone before setting up Graph access.
+  const tenantId = isDryRun ? process.env.GRAPH_TENANT_ID : requireEnv('GRAPH_TENANT_ID');
+  const clientId = isDryRun ? process.env.GRAPH_CLIENT_ID : requireEnv('GRAPH_CLIENT_ID');
+  const clientSecret = isDryRun ? process.env.GRAPH_CLIENT_SECRET : requireEnv('GRAPH_CLIENT_SECRET');
+  const sharedFolderUrl = isDryRun ? process.env.ONEDRIVE_SHARED_FOLDER_URL : requireEnv('ONEDRIVE_SHARED_FOLDER_URL');
 
   const syncBackAmount = process.env.SYNC_BACK_AMOUNT || null;
   const syncBackUnit = process.env.SYNC_BACK_UNIT || null;
 
   const now = new Date();
-  const { since, until, mode } = await resolveSyncWindow({ syncBackAmount, syncBackUnit, now });
-  console.log(`[zenoti-sync] mode=${mode} since=${since.toISOString()} until=${until.toISOString()} centers=${centerIds.join(',')}`);
+  const window = await resolveSyncWindow({ syncBackAmount, syncBackUnit, now });
+  let { since, until, mode } = window;
+  // A dry run is just for eyeballing field values, not a real pull - unless the caller
+  // explicitly asked for a specific backfill window, keep it small and fast by default rather
+  // than fetching whatever the normal incremental/initial-default window would be.
+  const DRY_RUN_DEFAULT_DAYS = 3;
+  if (isDryRun && mode !== 'manual-backfill') {
+    since = new Date(Math.max(since.getTime(), now.getTime() - DRY_RUN_DEFAULT_DAYS * 86_400_000));
+  }
+  console.log(`[zenoti-sync] mode=${mode} dryRun=${isDryRun} since=${since.toISOString()} until=${until.toISOString()} centers=${centerIds.join(',')}`);
 
-  const rawRows = await fetchAllSales({ host, accessToken, centerIds, since, until, itemType, status });
+  const rawRows = await fetchAllSales({ host, apiKey, centerIds, since, until });
   console.log(`[zenoti-sync] fetched ${rawRows.length} sale line(s) from Zenoti`);
+
+  if (isDryRun) {
+    const sample = rawRows.slice(0, 5);
+    console.log(`[zenoti-sync] DRY RUN - no upload, no watermark change. First ${sample.length} raw row(s):`);
+    console.log(JSON.stringify(sample, null, 2));
+    console.log(`[zenoti-sync] Same rows, transformed to the export column shape:`);
+    console.log(JSON.stringify(zenotiRowsToExportRows(sample), null, 2));
+    return;
+  }
 
   if (rawRows.length === 0) {
     console.log('[zenoti-sync] nothing to upload - skipping OneDrive upload, still advancing the sync watermark');

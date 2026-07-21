@@ -1,36 +1,23 @@
 /**
- * Maps one row of Zenoti's GET /v1/sales/salesreport response to the exact column names
- * src/lib/excelParser.ts expects from a manual Zenoti sales export - so the file this sync
- * produces is a drop-in replacement for a manually-exported spreadsheet, with zero changes
- * needed to the dashboard's import/parsing code.
+ * Maps one row of Zenoti's POST /v1/reports/sales/accrual_basis/flat_file response to the
+ * exact column names src/lib/excelParser.ts expects from a manual Zenoti sales export - so the
+ * file this sync produces is a drop-in replacement for a manually-exported spreadsheet, with
+ * zero changes needed to the dashboard's import/parsing code. Field mapping is based on
+ * Zenoti's published OpenAPI spec for this endpoint (2026-07-21), not guesswork - item_type,
+ * status, and discount_name all come through as real fields here, unlike the older
+ * /v1/sales/salesreport endpoint this was originally built against.
  *
- * Field mapping is based on a real sample response (2026-07-21). Two things are best-effort
- * and flagged for follow-up once real production data is visible:
- *   - ITEM_TYPE_MAP: only codes 0 (Service) and 2 (Product) are confirmed from the sample;
- *     Package/Membership/Gift card codes are a guess and will show as "Type <n>" if wrong,
- *     which is visible/inspectable rather than silently misclassified.
- *   - Discount Name and Invoice Status have no equivalent field in this API response, so
- *     they're synthesized (see below) rather than passed through.
+ * One thing still worth confirming against real production data (not just Zenoti's docs
+ * examples): whether `guest_code` is reliably populated with the same alphanumeric codes your
+ * manual exports use (e.g. "MUS5738"), so patient identity lines up across both sources. The
+ * fallback to guest_id below only kicks in when guest_code is blank.
  */
 
-const ITEM_TYPE_MAP = {
-  0: 'Service',
-  1: 'Package',
-  2: 'Product',
-  3: 'Membership',
-  4: 'Gift card',
-  5: 'Pre-paid card',
-};
-
-function mapItemType(code) {
-  return ITEM_TYPE_MAP[code] ?? `Type ${code}`;
-}
-
-/** guest_code is blank in some Zenoti setups - fall back to the always-present guest_id (a UUID) rather than an empty patient identifier. */
-function resolveGuestCode(guest) {
-  const code = (guest?.guest_code ?? '').trim();
+/** guest_code is sometimes blank - fall back to the always-present guest_id (a UUID) rather than an empty patient identifier. */
+function resolveGuestCode(row) {
+  const code = (row.guest_code ?? '').trim();
   if (code) return code;
-  return guest?.guest_id ?? '';
+  return row.guest_id ?? '';
 }
 
 function dateOnly(isoDateTime) {
@@ -39,36 +26,35 @@ function dateOnly(isoDateTime) {
 }
 
 export function zenotiRowToExportRow(row) {
-  const salesExcTax = (row.sale_price ?? 0) - (row.discount ?? 0);
-  const packageRedemption = row.package_redemption ?? 0;
-  const isPackageRedemption = packageRedemption > 0;
+  const redeemed = row.redeemed ?? 0;
+  const isRedemption = redeemed > 0;
+  // No dedicated "package name" field on this endpoint - the redeemed item's own name is the
+  // closest available label, reconstructed to match the manual export's "Payment Type starts
+  // with 'Package'" convention that excelParser.ts already relies on.
+  const paymentType = isRedemption ? `Package - ${row.item_name || 'Package'}` : row.payment_type || null;
 
   return {
     'Invoice No': row.invoice_no ?? '',
-    'Guest Code': resolveGuestCode(row.guest),
-    'Guest Name': row.guest?.guest_name ?? '',
-    'Sale Date': dateOnly(row.sold_on),
-    'Item Name': row.item?.name ?? '',
-    'Item Type': mapItemType(row.item?.type),
-    'Item Code': row.item?.code ?? '',
-    Qty: row.quantity ?? 1,
-    'Sales (Exc. Tax)': salesExcTax,
-    'Sales(Inc. Tax)': row.final_sale_price ?? salesExcTax,
-    Tax: row.total_tax ?? 0,
-    // Reconstructed to match the manual export's "Payment Type starts with 'Package'"
-    // convention (see excelParser.ts) - package_redemption/package are more precise
-    // structured fields than the manual export's payment-type text parsing.
-    'Payment Type': isPackageRedemption ? `Package - ${row.package || row.item?.name || 'Package'}` : (row.payment_type || null),
-    Redeemed: isPackageRedemption ? packageRedemption : 0,
+    'Guest Code': resolveGuestCode(row),
+    'Guest Name': row.guest_name ?? '',
+    'Sale Date': dateOnly(row.sale_date),
+    'Item Name': row.item_name ?? '',
+    'Item Type': row.item_type ?? '',
+    'Item Code': row.item_code ?? '',
+    'Item Subcategory': row.item_sub_category ?? '',
+    Qty: row.qty ?? 1,
+    'Sales (Exc. Tax)': row.sales_exc_tax ?? 0,
+    'Sales(Inc. Tax)': row.sales_inc_tax ?? row.sales_exc_tax ?? 0,
+    Tax: row.tax ?? 0,
+    'Payment Type': paymentType,
+    Redeemed: isRedemption ? redeemed : 0,
     Due: row.due ?? 0,
-    // No discount-reason field in this API response - amount still tracks correctly,
-    // just without the manual/campaign/price-adjusted categorization for these rows.
-    'Discount Name': row.promotion || null,
+    'Discount Name': row.discount_name || null,
     Discount: row.discount ?? 0,
-    // No invoice-status field in this response - approximated from the balance due.
-    'Invoice status': (row.due ?? 0) > 0 ? 'Open' : 'Closed',
-    'Sold By': row.employee?.name ?? '',
-    'Center Name': row.center?.center_name ?? '',
+    'Invoice status': row.status || 'Unknown',
+    'Sold By': row.sold_by ?? '',
+    'Center Name': row.center_name ?? '',
+    'Invoice Notes': row.invoice_notes || null,
   };
 }
 
