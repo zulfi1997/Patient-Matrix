@@ -194,8 +194,18 @@ export const KPI_REGISTRY: KpiDefinition[] = [
     isQuarterly: false,
     compute: (records, _patients, target, asOfISO) => {
       const range = monthRange(asOfISO);
-      const countPackageInvoices = (r: DateRange) =>
-        new Set(records.filter((rec) => isInRange(rec.date, r) && rec.itemType === 'Package').map((rec) => rec.invoiceNo)).size;
+      // A refund shows up as a negative Qty on a Package-type line - net qty per invoice
+      // rather than just checking "does this invoice have a Package line at all", so a
+      // dedicated refund invoice (net qty <= 0) and a sale later reversed on the same invoice
+      // both correctly drop out instead of still counting as a package sold.
+      const countPackageInvoices = (r: DateRange) => {
+        const netQtyByInvoice = new Map<string, number>();
+        for (const rec of records) {
+          if (!isInRange(rec.date, r) || rec.itemType !== 'Package') continue;
+          netQtyByInvoice.set(rec.invoiceNo, (netQtyByInvoice.get(rec.invoiceNo) ?? 0) + rec.qty);
+        }
+        return [...netQtyByInvoice.values()].filter((qty) => qty > 0).length;
+      };
       const actual = countPackageInvoices(range);
 
       const months = priorMonthKeys(records, range);
