@@ -47,7 +47,19 @@ async function fetchPage({ host, apiKey, body, page }) {
     body: JSON.stringify(body),
   });
 
-  const responseBody = await res.json();
+  // Not every failure comes back as JSON (e.g. a plain-text "Invalid account" body) - read as
+  // text first and try to parse, so a malformed/non-JSON error body surfaces its real message
+  // instead of an unrelated JSON.parse SyntaxError that hides what Zenoti actually said.
+  const rawText = await res.text();
+  let responseBody;
+  try {
+    responseBody = JSON.parse(rawText);
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Zenoti sales accrual report request failed (${res.status}): ${rawText.slice(0, 500)}`);
+    }
+    throw new Error(`Zenoti sales accrual report returned a non-JSON response (${res.status}): ${rawText.slice(0, 500)}`);
+  }
   // Errors show up two ways depending on the failure: a 400 with an `error: {code, message}`
   // wrapper (bad dates, range too long, ...), or a 400 with `{code, message}` at the top level
   // (unauthorized). Neither is a network failure, so both need checking explicitly.
