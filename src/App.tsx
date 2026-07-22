@@ -14,6 +14,7 @@ import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
 import { ProviderConversionDashboard } from './components/ProviderConversionDashboard';
 import { SegmentPnlDashboard } from './components/SegmentPnlDashboard';
 import { StaffScorecardsDashboard } from './components/StaffScorecardsDashboard';
+import { DepartmentAnalyticsDashboard } from './components/DepartmentAnalyticsDashboard';
 import { DataPage } from './components/DataPage';
 import { InfoTooltip } from './components/InfoTooltip';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
@@ -22,7 +23,7 @@ import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } fro
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
-type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'departments' | 'data';
 
 function App() {
   const {
@@ -156,6 +157,12 @@ function App() {
               Staff Scorecards
             </button>
             <button
+              onClick={() => setTab('departments')}
+              className={`px-4 py-1.5 ${tab === 'departments' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              Departments
+            </button>
+            <button
               onClick={() => setTab('data')}
               className={`px-4 py-1.5 ${tab === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
@@ -244,6 +251,15 @@ function App() {
             importOfferLetter={importOfferLetter}
             removeScorecard={removeScorecard}
             setManualKpiValue={setManualKpiValue}
+          />
+        ) : tab === 'departments' ? (
+          <DepartmentAnalyticsDashboard
+            records={analysisRecords}
+            patients={patients}
+            packageBenefits={packageBenefits}
+            serviceDepartmentRecords={serviceDepartmentRecords}
+            providerGroups={providerGroups}
+            providerAssignmentOverrides={providerAssignmentOverrides}
           />
         ) : (
           <DataPage
