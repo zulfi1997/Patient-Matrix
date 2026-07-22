@@ -132,6 +132,13 @@ export function DataPage({
 
   const knownServices = useMemo(() => {
     const map = new Map<string, KnownService>();
+    // Sold By/Invoice No are only meaningful to show when every sale of a service shares the
+    // same value - true by construction for a one-off custom package (exactly one sale), but
+    // not for a shared coded service sold to many patients on many invoices by many staff, where
+    // showing just one of many would be misleading.
+    const staffByKey = new Map<string, Set<string>>();
+    const invoiceByKey = new Map<string, Set<string>>();
+
     for (const r of records) {
       // Gift/prepaid cards aren't departmental services - each one is also individually numbered
       // (e.g. "GiftCard#:1411"), so including them would flood this list with one row per card
@@ -140,7 +147,21 @@ export function DataPage({
       // redeeming it against a real service/product/package is, and that's what gets mapped.
       if (ANALYSIS_EXCLUDED_TYPES.includes(r.itemType)) continue;
       const mapKey = serviceMapKey(r.serviceKey, r.serviceName);
-      if (!map.has(mapKey)) map.set(mapKey, { serviceKey: mapKey, serviceName: r.serviceName, itemType: r.itemType });
+      if (!map.has(mapKey)) {
+        map.set(mapKey, { serviceKey: mapKey, serviceName: r.serviceName, itemType: r.itemType, category: r.subcategory || undefined });
+        staffByKey.set(mapKey, new Set());
+        invoiceByKey.set(mapKey, new Set());
+      } else if (!map.get(mapKey)!.category && r.subcategory) {
+        map.get(mapKey)!.category = r.subcategory;
+      }
+      if (r.staff) staffByKey.get(mapKey)!.add(r.staff);
+      invoiceByKey.get(mapKey)!.add(r.invoiceNo);
+    }
+    for (const [mapKey, service] of map) {
+      const staffSet = staffByKey.get(mapKey)!;
+      const invoiceSet = invoiceByKey.get(mapKey)!;
+      if (staffSet.size === 1) service.soldBy = [...staffSet][0];
+      if (invoiceSet.size === 1) service.invoiceNo = [...invoiceSet][0];
     }
     // A benefit that's only ever redeemed inside a package (never sold as its own standalone
     // line) has no SaleRecord of its own, so the loop above never sees it - without adding it

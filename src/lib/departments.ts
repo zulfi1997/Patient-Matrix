@@ -9,6 +9,12 @@ export interface KnownService {
   serviceKey: string;
   serviceName: string;
   itemType: string;
+  /** First non-empty subcategory seen for this service, if any. */
+  category?: string;
+  /** Only set when every sale of this service shares the same staff - a one-off custom package always will, a shared coded service usually won't. */
+  soldBy?: string;
+  /** Only set when every sale of this service shares the same invoice number - same reasoning as soldBy. */
+  invoiceNo?: string;
 }
 
 /** One persisted service -> department assignment. */

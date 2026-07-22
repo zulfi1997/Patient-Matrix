@@ -87,11 +87,17 @@ export async function parseDepartmentMappingWorkbook(
   return { records, warnings };
 }
 
-/** Builds a downloadable CSV of the current mapping - every known service gets a row (Department blank if unassigned), so it round-trips through Excel and back in. */
+/**
+ * Builds a downloadable CSV of the current mapping - every known service gets a row (Department
+ * blank if unassigned), so it round-trips through Excel and back in. Category/Sold By/Invoice No
+ * are included purely as context for whoever's editing in Excel (most useful for a one-off custom
+ * package, where they're specific rather than "many") - only Service Key/Name/Department are read
+ * back on import.
+ */
 export function buildDepartmentMappingCsv(knownServices: KnownService[], mapping: Record<string, string>): string {
-  const header = ['Service Key', 'Service Name', 'Department'];
+  const header = ['Service Key', 'Service Name', 'Type', 'Category', 'Sold By', 'Invoice No', 'Department'];
   const lines = knownServices
-    .map((s) => [s.serviceKey, s.serviceName, mapping[s.serviceKey] ?? ''])
+    .map((s) => [s.serviceKey, s.serviceName, s.itemType, s.category ?? '', s.soldBy ?? '', s.invoiceNo ?? '', mapping[s.serviceKey] ?? ''])
     .map((cols) => cols.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
   return [header.join(','), ...lines].join('\n');
 }

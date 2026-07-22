@@ -4,6 +4,7 @@ import { DEPARTMENTS, type Department, type DepartmentMappingBatch, type KnownSe
 import { DepartmentMappingSchemaError, type DepartmentMappingImportResult } from '../hooks/useServiceDepartments';
 import { buildDepartmentMappingCsv } from '../lib/departmentMappingParser';
 import { suggestPackageDepartments } from '../lib/packageDepartmentSuggestion';
+import { InfoTooltip } from './InfoTooltip';
 import { formatNumber } from '../lib/format';
 
 function downloadCsv(csv: string, fileName: string) {
@@ -363,6 +364,15 @@ export function ServiceDepartmentEditor({
                     ))}
                   </select>
                 </th>
+                <th className="py-1.5 pr-2 align-bottom">Category</th>
+                <th className="py-1.5 pr-2 align-bottom">
+                  Sold By
+                  <InfoTooltip text="Only shown when every sale of this service was by the same staff member - always true for a one-off custom package, rarely true for a shared service sold by many providers." />
+                </th>
+                <th className="py-1.5 pr-2 align-bottom">
+                  Invoice No
+                  <InfoTooltip text="Only shown when every sale of this service is on the same invoice - always true for a one-off custom package." />
+                </th>
                 <th className="py-1.5 pr-3 align-bottom">
                   <div className="mb-1">Department</div>
                   <select
@@ -384,7 +394,7 @@ export function ServiceDepartmentEditor({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-3 text-center text-xs text-zinc-500">
+                  <td colSpan={7} className="py-3 text-center text-xs text-zinc-500">
                     No services match the current filters.
                   </td>
                 </tr>
@@ -404,6 +414,9 @@ export function ServiceDepartmentEditor({
                       </td>
                       <td className="py-1.5 pr-2">{s.serviceName}</td>
                       <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{s.itemType}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{s.category || '—'}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{s.soldBy || '—'}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{s.invoiceNo || '—'}</td>
                       <td className="py-1.5 pr-3">
                         <select
                           value={mapping[s.serviceKey] ?? ''}
