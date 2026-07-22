@@ -78,6 +78,17 @@ export function ServiceDepartmentEditor({
     (s) => s.suggestedDepartment && !mapping[s.serviceKey],
   );
 
+  // When focused on Unassigned, surface the truly-stuck rows (no suggestion at all) before the
+  // ones that already have a green "Suggested" or amber "Mixed" hint to act on.
+  const displayed = useMemo(() => {
+    if (departmentFilter !== 'Unassigned') return filtered;
+    const hasHint = (s: KnownService) => {
+      const suggestion = packageSuggestions.get(s.serviceKey);
+      return !!suggestion && (!!suggestion.suggestedDepartment || suggestion.departmentsFound.length > 1);
+    };
+    return [...filtered].sort((a, b) => Number(hasHint(a)) - Number(hasHint(b)));
+  }, [filtered, departmentFilter, packageSuggestions]);
+
   const applyAllConfidentSuggestions = async () => {
     await Promise.all(
       confidentSuggestions.map((s) => {
@@ -392,14 +403,14 @@ export function ServiceDepartmentEditor({
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {displayed.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-3 text-center text-xs text-zinc-500">
                     No services match the current filters.
                   </td>
                 </tr>
               ) : (
-                filtered.map((s) => {
+                displayed.map((s) => {
                   const suggestion = packageSuggestions.get(s.serviceKey);
                   const isUnassigned = !mapping[s.serviceKey];
                   return (
