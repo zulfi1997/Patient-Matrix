@@ -1,5 +1,5 @@
 import type { PackageBenefitRecord, SaleRecord } from '../types';
-import type { Department, KnownService, ServiceDepartmentMap } from './departments';
+import { serviceMapKey, type Department, type KnownService, type ServiceDepartmentMap } from './departments';
 
 export interface PackageDepartmentSuggestion {
   serviceKey: string;
@@ -23,9 +23,11 @@ export interface PackageDepartmentSuggestion {
  * job for the analysis itself, not this mapping step.
  *
  * Two ways a package's benefits get found, combined for maximum coverage:
- *  1. By invoice number (primary, exact) - every sales line for this package's serviceKey has an
- *     invoiceNo; Package Benefits rows sharing that invoiceNo are its actual purchased benefits,
- *     with no dependency on the package's name matching between the two exports.
+ *  1. By invoice number (primary, exact) - every sales line for this package's map key (see
+ *     serviceMapKey - per-instance for custom/uncoded packages, not the shared "type:Package"
+ *     bucket) has an invoiceNo; Package Benefits rows sharing that invoiceNo are its actual
+ *     purchased benefits, with no dependency on the package's name matching between the two
+ *     exports.
  *  2. By package name (fallback) - Package Benefits Detail is a point-in-time balance snapshot, so
  *     a long-since-expired/fully-consumed package purchase may not appear in any recent snapshot by
  *     invoice even though the same-named package is still sold and tracked for other guests -
@@ -58,8 +60,9 @@ export function suggestPackageDepartments(
   const invoicesByServiceKey = new Map<string, Set<string>>();
   for (const r of records) {
     if (r.itemType !== 'Package') continue;
-    if (!invoicesByServiceKey.has(r.serviceKey)) invoicesByServiceKey.set(r.serviceKey, new Set());
-    invoicesByServiceKey.get(r.serviceKey)!.add(r.invoiceNo);
+    const mapKey = serviceMapKey(r.serviceKey, r.serviceName);
+    if (!invoicesByServiceKey.has(mapKey)) invoicesByServiceKey.set(mapKey, new Set());
+    invoicesByServiceKey.get(mapKey)!.add(r.invoiceNo);
   }
 
   const suggestions: PackageDepartmentSuggestion[] = [];

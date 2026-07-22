@@ -6,6 +6,7 @@ import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from '../lib/segmentAllocation';
 import type { DepartmentMappingBatch, KnownService, ServiceDepartmentRecord } from '../lib/departments';
+import { serviceMapKey } from '../lib/departments';
 import type { DepartmentMappingImportResult } from '../hooks/useServiceDepartments';
 import type { AccountInfo } from '@azure/msal-browser';
 import { ImportSchemaError } from '../lib/excelParser';
@@ -138,7 +139,8 @@ export function DataPage({
       // analysis elsewhere (ANALYSIS_EXCLUDED_TYPES) - buying a card itself isn't revenue; only
       // redeeming it against a real service/product/package is, and that's what gets mapped.
       if (ANALYSIS_EXCLUDED_TYPES.includes(r.itemType)) continue;
-      if (!map.has(r.serviceKey)) map.set(r.serviceKey, { serviceKey: r.serviceKey, serviceName: r.serviceName, itemType: r.itemType });
+      const mapKey = serviceMapKey(r.serviceKey, r.serviceName);
+      if (!map.has(mapKey)) map.set(mapKey, { serviceKey: mapKey, serviceName: r.serviceName, itemType: r.itemType });
     }
     return [...map.values()].sort((a, b) => a.serviceName.localeCompare(b.serviceName));
   }, [records]);
