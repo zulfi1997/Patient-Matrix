@@ -109,14 +109,21 @@ export function ServiceDepartmentEditor({
 
   const handleFiles = useCallback(
     async (files: File[]) => {
-      const file = files[0];
-      if (!file) return;
+      if (files.length === 0) return;
+      // The mapping is one wholesale-replaced file, not an accumulating history - if more than
+      // one shows up (e.g. a "Pull from OneDrive" against a folder that's collected several
+      // exports over time), use whichever was actually modified most recently rather than just
+      // the first one returned, since that order isn't guaranteed to be newest-first.
+      const file = [...files].sort((a, b) => b.lastModified - a.lastModified)[0];
       setBusy(true);
       setError(null);
       setImportResult(null);
       try {
         const result = await importFile(file, services);
-        setImportResult(result);
+        setImportResult({
+          ...result,
+          warnings: files.length > 1 ? [`${files.length} files found - used the most recently modified: "${file.name}".`, ...result.warnings] : result.warnings,
+        });
       } catch (e) {
         setError(e instanceof DepartmentMappingSchemaError || e instanceof Error ? e.message : `Failed to read "${file.name}".`);
       } finally {
@@ -146,7 +153,10 @@ export function ServiceDepartmentEditor({
 
   const exportMapping = () => {
     const csv = buildDepartmentMappingCsv(services, mapping);
-    downloadCsv(csv, `department-mapping-${new Date().toISOString().slice(0, 10)}.csv`);
+    // Deliberately no date/timestamp in the name - this is meant to overwrite the same file in
+    // the shared OneDrive folder each time, not accumulate a new dated copy per export (which
+    // would leave "Pull from OneDrive" guessing which of several files is actually current).
+    downloadCsv(csv, 'department-mapping.csv');
   };
 
   return (

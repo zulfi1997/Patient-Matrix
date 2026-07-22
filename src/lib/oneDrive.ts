@@ -111,6 +111,7 @@ interface GraphDriveItem {
   folder?: unknown;
   file?: unknown;
   parentReference?: { driveId?: string };
+  lastModifiedDateTime?: string;
 }
 
 interface DriveItemRef {
@@ -155,19 +156,24 @@ async function findSubfolder(root: DriveItemRef, name: string, token: string): P
   return { driveId: root.driveId, itemId: match.id };
 }
 
-async function downloadFile(ref: DriveItemRef, name: string, token: string): Promise<File> {
+async function downloadFile(ref: DriveItemRef, name: string, token: string, lastModifiedDateTime?: string): Promise<File> {
   const res = await fetch(`https://graph.microsoft.com/v1.0/drives/${ref.driveId}/items/${ref.itemId}/content`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to download "${name}" from OneDrive (${res.status}).`);
   const blob = await res.blob();
-  return new File([blob], name);
+  // Without this, every pulled File defaults to "downloaded just now" instead of carrying
+  // OneDrive's real modification time - which matters for callers that need to tell which of
+  // several same-folder files is actually the newest (e.g. picking the current mapping export
+  // out of a folder that's accumulated more than one over time).
+  const lastModified = lastModifiedDateTime ? new Date(lastModifiedDateTime).getTime() : undefined;
+  return new File([blob], name, lastModified != null ? { lastModified } : undefined);
 }
 
 /**
  * Every Excel/CSV file currently inside the named subfolder of the shared OneDrive root,
  * downloaded as File objects - ready to feed through the same import functions used for a
- * manual multi-file upload.
+ * manual multi-file upload. Each File's lastModified reflects OneDrive's own modification time.
  */
 export async function pullFilesFromOneDrive(subfolderName: string): Promise<File[]> {
   const token = await getAccessToken();
@@ -175,5 +181,5 @@ export async function pullFilesFromOneDrive(subfolderName: string): Promise<File
   const subfolder = await findSubfolder(root, subfolderName, token);
   const children = await listChildren(subfolder, token);
   const files = children.filter((c) => !!c.file && /\.(xlsx|xls|csv)$/i.test(c.name));
-  return Promise.all(files.map((f) => downloadFile({ driveId: subfolder.driveId, itemId: f.id }, f.name, token)));
+  return Promise.all(files.map((f) => downloadFile({ driveId: subfolder.driveId, itemId: f.id }, f.name, token, f.lastModifiedDateTime)));
 }
