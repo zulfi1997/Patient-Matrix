@@ -38,7 +38,9 @@ export function ServiceDepartmentEditor({
   /** Present only when signed in to OneDrive - pulls every file from the configured "Department Mapping" subfolder. */
   onPullFromOneDrive?: () => Promise<File[]>;
 }) {
-  const [filter, setFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('All');
+  const [departmentFilter, setDepartmentFilter] = useState('All');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDepartment, setBulkDepartment] = useState<Department>(DEPARTMENTS[0]);
   const [dragOver, setDragOver] = useState(false);
@@ -49,11 +51,19 @@ export function ServiceDepartmentEditor({
 
   const mapping = useMemo(() => Object.fromEntries(records.map((r) => [r.serviceKey, r.department])), [records]);
 
+  const itemTypes = useMemo(() => [...new Set(services.map((s) => s.itemType))].sort(), [services]);
+
   const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return services;
-    return services.filter((s) => s.serviceName.toLowerCase().includes(q) || s.itemType.toLowerCase().includes(q));
-  }, [services, filter]);
+    const q = serviceFilter.trim().toLowerCase();
+    return services.filter((s) => {
+      if (q && !s.serviceName.toLowerCase().includes(q)) return false;
+      if (typeFilter !== 'All' && s.itemType !== typeFilter) return false;
+      const department = mapping[s.serviceKey];
+      if (departmentFilter === 'Unassigned' && department) return false;
+      if (departmentFilter !== 'All' && departmentFilter !== 'Unassigned' && department !== departmentFilter) return false;
+      return true;
+    });
+  }, [services, serviceFilter, typeFilter, departmentFilter, mapping]);
 
   const mappedCount = services.filter((s) => mapping[s.serviceKey]).length;
 
@@ -243,15 +253,21 @@ export function ServiceDepartmentEditor({
       )}
 
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter services…"
-          className="w-56 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        />
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           {formatNumber(mappedCount)} of {formatNumber(services.length)} mapped
         </span>
+        {(serviceFilter || typeFilter !== 'All' || departmentFilter !== 'All') && (
+          <button
+            onClick={() => {
+              setServiceFilter('');
+              setTypeFilter('All');
+              setDepartmentFilter('All');
+            }}
+            className="text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       {confidentSuggestions.length > 0 && (
@@ -305,7 +321,7 @@ export function ServiceDepartmentEditor({
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
               <tr>
-                <th className="w-8 py-1.5 pl-3">
+                <th className="w-8 py-1.5 pl-3 align-bottom">
                   <input
                     type="checkbox"
                     checked={filtered.length > 0 && filtered.every((s) => selected.has(s.serviceKey))}
@@ -313,16 +329,53 @@ export function ServiceDepartmentEditor({
                     className="rounded border-zinc-300 dark:border-zinc-700"
                   />
                 </th>
-                <th className="py-1.5 pr-2">Service</th>
-                <th className="py-1.5 pr-2">Type</th>
-                <th className="py-1.5 pr-3">Department</th>
+                <th className="py-1.5 pr-2 align-bottom">
+                  <div className="mb-1">Service</div>
+                  <input
+                    value={serviceFilter}
+                    onChange={(e) => setServiceFilter(e.target.value)}
+                    placeholder="Filter…"
+                    className="w-full max-w-40 rounded-lg border border-zinc-300 px-2 py-1 text-xs font-normal normal-case text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  />
+                </th>
+                <th className="py-1.5 pr-2 align-bottom">
+                  <div className="mb-1">Type</div>
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="w-full max-w-32 rounded-lg border border-zinc-300 px-2 py-1 text-xs font-normal normal-case text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  >
+                    <option value="All">All</option>
+                    {itemTypes.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th className="py-1.5 pr-3 align-bottom">
+                  <div className="mb-1">Department</div>
+                  <select
+                    value={departmentFilter}
+                    onChange={(e) => setDepartmentFilter(e.target.value)}
+                    className="w-full max-w-36 rounded-lg border border-zinc-300 px-2 py-1 text-xs font-normal normal-case text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  >
+                    <option value="All">All</option>
+                    <option value="Unassigned">Unassigned</option>
+                    {DEPARTMENTS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-3 text-center text-xs text-zinc-500">
-                    No services match "{filter}".
+                    No services match the current filters.
                   </td>
                 </tr>
               ) : (
