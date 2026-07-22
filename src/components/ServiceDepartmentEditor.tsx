@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import type { PackageBenefitRecord } from '../types';
 import { DEPARTMENTS, type Department, type DepartmentMappingBatch, type KnownService, type ServiceDepartmentRecord } from '../lib/departments';
 import { DepartmentMappingSchemaError, type DepartmentMappingImportResult } from '../hooks/useServiceDepartments';
 import { buildDepartmentMappingCsv } from '../lib/departmentMappingParser';
+import { suggestPackageDepartments } from '../lib/packageDepartmentSuggestion';
 import { formatNumber } from '../lib/format';
 
 function downloadCsv(csv: string, fileName: string) {
@@ -18,6 +20,7 @@ export function ServiceDepartmentEditor({
   services,
   records,
   batch,
+  packageBenefits,
   setDepartment,
   importFile,
   onPullFromOneDrive,
@@ -25,6 +28,8 @@ export function ServiceDepartmentEditor({
   services: KnownService[];
   records: ServiceDepartmentRecord[];
   batch: DepartmentMappingBatch | null;
+  /** Package Benefits Detail data, used to suggest a package's department from the services it bundles. */
+  packageBenefits: PackageBenefitRecord[];
   setDepartment: (serviceKey: string, serviceName: string, department: Department | null) => Promise<void>;
   importFile: (file: File, knownServices: KnownService[]) => Promise<DepartmentMappingImportResult>;
   /** Present only when signed in to OneDrive - pulls every file from the configured "Department Mapping" subfolder. */
@@ -48,6 +53,25 @@ export function ServiceDepartmentEditor({
   }, [services, filter]);
 
   const mappedCount = services.filter((s) => mapping[s.serviceKey]).length;
+
+  const packageSuggestions = useMemo(() => {
+    const packages = services.filter((s) => s.itemType === 'Package');
+    const suggestions = suggestPackageDepartments(packages, packageBenefits, mapping, services);
+    return new Map(suggestions.map((s) => [s.serviceKey, s]));
+  }, [services, packageBenefits, mapping]);
+
+  const confidentSuggestions = [...packageSuggestions.values()].filter(
+    (s) => s.suggestedDepartment && !mapping[s.serviceKey],
+  );
+
+  const applyAllConfidentSuggestions = async () => {
+    await Promise.all(
+      confidentSuggestions.map((s) => {
+        const service = services.find((x) => x.serviceKey === s.serviceKey)!;
+        return setDepartment(s.serviceKey, service.serviceName, s.suggestedDepartment!);
+      }),
+    );
+  };
 
   const toggleSelected = (serviceKey: string) => {
     setSelected((prev) => {
@@ -117,8 +141,12 @@ export function ServiceDepartmentEditor({
       <h4 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Service → Department Mapping</h4>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
         Every distinct service/product/package found in your uploaded sales data, listed once. Assign each to the
-        department that performs or sells it (e.g. "Laser Hair Removal - Beard" → Laser). This mapping is what the
-        department-wise analysis will be built on - a line item with no department assigned won't be counted in it.
+        department that performs or sells it (e.g. "Laser Hair Removal - Beard" → Laser) - use "General" for things
+        that aren't department-specific (e.g. a registration fee). This mapping is what the department-wise analysis
+        will be built on - a line item with no department assigned won't be counted in it. Packages are cross-checked
+        against your uploaded Package Benefits data: if a package's underlying services (e.g. a "VIP Package"
+        redeeming Laser sessions) are already mapped and all agree on one department, it's suggested here
+        automatically instead of you having to guess.
       </p>
 
       <div
@@ -221,6 +249,21 @@ export function ServiceDepartmentEditor({
         </span>
       </div>
 
+      {confidentSuggestions.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm dark:bg-emerald-950/30">
+          <span className="text-zinc-700 dark:text-zinc-200">
+            {formatNumber(confidentSuggestions.length)} package{confidentSuggestions.length === 1 ? '' : 's'} can be
+            auto-mapped from their Package Benefits composition
+          </span>
+          <button
+            onClick={applyAllConfidentSuggestions}
+            className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+          >
+            Apply suggestions
+          </button>
+        </div>
+      )}
+
       {selected.size > 0 && (
         <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm dark:bg-indigo-950/30">
           <span className="text-zinc-700 dark:text-zinc-200">{formatNumber(selected.size)} selected</span>
@@ -278,34 +321,58 @@ export function ServiceDepartmentEditor({
                   </td>
                 </tr>
               ) : (
-                filtered.map((s) => (
-                  <tr key={s.serviceKey} className="border-t border-zinc-100 dark:border-zinc-800">
-                    <td className="py-1.5 pl-3">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(s.serviceKey)}
-                        onChange={() => toggleSelected(s.serviceKey)}
-                        className="rounded border-zinc-300 dark:border-zinc-700"
-                      />
-                    </td>
-                    <td className="py-1.5 pr-2">{s.serviceName}</td>
-                    <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{s.itemType}</td>
-                    <td className="py-1.5 pr-3">
-                      <select
-                        value={mapping[s.serviceKey] ?? ''}
-                        onChange={(e) => setDepartment(s.serviceKey, s.serviceName, (e.target.value as Department) || null)}
-                        className="rounded-lg border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                      >
-                        <option value="">— Unassigned —</option>
-                        {DEPARTMENTS.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))
+                filtered.map((s) => {
+                  const suggestion = packageSuggestions.get(s.serviceKey);
+                  const isUnassigned = !mapping[s.serviceKey];
+                  return (
+                    <tr key={s.serviceKey} className="border-t border-zinc-100 dark:border-zinc-800">
+                      <td className="py-1.5 pl-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(s.serviceKey)}
+                          onChange={() => toggleSelected(s.serviceKey)}
+                          className="rounded border-zinc-300 dark:border-zinc-700"
+                        />
+                      </td>
+                      <td className="py-1.5 pr-2">{s.serviceName}</td>
+                      <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{s.itemType}</td>
+                      <td className="py-1.5 pr-3">
+                        <select
+                          value={mapping[s.serviceKey] ?? ''}
+                          onChange={(e) => setDepartment(s.serviceKey, s.serviceName, (e.target.value as Department) || null)}
+                          className="rounded-lg border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                        >
+                          <option value="">— Unassigned —</option>
+                          {DEPARTMENTS.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                        {isUnassigned && suggestion && suggestion.suggestedDepartment && (
+                          <div className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+                            Suggested: {suggestion.suggestedDepartment} (from {formatNumber(suggestion.benefitNames.length)} benefit
+                            {suggestion.benefitNames.length === 1 ? '' : 's'}){' '}
+                            <button
+                              onClick={() => setDepartment(s.serviceKey, s.serviceName, suggestion.suggestedDepartment!)}
+                              className="font-medium underline hover:no-underline"
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        )}
+                        {isUnassigned && suggestion && !suggestion.suggestedDepartment && suggestion.departmentsFound.length > 1 && (
+                          <div
+                            className="mt-1 text-xs text-amber-600 dark:text-amber-400"
+                            title={`Benefits: ${suggestion.benefitNames.join(', ')}`}
+                          >
+                            Mixed: {suggestion.departmentsFound.join(', ')} - needs manual review
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

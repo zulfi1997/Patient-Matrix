@@ -253,6 +253,7 @@ function App() {
             removeBatch={removeBatch}
             clearAllData={clearAllData}
             removeTransactionsByIds={removeTransactionsByIds}
+            packageBenefits={packageBenefits}
             packageBenefitBatches={packageBenefitBatches}
             importPackageBenefitFile={importPackageBenefitFile}
             removePackageBenefitSnapshot={removePackageBenefitSnapshot}

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ImportBatch, PackageBenefitBatch, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
+import type { ImportBatch, PackageBenefitBatch, PackageBenefitRecord, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { PnlImportResult } from '../hooks/usePnl';
@@ -9,6 +9,7 @@ import type { DepartmentMappingBatch, KnownService, ServiceDepartmentRecord } fr
 import type { DepartmentMappingImportResult } from '../hooks/useServiceDepartments';
 import type { AccountInfo } from '@azure/msal-browser';
 import { ImportSchemaError } from '../lib/excelParser';
+import { ANALYSIS_EXCLUDED_TYPES } from '../lib/filters';
 import { formatDate, formatNumber } from '../lib/format';
 import { ONEDRIVE_SUBFOLDERS } from '../lib/oneDriveConfig';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
@@ -27,6 +28,7 @@ interface DataPageProps {
   removeBatch: (id: string) => Promise<void>;
   clearAllData: () => Promise<void>;
   removeTransactionsByIds: (ids: string[]) => Promise<void>;
+  packageBenefits: PackageBenefitRecord[];
   packageBenefitBatches: PackageBenefitBatch[];
   importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
@@ -92,6 +94,7 @@ export function DataPage({
   removeBatch,
   clearAllData,
   removeTransactionsByIds,
+  packageBenefits,
   packageBenefitBatches,
   importPackageBenefitFile,
   removePackageBenefitSnapshot,
@@ -129,6 +132,12 @@ export function DataPage({
   const knownServices = useMemo(() => {
     const map = new Map<string, KnownService>();
     for (const r of records) {
+      // Gift/prepaid cards aren't departmental services - each one is also individually numbered
+      // (e.g. "GiftCard#:1411"), so including them would flood this list with one row per card
+      // sold instead of a shared category. Same exclusion already used for patient/service
+      // analysis elsewhere (ANALYSIS_EXCLUDED_TYPES) - buying a card itself isn't revenue; only
+      // redeeming it against a real service/product/package is, and that's what gets mapped.
+      if (ANALYSIS_EXCLUDED_TYPES.includes(r.itemType)) continue;
       if (!map.has(r.serviceKey)) map.set(r.serviceKey, { serviceKey: r.serviceKey, serviceName: r.serviceName, itemType: r.itemType });
     }
     return [...map.values()].sort((a, b) => a.serviceName.localeCompare(b.serviceName));
@@ -437,6 +446,7 @@ export function DataPage({
             services={knownServices}
             records={serviceDepartmentRecords}
             batch={departmentMappingBatch}
+            packageBenefits={packageBenefits}
             setDepartment={setServiceDepartment}
             importFile={importDepartmentMappingFile}
             onPullFromOneDrive={oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.departmentMapping) : undefined}
