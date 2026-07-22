@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { PackageBenefitRecord, SaleRecord } from '../types';
 import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversionMetrics';
 import { previousPeriod, type DateRange, type PatientVisitSummary } from '../lib/metrics';
@@ -121,7 +120,8 @@ export function DepartmentAnalyticsDashboard({
 
   const providerRowsByDept = useMemo(() => groupByDepartment(providerRows), [providerRows]);
   const redemptionRowsByDept = useMemo(() => groupByDepartment(redemptionRows), [redemptionRows]);
-  const monthlyRowsByDept = useMemo(() => groupByDepartment(monthlyRows), [monthlyRows]);
+  const monthlyByKey = useMemo(() => new Map(monthlyRows.map((r) => [`${r.month}|${r.department}`, r])), [monthlyRows]);
+  const monthlyMonths = useMemo(() => [...new Set(monthlyRows.map((r) => r.month))].sort(), [monthlyRows]);
 
   const totalRevenue = revenueRows.reduce((s, r) => s + r.revenue, 0);
   const unmappedRevenue = revenueRows.find((r) => r.department === UNMAPPED)?.revenue ?? 0;
@@ -399,7 +399,7 @@ export function DepartmentAnalyticsDashboard({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1">
             <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Patient Activity by Month</h3>
-            <InfoTooltip text="Trailing 12 months from the latest data, independent of the period filter above - the same window the main Dashboard's monthly trend uses. New = first-ever visit that month. Returning = active this month with an earlier visit on record." />
+            <InfoTooltip text="Trailing 12 months from the latest data, independent of the period filter above - the same window the main Dashboard's monthly trend uses. Each department's cell reads New / Returning / Active. New = first-ever visit that month. Returning = active this month with an earlier visit on record." />
           </div>
           <button
             onClick={() => downloadCsv(buildDepartmentMonthlyActivityCsv(monthlyRows), `department-monthly-patient-activity-${asOfISO}.csv`)}
@@ -411,50 +411,39 @@ export function DepartmentAnalyticsDashboard({
         {visibleMonthlyDepartments.length === 0 ? (
           <p className="py-6 text-center text-sm text-zinc-500">No patient activity in this window.</p>
         ) : (
-          visibleMonthlyDepartments.map((dept) => {
-            const rows = [...(monthlyRowsByDept.get(dept) ?? [])].sort((a, b) => a.month.localeCompare(b.month));
-            const chartData = rows.map((r) => ({ ...r, label: formatMonthLabel(r.month) }));
-            return (
-              <div key={dept} className="mb-6 last:mb-0">
-                <h4 className={`mb-2 text-xs font-semibold uppercase tracking-wide ${dept === UNMAPPED ? 'text-rose-500' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                  {dept}
-                </h4>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={chartData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-200 dark:stroke-zinc-800" />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <Tooltip formatter={(value) => formatNumber(Number(value))} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="newPatients" name="New" stackId="p" fill="#6366f1" />
-                    <Bar dataKey="returningPatients" name="Returning" stackId="p" fill="#a5b4fc" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="mt-2 max-h-56 overflow-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-400 dark:bg-zinc-900">
-                      <tr>
-                        <th className="py-1 pr-2">Month</th>
-                        <th className="py-1 pr-2 text-right">New</th>
-                        <th className="py-1 pr-2 text-right">Returning</th>
-                        <th className="py-1 pr-2 text-right">Active</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => (
-                        <tr key={r.month} className="border-t border-zinc-100 dark:border-zinc-800">
-                          <td className="py-1 pr-2 font-medium">{formatMonthLabel(r.month)}</td>
-                          <td className="py-1 pr-2 text-right text-emerald-600 dark:text-emerald-400">{formatNumber(r.newPatients)}</td>
-                          <td className="py-1 pr-2 text-right">{formatNumber(r.returningPatients)}</td>
-                          <td className="py-1 pr-2 text-right font-medium">{formatNumber(r.activePatients)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                <tr>
+                  <th className="py-1.5 pr-2">Month</th>
+                  {visibleMonthlyDepartments.map((dept) => (
+                    <th key={dept} className={`py-1.5 pr-2 text-right ${dept === UNMAPPED ? 'text-rose-500' : ''}`}>
+                      {dept}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyMonths.map((month) => (
+                  <tr key={month} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <td className="py-1.5 pr-2 font-medium">{formatMonthLabel(month)}</td>
+                    {visibleMonthlyDepartments.map((dept) => {
+                      const row = monthlyByKey.get(`${month}|${dept}`);
+                      return (
+                        <td key={dept} className="py-1.5 pr-2 text-right whitespace-nowrap">
+                          <span className="text-emerald-600 dark:text-emerald-400">{formatNumber(row?.newPatients ?? 0)}</span>
+                          <span className="text-zinc-400"> / </span>
+                          {formatNumber(row?.returningPatients ?? 0)}
+                          <span className="text-zinc-400"> / </span>
+                          <span className="font-medium">{formatNumber(row?.activePatients ?? 0)}</span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
