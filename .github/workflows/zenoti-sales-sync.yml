@@ -2,9 +2,11 @@ name: Zenoti Sales Sync
 
 on:
   schedule:
-    # Daily at 12:00pm Oman time (UTC+4, no DST) - pulls everything since the last successful
-    # run, which in practice means "yesterday's sales, pulled the following day at noon."
-    - cron: '0 8 * * *'
+    # ~12:05pm Oman time (UTC+4, no DST) - pulls everything since the last successful run, which
+    # in practice means "yesterday's sales, pulled the following day around noon." Off the exact
+    # hour on purpose - GitHub documents that on-the-hour schedules (like the original '0 8 * * *')
+    # are a high-load slot across all of GitHub Actions and are more likely to be delayed.
+    - cron: '5 8 * * *'
   workflow_dispatch:
     inputs:
       since_date:
@@ -68,8 +70,12 @@ jobs:
       # Commits the updated "last synced" watermark back to the repo so the next scheduled run
       # knows where to resume from. A dry run or a bounded resync (until_date set) doesn't touch
       # this file (see scripts/zenotiSync.mjs) - every other successful run advances it.
+      #
+      # `git diff` only compares already-tracked files, so it silently reports "no change" the
+      # very first time this file is created (it's untracked, not modified) - `git status
+      # --porcelain` catches both a brand-new untracked file and a modified tracked one.
       - run: |
-          if ! git diff --quiet -- scripts/zenoti/sync-state.json; then
+          if [ -n "$(git status --porcelain -- scripts/zenoti/sync-state.json)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add scripts/zenoti/sync-state.json
