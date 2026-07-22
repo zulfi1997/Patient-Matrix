@@ -19,6 +19,7 @@ import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisi
 import { summarizePatients } from './lib/metrics';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
+import type { ServiceDepartmentMap } from './lib/departments';
 import { formatNumber } from './lib/format';
 
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'data';
@@ -67,6 +68,7 @@ function App() {
     'pm-provider-assignment-overrides',
     [],
   );
+  const [serviceDepartments, setServiceDepartments] = useLocalStorageState<ServiceDepartmentMap>('pm-service-departments', {});
   const [allocationRules, setAllocationRules] = useLocalStorageState<SegmentAllocationRule[]>('pm-segment-allocation-rules', []);
   const [allocationMode, setAllocationMode] = useLocalStorageState<AllocationMode>('pm-pnl-allocation-mode', 'percentage');
   const [pnlLineAdjustments, setPnlLineAdjustments] = useLocalStorageState<PnlLineAdjustment[]>('pm-pnl-line-adjustments', []);
@@ -255,6 +257,8 @@ function App() {
             setRevenueAdjustments={setRevenueAdjustments}
             providerAssignmentOverrides={providerAssignmentOverrides}
             setProviderAssignmentOverrides={setProviderAssignmentOverrides}
+            serviceDepartments={serviceDepartments}
+            setServiceDepartments={setServiceDepartments}
             pnlLines={pnlLines}
             pnlBatches={pnlBatches}
             importPnlFile={importPnlFile}

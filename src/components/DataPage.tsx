@@ -5,6 +5,7 @@ import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from '../lib/segmentAllocation';
+import type { ServiceDepartmentMap } from '../lib/departments';
 import type { AccountInfo } from '@azure/msal-browser';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
@@ -16,6 +17,7 @@ import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
 import { OneDriveConnectSection } from './OneDriveConnectSection';
 import { MasterControlPanel } from './MasterControlPanel';
 import { DuplicateInvoiceLinesPanel } from './DuplicateInvoiceLinesPanel';
+import { ServiceDepartmentEditor, type KnownService } from './ServiceDepartmentEditor';
 
 interface DataPageProps {
   records: SaleRecord[];
@@ -33,6 +35,8 @@ interface DataPageProps {
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
+  serviceDepartments: ServiceDepartmentMap;
+  setServiceDepartments: Dispatch<SetStateAction<ServiceDepartmentMap>>;
   pnlLines: PnlLineRecord[];
   pnlBatches: PnlImportBatch[];
   importPnlFile: (file: File) => Promise<PnlImportResult>;
@@ -94,6 +98,8 @@ export function DataPage({
   setRevenueAdjustments,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
+  serviceDepartments,
+  setServiceDepartments,
   pnlLines,
   pnlBatches,
   importPnlFile,
@@ -113,6 +119,14 @@ export function DataPage({
       if (r.staff) set.add(r.staff);
     }
     return [...set].sort();
+  }, [records]);
+
+  const knownServices = useMemo(() => {
+    const map = new Map<string, KnownService>();
+    for (const r of records) {
+      if (!map.has(r.serviceKey)) map.set(r.serviceKey, { serviceKey: r.serviceKey, serviceName: r.serviceName, itemType: r.itemType });
+    }
+    return [...map.values()].sort((a, b) => a.serviceName.localeCompare(b.serviceName));
   }, [records]);
 
   const [dragOver, setDragOver] = useState(false);
@@ -406,6 +420,16 @@ export function DataPage({
           setProviderAssignmentOverrides={setProviderAssignmentOverrides}
           knownStaff={knownStaff}
         />
+      </div>
+
+      <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+        <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">Departments</h2>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Master data for the department-wise analysis (Wellness, Derma, Facial, Laser, Biohacking).
+        </p>
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <ServiceDepartmentEditor services={knownServices} mapping={serviceDepartments} setMapping={setServiceDepartments} />
+        </div>
       </div>
     </div>
   );
