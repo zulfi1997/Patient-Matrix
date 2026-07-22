@@ -1,26 +1,45 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ItemType } from '../types';
-import { DEPARTMENTS, type Department, type ServiceDepartmentMap } from '../lib/departments';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { DEPARTMENTS, type Department, type DepartmentMappingBatch, type KnownService, type ServiceDepartmentRecord } from '../lib/departments';
+import { DepartmentMappingSchemaError, type DepartmentMappingImportResult } from '../hooks/useServiceDepartments';
+import { buildDepartmentMappingCsv } from '../lib/departmentMappingParser';
 import { formatNumber } from '../lib/format';
 
-export interface KnownService {
-  serviceKey: string;
-  serviceName: string;
-  itemType: ItemType;
+function downloadCsv(csv: string, fileName: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function ServiceDepartmentEditor({
   services,
-  mapping,
-  setMapping,
+  records,
+  batch,
+  setDepartment,
+  importFile,
+  onPullFromOneDrive,
 }: {
   services: KnownService[];
-  mapping: ServiceDepartmentMap;
-  setMapping: Dispatch<SetStateAction<ServiceDepartmentMap>>;
+  records: ServiceDepartmentRecord[];
+  batch: DepartmentMappingBatch | null;
+  setDepartment: (serviceKey: string, serviceName: string, department: Department | null) => Promise<void>;
+  importFile: (file: File, knownServices: KnownService[]) => Promise<DepartmentMappingImportResult>;
+  /** Present only when signed in to OneDrive - pulls every file from the configured "Department Mapping" subfolder. */
+  onPullFromOneDrive?: () => Promise<File[]>;
 }) {
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDepartment, setBulkDepartment] = useState<Department>(DEPARTMENTS[0]);
+  const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [importResult, setImportResult] = useState<DepartmentMappingImportResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const mapping = useMemo(() => Object.fromEntries(records.map((r) => [r.serviceKey, r.department])), [records]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -29,15 +48,6 @@ export function ServiceDepartmentEditor({
   }, [services, filter]);
 
   const mappedCount = services.filter((s) => mapping[s.serviceKey]).length;
-
-  const setOne = (serviceKey: string, department: Department | '') => {
-    setMapping((prev) => {
-      const next = { ...prev };
-      if (department) next[serviceKey] = department;
-      else delete next[serviceKey];
-      return next;
-    });
-  };
 
   const toggleSelected = (serviceKey: string) => {
     setSelected((prev) => {
@@ -53,14 +63,53 @@ export function ServiceDepartmentEditor({
     setSelected(allFilteredSelected ? new Set() : new Set(filtered.map((s) => s.serviceKey)));
   };
 
-  const applyBulk = () => {
+  const applyBulk = async () => {
     if (selected.size === 0) return;
-    setMapping((prev) => {
-      const next = { ...prev };
-      for (const key of selected) next[key] = bulkDepartment;
-      return next;
-    });
+    const targets = services.filter((s) => selected.has(s.serviceKey));
+    await Promise.all(targets.map((s) => setDepartment(s.serviceKey, s.serviceName, bulkDepartment)));
     setSelected(new Set());
+  };
+
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (!file) return;
+      setBusy(true);
+      setError(null);
+      setImportResult(null);
+      try {
+        const result = await importFile(file, services);
+        setImportResult(result);
+      } catch (e) {
+        setError(e instanceof DepartmentMappingSchemaError || e instanceof Error ? e.message : `Failed to read "${file.name}".`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [importFile, services],
+  );
+
+  const pullFromOneDrive = useCallback(async () => {
+    if (!onPullFromOneDrive) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const files = await onPullFromOneDrive();
+      if (files.length === 0) {
+        setError('No .csv/.xlsx files found in the "Department Mapping" OneDrive folder.');
+        setBusy(false);
+        return;
+      }
+      await handleFiles(files);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to pull files from OneDrive.');
+      setBusy(false);
+    }
+  }, [onPullFromOneDrive, handleFiles]);
+
+  const exportMapping = () => {
+    const csv = buildDepartmentMappingCsv(services, mapping);
+    downloadCsv(csv, `department-mapping-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   return (
@@ -71,6 +120,94 @@ export function ServiceDepartmentEditor({
         department that performs or sells it (e.g. "Laser Hair Removal - Beard" → Laser). This mapping is what the
         department-wise analysis will be built on - a line item with no department assigned won't be counted in it.
       </p>
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const files = [...e.dataTransfer.files];
+          if (files.length > 0) handleFiles(files);
+        }}
+        className={`mb-3 rounded-xl border-2 border-dashed p-4 text-center transition-colors ${
+          dragOver ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/20' : 'border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900'
+        }`}
+      >
+        <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+          Editing this in Excel? Drag &amp; drop a mapping file (.csv/.xlsx) here to replace the whole mapping below, or
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {busy ? 'Importing…' : 'Choose file'}
+          </button>
+          {onPullFromOneDrive && (
+            <button
+              onClick={pullFromOneDrive}
+              disabled={busy}
+              className="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+            >
+              {busy ? 'Importing…' : 'Pull from OneDrive'}
+            </button>
+          )}
+          <button
+            onClick={exportMapping}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            Download current mapping (.csv)
+          </button>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,.xlsx,.xls"
+          className="hidden"
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            if (files.length > 0) handleFiles(files);
+            e.target.value = '';
+          }}
+        />
+        <p className="mt-2 text-xs text-zinc-400">
+          Download, edit the Department column in Excel, then re-upload (or drop the file in the shared "Department
+          Mapping" OneDrive folder) - anyone using this dashboard can then pull the same mapping via the button
+          above, instead of it only living in your own browser.
+        </p>
+        {batch && (
+          <p className="mt-2 text-xs text-zinc-400">
+            Last imported: <strong>{batch.fileName}</strong> ({formatNumber(batch.rowCount)} rows),{' '}
+            {new Date(batch.uploadedAt).toLocaleString('en-GB')}.
+          </p>
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-3 whitespace-pre-line rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+          {error}
+        </div>
+      )}
+
+      {importResult && (
+        <div className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <p>
+            <strong>{importResult.fileName}</strong>: {formatNumber(importResult.rowCount)} service(s) mapped.
+          </p>
+          {importResult.warnings.length > 0 && (
+            <ul className="mt-1 list-inside list-disc">
+              {importResult.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <input
@@ -156,7 +293,7 @@ export function ServiceDepartmentEditor({
                     <td className="py-1.5 pr-3">
                       <select
                         value={mapping[s.serviceKey] ?? ''}
-                        onChange={(e) => setOne(s.serviceKey, e.target.value as Department | '')}
+                        onChange={(e) => setDepartment(s.serviceKey, s.serviceName, (e.target.value as Department) || null)}
                         className="rounded-lg border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
                       >
                         <option value="">— Unassigned —</option>

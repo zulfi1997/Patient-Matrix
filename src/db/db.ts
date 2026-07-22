@@ -9,6 +9,7 @@ import type {
   SaleRecord,
   StaffScorecard,
 } from '../types';
+import type { DepartmentMappingBatch, ServiceDepartmentRecord } from '../lib/departments';
 
 interface PatientMatrixDB extends DBSchema {
   transactions: {
@@ -47,10 +48,19 @@ interface PatientMatrixDB extends DBSchema {
     value: ManualKpiEntry;
     indexes: { 'by-scorecard': string };
   };
+  serviceDepartments: {
+    key: string;
+    value: ServiceDepartmentRecord;
+  };
+  /** Info about the last mapping file import - a single record (key 'current'), since the file replaces the whole mapping wholesale. */
+  departmentMappingBatch: {
+    key: string;
+    value: DepartmentMappingBatch;
+  };
 }
 
 const DB_NAME = 'patient-matrix';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 let dbPromise: Promise<IDBPDatabase<PatientMatrixDB>> | null = null;
 
@@ -80,6 +90,10 @@ function getDB() {
         if (oldVersion < 5) {
           const manual = db.createObjectStore('manualKpiEntries', { keyPath: 'id' });
           manual.createIndex('by-scorecard', 'scorecardId');
+        }
+        if (oldVersion < 6) {
+          db.createObjectStore('serviceDepartments', { keyPath: 'serviceKey' });
+          db.createObjectStore('departmentMappingBatch');
         }
       },
     });
@@ -297,4 +311,36 @@ export async function getAllManualKpiEntries(): Promise<ManualKpiEntry[]> {
 export async function setManualKpiEntry(entry: ManualKpiEntry): Promise<void> {
   const db = await getDB();
   await db.put('manualKpiEntries', entry);
+}
+
+export async function getAllServiceDepartments(): Promise<ServiceDepartmentRecord[]> {
+  const db = await getDB();
+  return db.getAll('serviceDepartments');
+}
+
+export async function setServiceDepartment(record: ServiceDepartmentRecord): Promise<void> {
+  const db = await getDB();
+  await db.put('serviceDepartments', record);
+}
+
+export async function deleteServiceDepartment(serviceKey: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('serviceDepartments', serviceKey);
+}
+
+/** Replaces the entire mapping wholesale with what's in the uploaded file, same as a Package Benefits snapshot replace. */
+export async function importServiceDepartmentBatch(batch: DepartmentMappingBatch, records: ServiceDepartmentRecord[]): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['serviceDepartments', 'departmentMappingBatch'], 'readwrite');
+  await tx.objectStore('serviceDepartments').clear();
+  for (const record of records) {
+    await tx.objectStore('serviceDepartments').put(record);
+  }
+  await tx.objectStore('departmentMappingBatch').put(batch, 'current');
+  await tx.done;
+}
+
+export async function getDepartmentMappingBatch(): Promise<DepartmentMappingBatch | null> {
+  const db = await getDB();
+  return (await db.get('departmentMappingBatch', 'current')) ?? null;
 }

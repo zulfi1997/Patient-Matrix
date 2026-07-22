@@ -5,7 +5,8 @@ import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from '../lib/segmentAllocation';
-import type { ServiceDepartmentMap } from '../lib/departments';
+import type { DepartmentMappingBatch, KnownService, ServiceDepartmentRecord } from '../lib/departments';
+import type { DepartmentMappingImportResult } from '../hooks/useServiceDepartments';
 import type { AccountInfo } from '@azure/msal-browser';
 import { ImportSchemaError } from '../lib/excelParser';
 import { formatDate, formatNumber } from '../lib/format';
@@ -17,7 +18,7 @@ import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
 import { OneDriveConnectSection } from './OneDriveConnectSection';
 import { MasterControlPanel } from './MasterControlPanel';
 import { DuplicateInvoiceLinesPanel } from './DuplicateInvoiceLinesPanel';
-import { ServiceDepartmentEditor, type KnownService } from './ServiceDepartmentEditor';
+import { ServiceDepartmentEditor } from './ServiceDepartmentEditor';
 
 interface DataPageProps {
   records: SaleRecord[];
@@ -35,8 +36,10 @@ interface DataPageProps {
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
-  serviceDepartments: ServiceDepartmentMap;
-  setServiceDepartments: Dispatch<SetStateAction<ServiceDepartmentMap>>;
+  serviceDepartmentRecords: ServiceDepartmentRecord[];
+  departmentMappingBatch: DepartmentMappingBatch | null;
+  setServiceDepartment: (serviceKey: string, serviceName: string, department: ServiceDepartmentRecord['department'] | null) => Promise<void>;
+  importDepartmentMappingFile: (file: File, knownServices: KnownService[]) => Promise<DepartmentMappingImportResult>;
   pnlLines: PnlLineRecord[];
   pnlBatches: PnlImportBatch[];
   importPnlFile: (file: File) => Promise<PnlImportResult>;
@@ -98,8 +101,10 @@ export function DataPage({
   setRevenueAdjustments,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
-  serviceDepartments,
-  setServiceDepartments,
+  serviceDepartmentRecords,
+  departmentMappingBatch,
+  setServiceDepartment,
+  importDepartmentMappingFile,
   pnlLines,
   pnlBatches,
   importPnlFile,
@@ -428,7 +433,14 @@ export function DataPage({
           Master data for the department-wise analysis (Wellness, Derma, Facial, Laser, Biohacking).
         </p>
         <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <ServiceDepartmentEditor services={knownServices} mapping={serviceDepartments} setMapping={setServiceDepartments} />
+          <ServiceDepartmentEditor
+            services={knownServices}
+            records={serviceDepartmentRecords}
+            batch={departmentMappingBatch}
+            setDepartment={setServiceDepartment}
+            importFile={importDepartmentMappingFile}
+            onPullFromOneDrive={oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.departmentMapping) : undefined}
+          />
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { usePnl } from './hooks/usePnl';
 import { useOneDrive } from './hooks/useOneDrive';
 import { useStaffScorecards } from './hooks/useStaffScorecards';
 import { useManualKpiEntries } from './hooks/useManualKpiEntries';
+import { useServiceDepartments } from './hooks/useServiceDepartments';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Dashboard } from './components/Dashboard';
 import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashboard';
@@ -19,7 +20,6 @@ import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisi
 import { summarizePatients } from './lib/metrics';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
-import type { ServiceDepartmentMap } from './lib/departments';
 import { formatNumber } from './lib/format';
 
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'data';
@@ -44,6 +44,12 @@ function App() {
   const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, clearAllPnl, refresh: refreshPnl } = usePnl();
   const { scorecards, importOfferLetter, removeScorecard: removeScorecardOnly } = useStaffScorecards();
   const { entries: manualKpiEntries, setManualKpiValue, refresh: refreshManualKpiEntries } = useManualKpiEntries();
+  const {
+    records: serviceDepartmentRecords,
+    batch: departmentMappingBatch,
+    setDepartment: setServiceDepartment,
+    importFile: importDepartmentMappingFile,
+  } = useServiceDepartments();
   const oneDrive = useOneDrive();
   const [tab, setTab] = useState<Tab>(() => 'dashboard');
 
@@ -68,7 +74,6 @@ function App() {
     'pm-provider-assignment-overrides',
     [],
   );
-  const [serviceDepartments, setServiceDepartments] = useLocalStorageState<ServiceDepartmentMap>('pm-service-departments', {});
   const [allocationRules, setAllocationRules] = useLocalStorageState<SegmentAllocationRule[]>('pm-segment-allocation-rules', []);
   const [allocationMode, setAllocationMode] = useLocalStorageState<AllocationMode>('pm-pnl-allocation-mode', 'percentage');
   const [pnlLineAdjustments, setPnlLineAdjustments] = useLocalStorageState<PnlLineAdjustment[]>('pm-pnl-line-adjustments', []);
@@ -257,8 +262,10 @@ function App() {
             setRevenueAdjustments={setRevenueAdjustments}
             providerAssignmentOverrides={providerAssignmentOverrides}
             setProviderAssignmentOverrides={setProviderAssignmentOverrides}
-            serviceDepartments={serviceDepartments}
-            setServiceDepartments={setServiceDepartments}
+            serviceDepartmentRecords={serviceDepartmentRecords}
+            departmentMappingBatch={departmentMappingBatch}
+            setServiceDepartment={setServiceDepartment}
+            importDepartmentMappingFile={importDepartmentMappingFile}
             pnlLines={pnlLines}
             pnlBatches={pnlBatches}
             importPnlFile={importPnlFile}

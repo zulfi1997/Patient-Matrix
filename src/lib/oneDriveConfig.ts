@@ -17,4 +17,5 @@ export const ONEDRIVE_SUBFOLDERS = {
   sales: 'Sales Data',
   pnl: 'P&L Data',
   packageBenefits: 'Package Benefit Data',
+  departmentMapping: 'Department Mapping',
 } as const;
