@@ -142,8 +142,23 @@ export function DataPage({
       const mapKey = serviceMapKey(r.serviceKey, r.serviceName);
       if (!map.has(mapKey)) map.set(mapKey, { serviceKey: mapKey, serviceName: r.serviceName, itemType: r.itemType });
     }
+    // A benefit that's only ever redeemed inside a package (never sold as its own standalone
+    // line) has no SaleRecord of its own, so the loop above never sees it - without adding it
+    // here it could never be mapped, which means a package built entirely from such benefits
+    // could never resolve a department either. Skipped when a service/product of the same name
+    // already has a real row above, so this only fills the actual gap.
+    const byNameLower = new Set([...map.values()].map((s) => s.serviceName.trim().toLowerCase()));
+    for (const b of packageBenefits) {
+      const name = b.benefitName.trim();
+      if (!name || byNameLower.has(name.toLowerCase())) continue;
+      const key = `benefit:${name.toLowerCase()}`;
+      if (!map.has(key)) {
+        map.set(key, { serviceKey: key, serviceName: name, itemType: 'Package Benefit' });
+        byNameLower.add(name.toLowerCase());
+      }
+    }
     return [...map.values()].sort((a, b) => a.serviceName.localeCompare(b.serviceName));
-  }, [records]);
+  }, [records, packageBenefits]);
 
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);

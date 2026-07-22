@@ -149,7 +149,9 @@ export function ServiceDepartmentEditor({
         will be built on - a line item with no department assigned won't be counted in it. Packages are cross-checked
         against your uploaded Package Benefits data: if a package's underlying services (e.g. a "VIP Package"
         redeeming Laser sessions) are already mapped and all agree on one department, it's suggested here
-        automatically instead of you having to guess.
+        automatically instead of you having to guess. A benefit that's only ever redeemed inside a package - never
+        sold on its own ("Package Benefit" type below) - is listed too, so it can be mapped even without a standalone
+        sale, letting more packages resolve automatically.
       </p>
 
       <div
