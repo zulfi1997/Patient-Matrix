@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { PackageBenefitRecord } from '../types';
+import type { PackageBenefitRecord, SaleRecord } from '../types';
 import { DEPARTMENTS, type Department, type DepartmentMappingBatch, type KnownService, type ServiceDepartmentRecord } from '../lib/departments';
 import { DepartmentMappingSchemaError, type DepartmentMappingImportResult } from '../hooks/useServiceDepartments';
 import { buildDepartmentMappingCsv } from '../lib/departmentMappingParser';
@@ -18,6 +18,7 @@ function downloadCsv(csv: string, fileName: string) {
 
 export function ServiceDepartmentEditor({
   services,
+  saleRecords,
   records,
   batch,
   packageBenefits,
@@ -26,6 +27,8 @@ export function ServiceDepartmentEditor({
   onPullFromOneDrive,
 }: {
   services: KnownService[];
+  /** Full sales history - used to link a package to its Package Benefits rows by invoice number. */
+  saleRecords: SaleRecord[];
   records: ServiceDepartmentRecord[];
   batch: DepartmentMappingBatch | null;
   /** Package Benefits Detail data, used to suggest a package's department from the services it bundles. */
@@ -56,9 +59,9 @@ export function ServiceDepartmentEditor({
 
   const packageSuggestions = useMemo(() => {
     const packages = services.filter((s) => s.itemType === 'Package');
-    const suggestions = suggestPackageDepartments(packages, packageBenefits, mapping, services);
+    const suggestions = suggestPackageDepartments(packages, saleRecords, packageBenefits, mapping, services);
     return new Map(suggestions.map((s) => [s.serviceKey, s]));
-  }, [services, packageBenefits, mapping]);
+  }, [services, saleRecords, packageBenefits, mapping]);
 
   const confidentSuggestions = [...packageSuggestions.values()].filter(
     (s) => s.suggestedDepartment && !mapping[s.serviceKey],
