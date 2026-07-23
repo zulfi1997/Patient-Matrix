@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mcp-server": "tsx mcp-server/index.ts"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.17.1",
+    "@modelcontextprotocol/sdk": "^1.24.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "idb": "^8.0.3",
@@ -18,7 +20,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.9.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -28,6 +31,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.19.2",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }

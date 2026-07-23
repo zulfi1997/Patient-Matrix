@@ -76,3 +76,44 @@ export async function uploadToOneDriveFolder({ tenantId, clientId, clientSecret,
   const subfolder = await findSubfolder(root, subfolderName, token);
   return uploadFile(subfolder, fileName, buffer, token);
 }
+
+/** Lists the .csv/.xlsx files directly inside a named subfolder, newest-modified first. */
+async function listFiles({ driveId, itemId }, token) {
+  const page = await graphFetch(
+    `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/children?$top=200&$select=id,name,size,lastModifiedDateTime,file`,
+    token,
+  );
+  return (page.value ?? [])
+    .filter((c) => !!c.file && /\.(csv|xlsx|xls)$/i.test(c.name))
+    .map((c) => ({ id: c.id, name: c.name, size: c.size, lastModifiedDateTime: c.lastModifiedDateTime }))
+    .sort((a, b) => new Date(b.lastModifiedDateTime).getTime() - new Date(a.lastModifiedDateTime).getTime());
+}
+
+export async function listOneDriveFolder({ tenantId, clientId, clientSecret, sharedFolderUrl, subfolderName }) {
+  const token = await getAppOnlyToken({ tenantId, clientId, clientSecret });
+  const root = await resolveSharedFolder(sharedFolderUrl, token);
+  const subfolder = await findSubfolder(root, subfolderName, token);
+  return listFiles(subfolder, token);
+}
+
+async function downloadFile({ driveId }, fileId, token) {
+  const res = await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${fileId}/content`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to download OneDrive file ${fileId} (${res.status}): ${(await res.text()).slice(0, 500)}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** Downloads whichever file in the named subfolder was modified most recently - same "pick the newest" rule the browser dashboard's "Pull from OneDrive" uses, since these folders can accumulate more than one export over time. Returns null if the folder has no matching files. */
+export async function downloadLatestFromOneDriveFolder({ tenantId, clientId, clientSecret, sharedFolderUrl, subfolderName }) {
+  const token = await getAppOnlyToken({ tenantId, clientId, clientSecret });
+  const root = await resolveSharedFolder(sharedFolderUrl, token);
+  const subfolder = await findSubfolder(root, subfolderName, token);
+  const files = await listFiles(subfolder, token);
+  if (files.length === 0) return null;
+  const latest = files[0];
+  const buffer = await downloadFile(subfolder, latest.id, token);
+  return { name: latest.name, lastModifiedDateTime: latest.lastModifiedDateTime, buffer };
+}
