@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { PackageBenefitRecord, SaleRecord } from '../types';
 import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversionMetrics';
 import { previousPeriod, type DateRange, type PatientVisitSummary } from '../lib/metrics';
@@ -37,6 +38,19 @@ function downloadCsv(csv: string, fileName: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// Fixed categorical assignment (validated for CVD/contrast on a dark chart surface via the
+// data-viz skill's palette validator) - one color per department, in a stable order so a
+// department's color never changes when the department filter narrows which series are visible.
+const DEPARTMENT_COLORS: Record<DepartmentOrUnmapped, string> = {
+  Biohacking: '#3987e5',
+  Derma: '#d95926',
+  Facial: '#199e70',
+  General: '#c98500',
+  Laser: '#d55181',
+  Wellness: '#008300',
+  [UNMAPPED]: '#e66767',
+};
 
 function groupByDepartment<T extends { department: DepartmentOrUnmapped }>(rows: T[]): Map<DepartmentOrUnmapped, T[]> {
   const map = new Map<DepartmentOrUnmapped, T[]>();
@@ -130,6 +144,18 @@ export function DepartmentAnalyticsDashboard({
   const visibleDepartments = departmentFilter === 'All' ? departmentsPresent : departmentsPresent.filter((d) => d === departmentFilter);
   const visibleMonthlyDepartments =
     departmentFilter === 'All' ? monthlyDepartmentsPresent : monthlyDepartmentsPresent.filter((d) => d === departmentFilter);
+
+  const monthlyChartData = useMemo(
+    () =>
+      monthlyMonths.map((month) => {
+        const point: Record<string, number | string> = { month, label: formatMonthLabel(month) };
+        for (const dept of visibleMonthlyDepartments) {
+          point[dept] = monthlyByKey.get(`${month}|${dept}`)?.activePatients ?? 0;
+        }
+        return point;
+      }),
+    [monthlyMonths, visibleMonthlyDepartments, monthlyByKey],
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -411,39 +437,61 @@ export function DepartmentAnalyticsDashboard({
         {visibleMonthlyDepartments.length === 0 ? (
           <p className="py-6 text-center text-sm text-zinc-500">No patient activity in this window.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
-                <tr>
-                  <th className="py-1.5 pr-2">Month</th>
-                  {visibleMonthlyDepartments.map((dept) => (
-                    <th key={dept} className={`py-1.5 pr-2 text-right ${dept === UNMAPPED ? 'text-rose-500' : ''}`}>
-                      {dept}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {monthlyMonths.map((month) => (
-                  <tr key={month} className="border-t border-zinc-100 dark:border-zinc-800">
-                    <td className="py-1.5 pr-2 font-medium">{formatMonthLabel(month)}</td>
-                    {visibleMonthlyDepartments.map((dept) => {
-                      const row = monthlyByKey.get(`${month}|${dept}`);
-                      return (
-                        <td key={dept} className="py-1.5 pr-2 text-right whitespace-nowrap">
-                          <span className="text-emerald-600 dark:text-emerald-400">{formatNumber(row?.newPatients ?? 0)}</span>
-                          <span className="text-zinc-400"> / </span>
-                          {formatNumber(row?.returningPatients ?? 0)}
-                          <span className="text-zinc-400"> / </span>
-                          <span className="font-medium">{formatNumber(row?.activePatients ?? 0)}</span>
-                        </td>
-                      );
-                    })}
-                  </tr>
+          <>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={monthlyChartData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-200 dark:stroke-zinc-800" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip formatter={(value) => formatNumber(Number(value))} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {visibleMonthlyDepartments.map((dept, i) => (
+                  <Bar
+                    key={dept}
+                    dataKey={dept}
+                    name={dept}
+                    stackId="active"
+                    fill={DEPARTMENT_COLORS[dept]}
+                    radius={i === visibleMonthlyDepartments.length - 1 ? [4, 4, 0, 0] : undefined}
+                  />
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </BarChart>
+            </ResponsiveContainer>
+            <p className="mb-3 text-xs text-zinc-400">Active patients per department, stacked - the table below has the New / Returning split.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                  <tr>
+                    <th className="py-1.5 pr-2">Month</th>
+                    {visibleMonthlyDepartments.map((dept) => (
+                      <th key={dept} className={`py-1.5 pr-2 text-right ${dept === UNMAPPED ? 'text-rose-500' : ''}`}>
+                        {dept}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyMonths.map((month) => (
+                    <tr key={month} className="border-t border-zinc-100 dark:border-zinc-800">
+                      <td className="py-1.5 pr-2 font-medium">{formatMonthLabel(month)}</td>
+                      {visibleMonthlyDepartments.map((dept) => {
+                        const row = monthlyByKey.get(`${month}|${dept}`);
+                        return (
+                          <td key={dept} className="py-1.5 pr-2 text-right whitespace-nowrap">
+                            <span className="text-emerald-600 dark:text-emerald-400">{formatNumber(row?.newPatients ?? 0)}</span>
+                            <span className="text-zinc-400"> / </span>
+                            {formatNumber(row?.returningPatients ?? 0)}
+                            <span className="text-zinc-400"> / </span>
+                            <span className="font-medium">{formatNumber(row?.activePatients ?? 0)}</span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
