@@ -108,63 +108,66 @@ function App() {
   return (
     <div className="min-h-screen bg-zinc-50 print:bg-white dark:bg-zinc-950">
       <header className="border-b border-zinc-200 bg-white print:hidden dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col items-stretch gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Patient Matrix</h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">Clinic performance dashboard</p>
           </div>
-          <nav className="flex overflow-hidden rounded-lg border border-zinc-300 text-sm dark:border-zinc-700">
+          {/* overflow-x-auto (not overflow-hidden) so a narrow/mobile screen can swipe to reach
+              tabs past the visible width instead of them being silently clipped and unreachable -
+              shrink-0 on each button keeps their width readable instead of being squeezed. */}
+          <nav className="flex overflow-x-auto rounded-lg border border-zinc-300 text-sm dark:border-zinc-700">
             <button
               onClick={() => setTab('dashboard')}
-              className={`px-4 py-1.5 ${tab === 'dashboard' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'dashboard' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               Dashboard
             </button>
             <button
               onClick={() => setTab('newPatientRevenue')}
-              className={`px-4 py-1.5 ${tab === 'newPatientRevenue' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'newPatientRevenue' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               New Patient Revenue
             </button>
             <button
               onClick={() => setTab('kpi')}
-              className={`px-4 py-1.5 ${tab === 'kpi' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'kpi' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               KPI Evaluation
             </button>
             <button
               onClick={() => setTab('conversion')}
-              className={`px-4 py-1.5 ${tab === 'conversion' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'conversion' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               Provider Conversion
             </button>
             <button
               onClick={() => setTab('yb111')}
-              className={`px-4 py-1.5 ${tab === 'yb111' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'yb111' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               "YB111" Analytics
             </button>
             <button
               onClick={() => setTab('segmentPnl')}
-              className={`px-4 py-1.5 ${tab === 'segmentPnl' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'segmentPnl' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               Segment P&amp;L
             </button>
             <button
               onClick={() => setTab('staffScorecards')}
-              className={`px-4 py-1.5 ${tab === 'staffScorecards' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'staffScorecards' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               Staff Scorecards
             </button>
             <button
               onClick={() => setTab('departments')}
-              className={`px-4 py-1.5 ${tab === 'departments' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'departments' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               Departments
             </button>
             <button
               onClick={() => setTab('data')}
-              className={`px-4 py-1.5 ${tab === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
               Data
             </button>
