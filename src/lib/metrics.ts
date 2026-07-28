@@ -415,6 +415,79 @@ export function computeAtRiskPatients(
   return result.sort((a, b) => b.daysSinceLastVisit - a.daysSinceLastVisit);
 }
 
+export interface ReturnedPatient extends PatientVisitSummary {
+  /** Their last visit before the gap that follows - the day they "went quiet." */
+  wentQuietOn: string;
+  /** Length of that gap, in days. */
+  gapDays: number;
+  /** First visit after the gap - the day they came back. */
+  returnedOn: string;
+  daysSinceReturn: number;
+  visitsSinceReturn: number;
+  revenueSinceReturn: number;
+  /** False if they've gone quiet again since returning (their overall lastVisit is stale once more). */
+  currentlyActive: boolean;
+}
+
+/**
+ * Patients who at some point went inactivityThresholdDays+ without a visit, then came back - the
+ * flip side of computeAtRiskPatients ("who's currently gone quiet" vs "who used to be gone quiet
+ * and returned"). For a patient with more than one such gap in their history, only the most
+ * recent one is reported, since that's the return that's actually relevant today.
+ */
+export function computeReturnedPatients(
+  records: SaleRecord[],
+  patients: Map<string, PatientVisitSummary>,
+  inactivityThresholdDays: number,
+  asOfISO: string,
+): ReturnedPatient[] {
+  const recordsByPatient = new Map<string, SaleRecord[]>();
+  for (const r of records) {
+    if (!recordsByPatient.has(r.patientId)) recordsByPatient.set(r.patientId, []);
+    recordsByPatient.get(r.patientId)!.push(r);
+  }
+
+  const result: ReturnedPatient[] = [];
+  for (const [patientId, patientRecords] of recordsByPatient) {
+    const summary = patients.get(patientId);
+    if (!summary) continue;
+
+    const dates = [...new Set(patientRecords.map((r) => r.date))].sort();
+    if (dates.length < 2) continue;
+
+    // Scan from the end for the most recent gap that met the threshold - that's the last time
+    // this patient actually "stopped visiting" before whatever visits they've had since.
+    let gapIndex = -1;
+    for (let i = dates.length - 2; i >= 0; i--) {
+      if (daysBetween(dates[i], dates[i + 1]) >= inactivityThresholdDays) {
+        gapIndex = i;
+        break;
+      }
+    }
+    if (gapIndex === -1) continue;
+
+    const wentQuietOn = dates[gapIndex];
+    const returnedOn = dates[gapIndex + 1];
+    let revenueSinceReturn = 0;
+    for (const r of patientRecords) {
+      if (r.date >= returnedOn) revenueSinceReturn += r.amount;
+    }
+
+    result.push({
+      ...summary,
+      wentQuietOn,
+      gapDays: daysBetween(wentQuietOn, returnedOn),
+      returnedOn,
+      daysSinceReturn: daysBetween(returnedOn, asOfISO),
+      visitsSinceReturn: dates.length - (gapIndex + 1),
+      revenueSinceReturn,
+      currentlyActive: daysBetween(summary.lastVisit, asOfISO) < inactivityThresholdDays,
+    });
+  }
+
+  return result.sort((a, b) => b.returnedOn.localeCompare(a.returnedOn));
+}
+
 /** Line items from each patient's first-ever visit, for patients whose first visit falls inside range. */
 function getNewPatientFirstVisitRecords(
   records: SaleRecord[],

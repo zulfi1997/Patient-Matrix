@@ -9,6 +9,7 @@ import {
   computeKpis,
   computeMonthlyTrend,
   computeRedeemedPackages,
+  computeReturnedPatients,
   computeServiceStats,
   summarizePatients,
   type DateRange,
@@ -28,6 +29,7 @@ import { DiscountDetailsTable } from './DiscountDetailsTable';
 import { TopServicesChart } from './TopServicesChart';
 import { DormantServicesTable } from './DormantServicesTable';
 import { AtRiskPatientsTable } from './AtRiskPatientsTable';
+import { ReturnedPatientsTable } from './ReturnedPatientsTable';
 import { InvoiceAgingSection } from './InvoiceAgingSection';
 
 const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Package', 'All'];
@@ -73,6 +75,11 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
   const atRiskPatients = useMemo(
     () => computeAtRiskPatients(patients, asOfISO, inactivityDays),
     [patients, asOfISO, inactivityDays],
+  );
+
+  const returnedPatients = useMemo(
+    () => computeReturnedPatients(records, patients, inactivityDays, asOfISO),
+    [records, patients, inactivityDays, asOfISO],
   );
 
   const redeemedPackages = useMemo(() => computeRedeemedPackages(records, range), [records, range]);
@@ -222,6 +229,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
       </div>
 
       <AtRiskPatientsTable data={atRiskPatients} />
+
+      <ReturnedPatientsTable data={returnedPatients} />
     </div>
   );
 }
