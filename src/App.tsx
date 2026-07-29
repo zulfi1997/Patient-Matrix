@@ -217,7 +217,13 @@ function App() {
             </button>
           </div>
         ) : tab === 'dashboard' ? (
-          <Dashboard records={analysisRecords} />
+          <Dashboard
+            records={analysisRecords}
+            rawRecords={records}
+            batches={batches}
+            excludeFlagged={excludeFlagged}
+            excludeZeroValue={excludeZeroValue}
+          />
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} pnlLines={pnlLines} />
         ) : tab === 'kpi' ? (

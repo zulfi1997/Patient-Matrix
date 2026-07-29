@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ItemType, SaleRecord } from '../types';
+import type { ImportBatch, ItemType, SaleRecord } from '../types';
 import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
 import {
   computeAgingBucketSummary,
@@ -17,6 +17,7 @@ import {
 import { computeDiscountBreakdown, computeDiscountDetails, computeDiscountSummary } from '../lib/discounts';
 import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { exportDashboardPptx } from '../lib/pptxExport';
+import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodControls } from './PeriodControls';
@@ -35,7 +36,20 @@ import { InvoiceAgingSection } from './InvoiceAgingSection';
 
 const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Package', 'All'];
 
-export function Dashboard({ records }: { records: SaleRecord[] }) {
+export function Dashboard({
+  records,
+  rawRecords,
+  batches,
+  excludeFlagged,
+  excludeZeroValue,
+}: {
+  records: SaleRecord[];
+  /** Unfiltered stored rows, so the reconciliation panel can show what the pipeline excludes. */
+  rawRecords: SaleRecord[];
+  batches: ImportBatch[];
+  excludeFlagged: boolean;
+  excludeZeroValue: boolean;
+}) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-preset', 'last30');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-custom-range', {
     start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
@@ -165,6 +179,14 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
         sessions being consumed is excluded, since that value was already counted as revenue when the package
         itself was sold; that portion is broken out below (see "Redeemed Revenue" and "Redeemed Packages").
       </p>
+
+      <RevenueReconciliationPanel
+        rawRecords={rawRecords}
+        batches={batches}
+        range={range}
+        excludeFlagged={excludeFlagged}
+        excludeZeroValue={excludeZeroValue}
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <KpiCard
