@@ -9,6 +9,8 @@ export interface ImportResult {
   totalRows: number;
   added: number;
   refreshed: number;
+  /** Rows from earlier imports removed because this file restates those dates (see db.addBatch). */
+  superseded: number;
   skipped: number;
   warnings: ImportWarning[];
 }
@@ -50,11 +52,12 @@ export function useTransactions() {
       totalRows: rows.length,
       addedCount: 0,
       refreshedCount: 0,
+      supersededCount: 0,
       skippedCount: warnings.length,
       dateRange,
     };
 
-    const { added, refreshed } = await db.addBatch(batch, parsed);
+    const { added, refreshed, superseded } = await db.addBatch(batch, parsed);
 
     await refresh();
 
@@ -63,6 +66,7 @@ export function useTransactions() {
       totalRows: rows.length,
       added,
       refreshed,
+      superseded,
       skipped: warnings.length,
       warnings,
     };

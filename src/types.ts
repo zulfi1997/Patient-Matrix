@@ -65,6 +65,12 @@ export interface ImportBatch {
   /** Rows that already existed (by content id) and were refreshed with newly parsed values rather than added again. */
   refreshedCount: number;
   skippedCount: number;
+  /**
+   * Rows from earlier imports that this import replaced because it re-covers their date and
+   * center (see addBatch in db/db.ts). Optional: batches imported before replace-on-import
+   * existed won't have it, so read it as `?? 0`.
+   */
+  supersededCount?: number;
   dateRange: { min: string; max: string } | null;
 }
 

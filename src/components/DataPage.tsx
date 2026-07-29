@@ -19,7 +19,7 @@ import { SegmentAllocationEditor } from './SegmentAllocationEditor';
 import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
 import { OneDriveConnectSection } from './OneDriveConnectSection';
 import { MasterControlPanel } from './MasterControlPanel';
-import { DuplicateInvoiceLinesPanel } from './DuplicateInvoiceLinesPanel';
+import { SupersededRowsPanel } from './SupersededRowsPanel';
 import { ServiceDepartmentEditor } from './ServiceDepartmentEditor';
 
 interface DataPageProps {
@@ -316,6 +316,8 @@ export function DataPage({
             <p key={i}>
               <strong>{result.fileName}</strong>: {formatNumber(result.added)} new row(s) added,{' '}
               {formatNumber(result.refreshed)} already-imported row(s) refreshed with current values
+              {result.superseded > 0 &&
+                `, ${formatNumber(result.superseded)} older row(s) superseded (this file restates those dates)`}
               {result.skipped > 0 && `, ${formatNumber(result.skipped)} row(s) skipped (missing data)`}.
             </p>
           ))}
@@ -340,7 +342,7 @@ export function DataPage({
         </div>
       )}
 
-      <DuplicateInvoiceLinesPanel records={records} batches={batches} onRemove={removeTransactionsByIds} />
+      <SupersededRowsPanel records={records} batches={batches} onRemove={removeTransactionsByIds} />
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mb-3 flex items-center justify-between">
@@ -380,6 +382,7 @@ export function DataPage({
                 <th className="py-2 pr-2">Date Range Covered</th>
                 <th className="py-2 pr-2 text-right">Rows Added</th>
                 <th className="py-2 pr-2 text-right">Rows Refreshed</th>
+                <th className="py-2 pr-2 text-right">Rows Superseded</th>
                 <th className="py-2 pr-2" />
               </tr>
             </thead>
@@ -393,6 +396,7 @@ export function DataPage({
                   </td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(b.addedCount)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(b.refreshedCount)}</td>
+                  <td className="py-1.5 pr-2 text-right">{formatNumber(b.supersededCount ?? 0)}</td>
                   <td className="py-1.5 pr-2 text-right">
                     <button
                       onClick={() => {

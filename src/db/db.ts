@@ -113,21 +113,61 @@ export async function getAllBatches(): Promise<ImportBatch[]> {
 }
 
 /**
- * Adds transactions. A row whose id already exists (dedup across
- * overlapping/re-uploaded exports) is refreshed in place with the newly
- * parsed values rather than skipped, so re-uploading the same export after
- * an app update (a parsing bug fix, a new derived field, etc.) heals
- * already-stored data instead of leaving it stuck with stale values. The
- * row keeps its original importBatchId so batch history/deletion still
- * reflects when it was first imported.
+ * Adds transactions, treating the import as authoritative for every day it covers: any row from
+ * an earlier import that falls inside this import's date range (and belongs to a center this
+ * import also covers) is deleted first, then this import's rows are written.
+ *
+ * A sales export is a full restatement of its date range, not an incremental log, so
+ * last-import-wins is the only semantics that stays correct over repeated syncs. Row-by-row
+ * dedup cannot get there, for two reasons:
+ *
+ *  - The two ingest paths derive incompatible row ids for the same physical line (a manual
+ *    export uses a content hash; the Zenoti API sync uses its stable "Invoice Item ID" - see
+ *    excelParser.ts), so overlapping imports double-count instead of deduping.
+ *  - An invoice voided or deleted in Zenoti simply isn't in the newer export. There is no
+ *    incoming row to match it against, so no row-level rule can ever retire it; only clearing
+ *    the day and rewriting it from the newer export does.
+ *
+ * This mirrors how addPnlBatch and addPackageBenefitSnapshot already treat a period's file as a
+ * wholesale replacement.
+ *
+ * Replacement is scoped to the centers present in this import, so a single-center export never
+ * silently wipes another center's rows for those same days. Rows already belonging to this
+ * batch id (a straight re-upload of the same file) are refreshed in place rather than deleted
+ * and re-added, so re-importing after an app update still heals stored values.
+ *
+ * Caveat worth knowing: because the range comes from the file's own min/max row dates, a
+ * deliberately *partial* export spanning a wide range (e.g. filtered to one item type) will
+ * supersede the fuller data it overlaps. The superseded count is reported per import so this is
+ * visible rather than silent.
  */
 export async function addBatch(
   batch: ImportBatch,
   records: SaleRecord[],
-): Promise<{ added: number; refreshed: number }> {
+): Promise<{ added: number; refreshed: number; superseded: number }> {
   const db = await getDB();
   const tx = db.transaction(['transactions', 'batches'], 'readwrite');
   const store = tx.objectStore('transactions');
+
+  let superseded = 0;
+  if (batch.dateRange && records.length > 0) {
+    const { min, max } = batch.dateRange;
+    const centers = new Set(records.map((r) => r.centerName));
+    let cursor = await store.openCursor();
+    while (cursor) {
+      const existing = cursor.value;
+      if (
+        existing.importBatchId !== batch.id &&
+        existing.date >= min &&
+        existing.date <= max &&
+        centers.has(existing.centerName)
+      ) {
+        await cursor.delete();
+        superseded++;
+      }
+      cursor = await cursor.continue();
+    }
+  }
 
   let added = 0;
   let refreshed = 0;
@@ -142,9 +182,11 @@ export async function addBatch(
     added++;
   }
 
-  await tx.objectStore('batches').put({ ...batch, addedCount: added, refreshedCount: refreshed });
+  await tx
+    .objectStore('batches')
+    .put({ ...batch, addedCount: added, refreshedCount: refreshed, supersededCount: superseded });
   await tx.done;
-  return { added, refreshed };
+  return { added, refreshed, superseded };
 }
 
 /** Deletes specific transaction rows by id, leaving the rest of their batch (and everything else) untouched. */
