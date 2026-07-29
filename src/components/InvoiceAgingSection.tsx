@@ -20,9 +20,9 @@ const BUCKET_TONE: Record<AgingBucket, string> = {
 };
 
 function downloadCsv(rows: InvoiceAgingRow[]) {
-  const header = ['Invoice No', 'Patient ID', 'Patient Name', 'Sale Date', 'Age (days)', 'Aging Bucket', 'Services', 'Status', 'Due Amount (OMR)'];
+  const header = ['Invoice No', 'Patient ID', 'Patient Name', 'Sale Date', 'Age (days)', 'Aging Bucket', 'Services', 'Status', 'Due Amount (OMR)', 'Comments'];
   const lines = rows.map((r) =>
-    [r.invoiceNo, r.patientId, r.patientName, r.date, r.ageDays, r.agingBucket, r.services.join('; '), r.invoiceStatus, r.dueAmount.toFixed(3)]
+    [r.invoiceNo, r.patientId, r.patientName, r.date, r.ageDays, r.agingBucket, r.services.join('; '), r.invoiceStatus, r.dueAmount.toFixed(3), r.notes.join('; ')]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(','),
   );
@@ -63,7 +63,8 @@ export function InvoiceAgingSection({
           r.patientName.toLowerCase().includes(q) ||
           r.patientId.toLowerCase().includes(q) ||
           r.invoiceNo.toLowerCase().includes(q) ||
-          r.services.some((s) => s.toLowerCase().includes(q)),
+          r.services.some((s) => s.toLowerCase().includes(q)) ||
+          r.notes.some((n) => n.toLowerCase().includes(q)),
       );
     }
     return result;
@@ -156,7 +157,7 @@ export function InvoiceAgingSection({
         </div>
         <input
           type="text"
-          placeholder="Search by invoice, patient, or service…"
+          placeholder="Search by invoice, patient, service, or comment…"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -180,6 +181,7 @@ export function InvoiceAgingSection({
                     <th className="py-2 pr-2">Services</th>
                     <th className="py-2 pr-2">Status</th>
                     <th className="py-2 pr-2 text-right">Due</th>
+                    <th className="py-2 pr-2">Comments</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -200,6 +202,9 @@ export function InvoiceAgingSection({
                       <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{r.invoiceStatus}</td>
                       <td className="py-1.5 pr-2 text-right font-medium text-rose-600 dark:text-rose-400">
                         {formatCurrency(r.dueAmount)}
+                      </td>
+                      <td className="py-1.5 pr-2 text-xs text-zinc-500 dark:text-zinc-400">
+                        {r.notes.length > 0 ? r.notes.join('; ') : '—'}
                       </td>
                     </tr>
                   ))}

@@ -727,6 +727,7 @@ export interface InvoiceAgingRow {
   invoiceStatus: string;
   ageDays: number;
   agingBucket: AgingBucket;
+  notes: string[];
 }
 
 /**
@@ -750,10 +751,12 @@ export function computeInvoiceAging(records: SaleRecord[], asOfISO: string): Inv
         invoiceStatus: r.invoiceStatus,
         ageDays: 0,
         agingBucket: '0-15',
+        notes: [],
       };
       map.set(r.invoiceNo, inv);
     }
     if (!inv.services.includes(r.serviceName)) inv.services.push(r.serviceName);
+    if (r.invoiceNotes && !inv.notes.includes(r.invoiceNotes)) inv.notes.push(r.invoiceNotes);
     inv.dueAmount += r.dueAmount;
     if (r.date > inv.date) inv.date = r.date;
   }
