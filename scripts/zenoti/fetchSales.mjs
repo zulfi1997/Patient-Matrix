@@ -1,12 +1,18 @@
+import { toCenterWallClock } from './centerTime.mjs';
+
 const DEFAULT_HOST = 'https://api.zenoti.com';
 const PAGE_SIZE = 200;
 
 /** Documented API limit is 365 days per call; stay comfortably under it. */
 const CHUNK_DAYS = 350;
 
-/** This endpoint wants "YYYY-MM-DD HH:MM:SS", not ISO-with-T. */
+/**
+ * This endpoint wants "YYYY-MM-DD HH:MM:SS", not ISO-with-T, and reads it as center-local time -
+ * the same timezone it reports `sale_date` in - so the window must be formatted in center-local
+ * terms, not UTC. See centerTime.mjs.
+ */
 function toZenotiDateTime(d) {
-  return d.toISOString().slice(0, 19).replace('T', ' ');
+  return toCenterWallClock(d);
 }
 
 function* dateChunks(since, until, chunkDays) {
