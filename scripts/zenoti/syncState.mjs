@@ -63,7 +63,16 @@ export async function writeLastSyncedAt(iso) {
  *     very first time this runs with no prior state. `untilDate` isn't meaningful combined with
  *     that first-run fallback, so it's rejected rather than silently ignored.
  */
-export async function resolveSyncWindow({ sinceDate, untilDate, syncBackAmount, syncBackUnit, now = new Date() }) {
+export async function resolveSyncWindow({
+  sinceDate,
+  untilDate,
+  syncBackAmount,
+  syncBackUnit,
+  now = new Date(),
+  // Overrides the state file. Only tests pass it - the watermark on disk is rewritten by the
+  // scheduled job, so a test that read it could not assert a fixed window.
+  lastSyncedAt: lastSyncedAtOverride,
+}) {
   const until = untilDate ? endOfCenterDate(untilDate) : now;
   if (untilDate && Number.isNaN(until.getTime())) throw new Error(`Invalid until_date "${untilDate}" - expected YYYY-MM-DD.`);
   const bounded = !!untilDate;
@@ -85,7 +94,7 @@ export async function resolveSyncWindow({ sinceDate, untilDate, syncBackAmount, 
     throw new Error('until_date needs since_date or sync_back_amount/sync_back_unit set too - there is nothing to bound otherwise.');
   }
 
-  const lastSyncedAt = await readLastSyncedAt();
+  const lastSyncedAt = lastSyncedAtOverride ?? (await readLastSyncedAt());
   if (lastSyncedAt) {
     return { since: startOfCenterDay(new Date(lastSyncedAt), -INCREMENTAL_OVERLAP_DAYS), until, mode: 'incremental' };
   }

@@ -26,6 +26,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Gates the deploy: these cover the revenue/dedup logic, where a regression silently
+      # misstates money rather than visibly breaking, so a failure must stop the release.
+      - run: npm test
       - run: npm run build
         env:
           GITHUB_PAGES: 'true'
