@@ -51,9 +51,10 @@ export function DuplicateInvoiceLinesPanel({
         </button>
       </div>
       <p className="mb-3 text-xs text-amber-700 dark:text-amber-400">
-        The same invoice line appears more than once with a different status (e.g. "Open" and "Closed"), typically
-        from being captured at two different points before an invoice was finalized. Removing the stale copy and
-        keeping the most recently imported one would reduce total revenue by {formatCurrency(totalImpact)}.
+        The same invoice line (matched on invoice + service + quantity + date, since one invoice can carry several
+        different services) was captured by more than one upload - typically a manual export and a Zenoti auto-sync
+        both covering the same dates, each computing a different row ID for it. Removing the older copy and keeping
+        the most recently imported one would reduce total revenue by {formatCurrency(totalImpact)}.
       </p>
       <div className="max-h-72 overflow-auto">
         <table className="w-full text-left text-sm">
@@ -68,12 +69,16 @@ export function DuplicateInvoiceLinesPanel({
           </thead>
           <tbody>
             {groups.map((g) => (
-              <tr key={g.keepId} className="border-t border-amber-200 dark:border-amber-900">
+              <tr key={g.keepIds[0]} className="border-t border-amber-200 dark:border-amber-900">
                 <td className="py-1.5 pr-2 font-medium">{g.invoiceNo}</td>
                 <td className="py-1.5 pr-2">{g.serviceName}</td>
                 <td className="py-1.5 pr-2 text-right">{formatDate(g.date)}</td>
                 <td className="py-1.5 pr-2 text-right">
-                  {formatCurrency(g.keptAmount)} <span className="text-amber-600 dark:text-amber-500">({g.keptStatus})</span>
+                  {formatCurrency(g.keptAmountTotal)}{' '}
+                  <span className="text-amber-600 dark:text-amber-500">
+                    ({g.keptStatus}
+                    {g.keepIds.length > 1 ? ` × ${g.keepIds.length}` : ''})
+                  </span>
                 </td>
                 <td className="py-1.5 pr-2 text-right text-rose-600 dark:text-rose-400">
                   {g.removedRows.map((r) => `${formatCurrency(r.amount)} (${r.invoiceStatus})`).join(', ')}
