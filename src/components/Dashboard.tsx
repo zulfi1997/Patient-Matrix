@@ -16,6 +16,7 @@ import {
 } from '../lib/metrics';
 import { computeDiscountBreakdown, computeDiscountDetails, computeDiscountSummary } from '../lib/discounts';
 import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toISODate } from '../lib/format';
+import { exportDashboardPptx } from '../lib/pptxExport';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodControls } from './PeriodControls';
@@ -42,6 +43,8 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
   });
   const [inactivityDays, setInactivityDays] = useLocalStorageState('pm-inactivity-days', 90);
   const [serviceType, setServiceType] = useState<ItemType | 'All'>('Service');
+  const [pptxBusy, setPptxBusy] = useState(false);
+  const [pptxError, setPptxError] = useState<string | null>(null);
 
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -91,6 +94,31 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
   const invoiceAging = useMemo(() => computeInvoiceAging(records, asOfISO), [records, asOfISO]);
   const agingBucketSummary = useMemo(() => computeAgingBucketSummary(invoiceAging), [invoiceAging]);
 
+  const handleExportPptx = async () => {
+    setPptxBusy(true);
+    setPptxError(null);
+    try {
+      await exportDashboardPptx({
+        periodLabel: PRESET_LABELS[preset],
+        rangeStart: range.start,
+        rangeEnd: range.end,
+        asOfISO,
+        inactivityDays,
+        serviceType,
+        kpis,
+        discountSummary,
+        trend,
+        topServices: serviceStats,
+        atRiskCount: atRiskPatients.length,
+        returnedPatients,
+      });
+    } catch (e) {
+      setPptxError(e instanceof Error ? e.message : 'Failed to build the PowerPoint.');
+    } finally {
+      setPptxBusy(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Print-only report header; the on-screen header/nav is hidden when printing. */}
@@ -108,12 +136,24 @@ export function Dashboard({ records }: { records: SaleRecord[] }) {
           inactivityDays={inactivityDays}
           onInactivityDaysChange={setInactivityDays}
         />
-        <button
-          onClick={() => window.print()}
-          className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-        >
-          Export / Print Dashboard
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.print()}
+              className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            >
+              Export / Print Dashboard
+            </button>
+            <button
+              onClick={handleExportPptx}
+              disabled={pptxBusy}
+              className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            >
+              {pptxBusy ? 'Building…' : 'Download PowerPoint'}
+            </button>
+          </div>
+          {pptxError && <p className="max-w-xs text-right text-xs text-rose-600 dark:text-rose-400">{pptxError}</p>}
+        </div>
       </div>
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
