@@ -465,3 +465,157 @@ export function computeProviderPatients(
     patients,
   };
 }
+
+export interface RoleRevenuePoint {
+  /** ISO yyyy-mm-01. */
+  month: string;
+  /** Sales (Exc. Tax) the role delivered this month - cash plus package sessions consumed. */
+  value: number;
+  /** The cash part of that, on the same basis as the Dashboard's Revenue KPI. */
+  revenue: number;
+  redeemed: number;
+  patients: number;
+  /** Value split by holder, so a month spanning a handover shows both. */
+  byHolder: Record<string, number>;
+  /** Holders who held the role at some point during this month. */
+  holders: string[];
+}
+
+export interface RoleHolderPeriod {
+  provider: string;
+  fromDate: string;
+  /** Null for the current holder, whose tenure is still open. */
+  untilDate: string | null;
+  /** Days held, counted to the report date for the current holder. */
+  days: number;
+  value: number;
+  revenue: number;
+  patients: number;
+  /**
+   * Value divided by months held. Raw totals cannot be compared across holders when one held the
+   * role for two years and another for three months; this is what makes the comparison fair.
+   */
+  valuePerMonth: number | null;
+}
+
+export interface RoleRevenueTrend {
+  points: RoleRevenuePoint[];
+  byHolder: RoleHolderPeriod[];
+}
+
+const AVG_DAYS_PER_MONTH = 30.44;
+
+function monthOf(iso: string): string {
+  return `${iso.slice(0, 7)}-01`;
+}
+
+function nextMonth(monthIso: string): string {
+  const y = Number(monthIso.slice(0, 4));
+  const m = Number(monthIso.slice(5, 7));
+  return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+}
+
+/**
+ * Monthly revenue for the role itself, split by whoever held it, so the effect of each handover is
+ * visible rather than inferred.
+ *
+ * Attribution is by the date of each line, not by month, so a month containing a handover is split
+ * between the two holders rather than credited wholly to one. Months in which the role earned
+ * nothing are emitted as zero rather than omitted - a gap is a finding, and dropping it would draw
+ * a line straight over the dip.
+ *
+ * Per-holder totals are also expressed per month held. Comparing raw totals across holders is
+ * meaningless when one held the role for two years and the next for three months, which is exactly
+ * the situation a recent handover creates.
+ */
+export function computeRoleRevenueTrend(
+  records: SaleRecord[],
+  params: {
+    holders: RoleHolder[];
+    asOfISO: string;
+    providerGroups?: ProviderGroup[];
+    overrides?: ProviderAssignmentOverride[];
+  },
+): RoleRevenueTrend | null {
+  const { asOfISO, providerGroups = [], overrides = [] } = params;
+  const holders = [...params.holders].sort((a, b) => a.fromDate.localeCompare(b.fromDate));
+  if (holders.length === 0) return null;
+
+  interface MonthAcc {
+    value: number;
+    revenue: number;
+    redeemed: number;
+    patients: Set<string>;
+    byHolder: Map<string, number>;
+    holders: Set<string>;
+  }
+  const months = new Map<string, MonthAcc>();
+  const holderTotals = holders.map(() => ({ value: 0, revenue: 0, patients: new Set<string>() }));
+  let earliest: string | null = null;
+
+  for (const r of records) {
+    const idx = holderIndexAt(holders, r.date);
+    if (idx < 0) continue;
+    if (r.date > asOfISO) continue;
+    if (resolveProvider(r.staff, r.date, providerGroups, overrides) !== holders[idx].provider) continue;
+
+    if (earliest === null || r.date < earliest) earliest = r.date;
+    const key = monthOf(r.date);
+    let acc = months.get(key);
+    if (!acc) {
+      acc = { value: 0, revenue: 0, redeemed: 0, patients: new Set(), byHolder: new Map(), holders: new Set() };
+      months.set(key, acc);
+    }
+    const v = lineValue(r);
+    acc.value += v;
+    acc.revenue += r.amount;
+    acc.redeemed += r.redeemedAmount;
+    acc.patients.add(r.patientId);
+    acc.byHolder.set(holders[idx].provider, (acc.byHolder.get(holders[idx].provider) ?? 0) + v);
+    acc.holders.add(holders[idx].provider);
+
+    holderTotals[idx].value += v;
+    holderTotals[idx].revenue += r.amount;
+    holderTotals[idx].patients.add(r.patientId);
+  }
+
+  const points: RoleRevenuePoint[] = [];
+  if (earliest !== null) {
+    // Emit every month in the span, so a month the role earned nothing shows as a zero rather
+    // than letting the chart draw straight over it.
+    for (let m = monthOf(earliest); m <= monthOf(asOfISO); m = nextMonth(m)) {
+      const acc = months.get(m);
+      points.push({
+        month: m,
+        value: acc?.value ?? 0,
+        revenue: acc?.revenue ?? 0,
+        redeemed: acc?.redeemed ?? 0,
+        patients: acc?.patients.size ?? 0,
+        byHolder: acc ? Object.fromEntries(acc.byHolder) : {},
+        holders: acc ? [...acc.holders] : [],
+      });
+    }
+  }
+
+  const byHolder: RoleHolderPeriod[] = holders.map((h, i) => {
+    // The first holder's start may be unset or arbitrarily early; their tenure effectively begins
+    // with the role's first activity.
+    const start = i === 0 && earliest !== null && h.fromDate < earliest ? earliest : h.fromDate;
+    const untilDate = i + 1 < holders.length ? holders[i + 1].fromDate : null;
+    const end = untilDate ?? asOfISO;
+    const days = Math.max(0, daysBetween(start, end) + (untilDate ? 0 : 1));
+    const monthsHeld = days / AVG_DAYS_PER_MONTH;
+    return {
+      provider: h.provider,
+      fromDate: start,
+      untilDate,
+      days,
+      value: holderTotals[i].value,
+      revenue: holderTotals[i].revenue,
+      patients: holderTotals[i].patients.size,
+      valuePerMonth: monthsHeld > 0 ? holderTotals[i].value / monthsHeld : null,
+    };
+  });
+
+  return { points, byHolder };
+}

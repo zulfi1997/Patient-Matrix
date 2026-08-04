@@ -4,6 +4,7 @@ import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversio
 import {
   computeProviderPatients,
   computeRoleHandover,
+  computeRoleRevenueTrend,
   listProviders,
   type PatientOrigin,
   type ProviderPatientOutcome,
@@ -14,6 +15,7 @@ import {
 import { formatCurrency, formatDate, formatNumber, formatPercent } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
+import { RoleRevenueTrendChart } from './RoleRevenueTrendChart';
 
 const OUTCOME_LABELS: Record<RoleOutcome, string> = {
   stillWithRole: 'Still with the role',
@@ -153,6 +155,14 @@ export function ProviderHandoverPanel({
           (originFilter === 'all' || p.origin === originFilter),
       )
     : [];
+
+  const revenueTrend = useMemo(() => {
+    if (!ready) return null;
+    const normalized = holders.map((h, i) => ({ provider: h.provider, fromDate: h.fromDate || (i === 0 ? '0000-01-01' : h.fromDate) }));
+    return computeRoleRevenueTrend(records, {
+      holders: normalized, asOfISO, providerGroups, overrides: providerAssignmentOverrides,
+    });
+  }, [ready, holders, records, asOfISO, providerGroups, providerAssignmentOverrides]);
 
   const update = (i: number, patch: Partial<RoleHolder>) =>
     setHolders((prev) => prev.map((h, j) => (j === i ? { ...h, ...patch } : h)));
@@ -335,6 +345,53 @@ export function ProviderHandoverPanel({
               <strong>{formatCurrency(summary.valueRecovered)}</strong> since.
             </p>
           </div>
+
+          {revenueTrend && revenueTrend.points.length > 0 && (
+            <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Revenue through the handovers</h4>
+              <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+                Monthly value the role delivered, coloured by who held it. Attribution is by the date of each line, so
+                a month containing a handover splits between both rather than being credited to one. A month the role
+                earned nothing is shown as zero rather than skipped.
+              </p>
+              <RoleRevenueTrendChart trend={revenueTrend} />
+
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                    <tr>
+                      <th className="py-2 pr-2">Holder</th>
+                      <th className="py-2 pr-2">Held</th>
+                      <th className="py-2 pr-2 text-right">Patients</th>
+                      <th className="py-2 pr-2 text-right">Total Delivered</th>
+                      <th className="py-2 pr-2 text-right">Per Month</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revenueTrend.byHolder.map((h) => (
+                      <tr key={`${h.provider}-${h.fromDate}`} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <td className="py-1.5 pr-2 font-medium">{h.provider}</td>
+                        <td className="py-1.5 pr-2 whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                          {formatDate(h.fromDate)} – {h.untilDate ? formatDate(h.untilDate) : 'now'} ·{' '}
+                          {formatNumber(h.days)} days
+                        </td>
+                        <td className="py-1.5 pr-2 text-right">{formatNumber(h.patients)}</td>
+                        <td className="py-1.5 pr-2 text-right">{formatCurrency(h.value)}</td>
+                        <td className="py-1.5 pr-2 text-right font-medium">
+                          {h.valuePerMonth != null ? formatCurrency(h.valuePerMonth) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Compare on <strong>per month</strong>, not the total. Tenures of different lengths make raw totals
+                meaningless - which is exactly the situation a recent handover creates, since the newest holder has
+                had the least time to accumulate one.
+              </p>
+            </div>
+          )}
 
           <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
