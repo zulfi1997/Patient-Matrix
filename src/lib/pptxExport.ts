@@ -170,28 +170,29 @@ function addRevenueTrendSlide(pptx: PptxGenJS, trend: MonthlyTrendPoint[]) {
 function addTopServicesSlide(pptx: PptxGenJS, topServices: ServiceStat[]) {
   const slide = pptx.addSlide();
   slide.addText('Top Selling Services', { x: 0.4, y: 0.25, w: 9.2, h: 0.5, fontSize: 22, bold: true, color: COLOR.ink, fontFace: 'Arial' });
-  slide.addText('By revenue, selected period', { x: 0.4, y: 0.68, w: 9.2, h: 0.3, fontSize: 12, color: COLOR.muted, fontFace: 'Arial' });
+  slide.addText('By value delivered, selected period', { x: 0.4, y: 0.68, w: 9.2, h: 0.3, fontSize: 12, color: COLOR.muted, fontFace: 'Arial' });
 
-  const top = [...topServices].sort((a, b) => b.revenue - a.revenue).slice(0, 8);
+  const top = [...topServices].sort((a, b) => b.deliveredValue - a.deliveredValue).slice(0, 8);
   if (top.length === 0) {
     slide.addText('No sales in this period.', { x: 0.4, y: 2.5, w: 9.2, h: 0.5, fontSize: 14, color: COLOR.muted, fontFace: 'Arial' });
     return;
   }
 
-  const headerRow = ['Service', 'Type', 'Times Sold', 'Revenue'].map((text) => ({
+  const headerRow = ['Service', 'Times Sold', 'New Cash', 'Via Packages', 'Delivered'].map((text) => ({
     text,
     options: { bold: true, color: COLOR.white, fill: { color: COLOR.indigo }, fontSize: 11 },
   }));
   const rows = top.map((s) => [
     { text: s.serviceName, options: { fontSize: 10 } },
-    { text: s.itemType, options: { fontSize: 10, color: COLOR.muted } },
     { text: formatNumber(s.count), options: { fontSize: 10, align: 'right' as const } },
-    { text: formatCurrency(s.revenue), options: { fontSize: 10, align: 'right' as const, bold: true } },
+    { text: formatCurrency(s.revenue), options: { fontSize: 10, align: 'right' as const } },
+    { text: formatCurrency(s.redeemedRevenue), options: { fontSize: 10, align: 'right' as const, color: COLOR.muted } },
+    { text: formatCurrency(s.deliveredValue), options: { fontSize: 10, align: 'right' as const, bold: true } },
   ]);
 
   slide.addTable([headerRow, ...rows], {
     x: 0.4, y: 1.1, w: 9.2,
-    colW: [4.4, 1.6, 1.4, 1.8],
+    colW: [3.4, 1.2, 1.5, 1.6, 1.5],
     border: { type: 'solid', color: COLOR.faint, pt: 0.5 },
     autoPage: false,
   });

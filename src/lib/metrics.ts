@@ -296,7 +296,20 @@ export interface ServiceStat {
   itemType: ItemType;
   count: number;
   qty: number;
+  /** New cash taken for this service - excludes sessions consumed from a previously-sold package. */
   revenue: number;
+  /**
+   * Value delivered by consuming previously-sold package sessions. Already recognized as revenue
+   * when the package was sold, so it is deliberately not part of `revenue` - but it is real work
+   * performed, so leaving it out entirely makes a package-delivered service look unproductive.
+   */
+  redeemedRevenue: number;
+  /**
+   * revenue + redeemedRevenue: everything this service actually delivered this period, however it
+   * was paid for. The honest basis for ranking "top selling", since a service sold mostly through
+   * packages earns almost no new cash at the moment it is performed.
+   */
+  deliveredValue: number;
 }
 
 export function computeServiceStats(
@@ -319,14 +332,18 @@ export function computeServiceStats(
         count: 0,
         qty: 0,
         revenue: 0,
+        redeemedRevenue: 0,
+        deliveredValue: 0,
       };
       map.set(r.serviceKey, s);
     }
     s.count += 1;
     s.qty += r.qty;
     s.revenue += r.amount;
+    s.redeemedRevenue += r.redeemedAmount;
+    s.deliveredValue += r.amount + r.redeemedAmount;
   }
-  return [...map.values()].sort((a, b) => b.revenue - a.revenue);
+  return [...map.values()].sort((a, b) => b.deliveredValue - a.deliveredValue);
 }
 
 export interface DormantServiceStat extends ServiceStat {
@@ -358,6 +375,8 @@ export function computeDormantServices(
         count: 0,
         qty: 0,
         revenue: 0,
+        redeemedRevenue: 0,
+        deliveredValue: 0,
         lastSold: r.date,
       };
       map.set(r.serviceKey, s);
@@ -365,6 +384,10 @@ export function computeDormantServices(
     s.count += 1;
     s.qty += r.qty;
     s.revenue += r.amount;
+    s.redeemedRevenue += r.redeemedAmount;
+    s.deliveredValue += r.amount + r.redeemedAmount;
+    // A package session being consumed is still this service being performed, so it counts as
+    // activity - a service delivered only through packages is not dormant.
     if (r.date > s.lastSold) s.lastSold = r.date;
   }
 

@@ -23,7 +23,7 @@ export function DormantServicesTable({ data }: { data: DormantServiceStat[] }) {
                 <th className="py-2 pr-2">Category</th>
                 <th className="py-2 pr-2 text-right">Last Sold</th>
                 <th className="py-2 pr-2 text-right">Days Inactive</th>
-                <th className="py-2 pr-2 text-right">Lifetime Revenue</th>
+                <th className="py-2 pr-2 text-right">Lifetime Value Delivered</th>
               </tr>
             </thead>
             <tbody>
@@ -35,7 +35,14 @@ export function DormantServicesTable({ data }: { data: DormantServiceStat[] }) {
                   <td className="py-1.5 pr-2 text-right font-medium text-rose-600 dark:text-rose-400">
                     {formatNumber(s.daysInactive)}
                   </td>
-                  <td className="py-1.5 pr-2 text-right">{formatCurrency(s.revenue)}</td>
+                  <td className="py-1.5 pr-2 text-right">
+                    {formatCurrency(s.deliveredValue)}
+                    {s.redeemedRevenue > 0 && (
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                        incl. {formatCurrency(s.redeemedRevenue)} via packages
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
