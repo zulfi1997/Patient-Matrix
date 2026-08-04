@@ -344,12 +344,27 @@ export function computeKpiPeriodValue(
   return { current, previous, changePct };
 }
 
-/** Pearson correlation coefficient between two equal-length numeric series. NaN if fewer than 3 points or no variance. */
+/**
+ * Pearson correlation coefficient between two numeric series. NaN if fewer than 3 paired points.
+ *
+ * Series of unequal length are compared over their first `n` points only. The means must be taken
+ * over those same `n` points: summing each array in full while dividing by the shorter length
+ * yields means that belong to neither series, and the coefficient collapses toward zero - two
+ * perfectly correlated series scored ~0.000002 instead of 1. A spuriously *low* correlation reads
+ * as an unremarkable "not meaningfully related" rather than as an error, so it would not announce
+ * itself.
+ */
 export function pearsonCorrelation(a: number[], b: number[]): number {
   const n = Math.min(a.length, b.length);
   if (n < 3) return NaN;
-  const meanA = a.reduce((s, v) => s + v, 0) / n;
-  const meanB = b.reduce((s, v) => s + v, 0) / n;
+  let sumA = 0;
+  let sumB = 0;
+  for (let i = 0; i < n; i++) {
+    sumA += a[i];
+    sumB += b[i];
+  }
+  const meanA = sumA / n;
+  const meanB = sumB / n;
   let num = 0;
   let denA = 0;
   let denB = 0;
