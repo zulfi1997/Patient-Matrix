@@ -12,6 +12,7 @@ import { NewPatientRevenueDashboard } from './components/NewPatientRevenueDashbo
 import { FlaggedTransactionsDashboard } from './components/FlaggedTransactionsDashboard';
 import { KpiEvaluationDashboard } from './components/KpiEvaluationDashboard';
 import { ProviderConversionDashboard } from './components/ProviderConversionDashboard';
+import { ProviderAnalyticsDashboard } from './components/ProviderAnalyticsDashboard';
 import { SegmentPnlDashboard } from './components/SegmentPnlDashboard';
 import { StaffScorecardsDashboard } from './components/StaffScorecardsDashboard';
 import { DepartmentAnalyticsDashboard } from './components/DepartmentAnalyticsDashboard';
@@ -23,7 +24,7 @@ import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } fro
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
-type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'departments' | 'data';
+type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'providerAnalytics' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'departments' | 'data';
 
 function App() {
   const {
@@ -142,6 +143,12 @@ function App() {
               Provider Conversion
             </button>
             <button
+              onClick={() => setTab('providerAnalytics')}
+              className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'providerAnalytics' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              Provider Analytics
+            </button>
+            <button
               onClick={() => setTab('yb111')}
               className={`shrink-0 whitespace-nowrap px-4 py-1.5 ${tab === 'yb111' ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
             >
@@ -173,7 +180,7 @@ function App() {
             </button>
           </nav>
         </div>
-        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'segmentPnl' && (
+        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'providerAnalytics' && tab !== 'segmentPnl' && (
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
@@ -241,6 +248,15 @@ function App() {
             providerGroups={providerGroups}
             revenueAdjustments={revenueAdjustments}
             providerAssignmentOverrides={providerAssignmentOverrides}
+          />
+        ) : tab === 'providerAnalytics' ? (
+          <ProviderAnalyticsDashboard
+            records={analysisRecords}
+            packageBenefits={packageBenefits}
+            serviceDepartmentRecords={serviceDepartmentRecords}
+            providerGroups={providerGroups}
+            providerAssignmentOverrides={providerAssignmentOverrides}
+            revenueAdjustments={revenueAdjustments}
           />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard records={baseAnalysisRecords} />

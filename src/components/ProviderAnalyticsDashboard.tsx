@@ -1,0 +1,419 @@
+import { useMemo } from 'react';
+import type { PackageBenefitRecord, SaleRecord } from '../types';
+import type { ServiceDepartmentRecord } from '../lib/departments';
+import {
+  buildInvoiceToPatientMap,
+  computeRangeConversion,
+  resolveProvider,
+  type ProviderAssignmentOverride,
+  type ProviderGroup,
+  type RevenueAdjustment,
+} from '../lib/conversionMetrics';
+import {
+  buildBenefitLookup,
+  buildServiceDepartmentMap,
+  computeDepartmentProviderContribution,
+} from '../lib/departmentAnalytics';
+import {
+  computeAgingBucketSummary,
+  computeAtRiskPatients,
+  computeFlaggedSummary,
+  computeInvoiceAging,
+  computeKpis,
+  computeMonthlyTrend,
+  computeRedeemedPackages,
+  computeReturnedPatients,
+  computeServiceStats,
+  summarizePatients,
+  type DateRange,
+} from '../lib/metrics';
+import { computeDiscountBreakdown, computeDiscountSummary } from '../lib/discounts';
+import { computeProviderPatients, listProviders } from '../lib/providerHandover';
+import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
+import { formatCurrency, formatDate, formatNumber, formatPercent, toISODate } from '../lib/format';
+import { money, pct, type WorkbookSheet } from '../lib/workbook';
+import { contextSheet } from '../lib/dashboardExports';
+import { useLocalStorageState } from '../hooks/useLocalStorageState';
+import { KpiCard } from './KpiCard';
+import { PeriodPresetSelect } from './PeriodPresetSelect';
+import { PatientTrendChart } from './PatientTrendChart';
+import { RevenueTrendChart } from './RevenueTrendChart';
+import { TopServicesChart } from './TopServicesChart';
+import { RedeemedPackagesTable } from './RedeemedPackagesTable';
+import { DiscountsBreakdownTable } from './DiscountsBreakdownTable';
+import { AtRiskPatientsTable } from './AtRiskPatientsTable';
+import { ExportExcelButton } from './ExportExcelButton';
+
+export function ProviderAnalyticsDashboard({
+  records,
+  packageBenefits,
+  serviceDepartmentRecords,
+  providerGroups,
+  providerAssignmentOverrides,
+  revenueAdjustments,
+}: {
+  records: SaleRecord[];
+  packageBenefits: PackageBenefitRecord[];
+  serviceDepartmentRecords: ServiceDepartmentRecord[];
+  providerGroups: ProviderGroup[];
+  providerAssignmentOverrides: ProviderAssignmentOverride[];
+  revenueAdjustments: RevenueAdjustment[];
+}) {
+  const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-provider-preset', 'last90');
+  const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-provider-custom-range', {
+    start: toISODate(new Date(Date.now() - 89 * 86_400_000)),
+    end: toISODate(new Date()),
+  });
+  const [inactivityDays, setInactivityDays] = useLocalStorageState('pm-provider-inactivity-days', 90);
+  const [provider, setProvider] = useLocalStorageState('pm-provider-selected', '');
+
+  const asOfISO = useMemo(() => {
+    if (records.length === 0) return toISODate(new Date());
+    return records.reduce((max, r) => (r.date > max ? r.date : max), records[0].date);
+  }, [records]);
+
+  const range = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
+  const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
+
+  const providers = useMemo(
+    () => listProviders(records, providerGroups, providerAssignmentOverrides),
+    [records, providerGroups, providerAssignmentOverrides],
+  );
+  const selected = provider || providers[0] || '';
+
+  /**
+   * Every figure below is the existing dashboard computation run over this provider's lines
+   * rather than a provider-specific reimplementation, so a change to how revenue, retention or
+   * discounts are defined reaches here automatically and cannot drift from the clinic-wide view.
+   */
+  const providerRecords = useMemo(
+    () => records.filter((r) => resolveProvider(r.staff, r.date, providerGroups, providerAssignmentOverrides) === selected),
+    [records, selected, providerGroups, providerAssignmentOverrides],
+  );
+
+  /**
+   * Patients summarized from this provider's lines alone, so every patient figure reads
+   * consistently "within this provider's book" - active, returning, retention and stopped-visiting
+   * all scoped the same way. "New" therefore means new to this provider. The genuinely different
+   * number, how many were also new to the clinic, is computed separately below rather than
+   * conflated with it.
+   */
+  const providerPatientsMap = useMemo(() => summarizePatients(providerRecords), [providerRecords]);
+  const clinicPatients = useMemo(() => summarizePatients(records), [records]);
+
+  const kpis = useMemo(
+    () => computeKpis(providerRecords, range, providerPatientsMap, inactivityDays, asOfISO),
+    [providerRecords, range, providerPatientsMap, inactivityDays, asOfISO],
+  );
+
+  const newToClinic = useMemo(() => {
+    const seen = new Set<string>();
+    for (const r of providerRecords) {
+      if (r.date < range.start || r.date > range.end) continue;
+      const s = clinicPatients.get(r.patientId);
+      if (s && s.firstVisit >= range.start && s.firstVisit <= range.end) seen.add(r.patientId);
+    }
+    return seen.size;
+  }, [providerRecords, clinicPatients, range]);
+
+  const trend = useMemo(
+    () => computeMonthlyTrend(providerRecords, providerPatientsMap, 12, asOfISO),
+    [providerRecords, providerPatientsMap, asOfISO],
+  );
+  const serviceStats = useMemo(() => computeServiceStats(providerRecords, range, 'All'), [providerRecords, range]);
+  const redeemedPackages = useMemo(() => computeRedeemedPackages(providerRecords, range), [providerRecords, range]);
+  const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
+  const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);
+  const flagged = useMemo(() => computeFlaggedSummary(providerRecords, range), [providerRecords, range]);
+  const invoiceAging = useMemo(() => computeInvoiceAging(providerRecords, asOfISO), [providerRecords, asOfISO]);
+  const agingBuckets = useMemo(() => computeAgingBucketSummary(invoiceAging), [invoiceAging]);
+  const atRisk = useMemo(
+    () => computeAtRiskPatients(providerPatientsMap, asOfISO, inactivityDays),
+    [providerPatientsMap, asOfISO, inactivityDays],
+  );
+  const returned = useMemo(
+    () => computeReturnedPatients(providerRecords, providerPatientsMap, inactivityDays, asOfISO),
+    [providerRecords, providerPatientsMap, inactivityDays, asOfISO],
+  );
+
+  // Conversion runs over ALL records, not the filtered set: a patient is classified new or repeat
+  // by their history across the clinic, and narrowing the input first would make everyone look new.
+  const conversion = useMemo(() => {
+    const invoiceToPatient = buildInvoiceToPatientMap(records);
+    const benefitsByDate = new Map<string, PackageBenefitRecord[]>();
+    for (const b of packageBenefits) {
+      if (!benefitsByDate.has(b.snapshotDate)) benefitsByDate.set(b.snapshotDate, []);
+      benefitsByDate.get(b.snapshotDate)!.push(b);
+    }
+    const summary = computeRangeConversion(
+      records, clinicPatients, range, invoiceToPatient, benefitsByDate,
+      providerGroups, revenueAdjustments, providerAssignmentOverrides,
+    );
+    return summary.providers.find((p) => p.staff === selected) ?? null;
+  }, [records, clinicPatients, range, packageBenefits, providerGroups, revenueAdjustments, providerAssignmentOverrides, selected]);
+
+  const departmentRows = useMemo(() => {
+    const mapping = buildServiceDepartmentMap(serviceDepartmentRecords);
+    const lookup = buildBenefitLookup(packageBenefits, serviceDepartmentRecords);
+    return computeDepartmentProviderContribution(records, range, mapping, lookup, providerGroups, providerAssignmentOverrides)
+      .filter((r) => r.provider === selected)
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [records, range, serviceDepartmentRecords, packageBenefits, providerGroups, providerAssignmentOverrides, selected]);
+
+  // Repeat-visit behaviour for this provider over the same window, so "did they come back" sits
+  // beside the revenue it explains.
+  const retention = useMemo(
+    () => computeProviderPatients(records, {
+      provider: selected, fromDate: range.start, asOfISO,
+      providerGroups, overrides: providerAssignmentOverrides,
+    }),
+    [records, selected, range, asOfISO, providerGroups, providerAssignmentOverrides],
+  );
+
+  const totalDue = invoiceAging.reduce((s, r) => s + r.dueAmount, 0);
+
+  const buildSheets = (): WorkbookSheet[] => [
+    contextSheet([
+      ['Report', `Provider Analytics - ${selected}`],
+      ['Period', periodLabel],
+      ['Data as of', asOfISO],
+      ['Scope', 'Every figure is the clinic-wide dashboard calculation run over this provider\'s lines, so definitions match the other tabs exactly.'],
+      ['Provider', 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under the doctor she assisted that day.'],
+      ['New Patients', 'New to this provider. The count also new to the clinic is reported separately, since they are different questions.'],
+      ['Conversion', 'Computed across all clinic records then filtered to this provider - classifying new vs repeat from a narrowed set would make everyone look new.'],
+      ['Invoice Ageing', 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.'],
+      ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
+    ]),
+    {
+      name: 'Summary',
+      rows: [
+        { Metric: 'Revenue', Value: money(kpis.periodRevenue) },
+        { Metric: 'Redeemed Revenue', Value: money(kpis.periodRedeemedRevenue) },
+        { Metric: 'Line Items', Value: kpis.periodTransactions },
+        { Metric: 'Active Patients', Value: kpis.activePatients },
+        { Metric: 'New To This Provider', Value: kpis.newPatients },
+        { Metric: 'New To The Clinic', Value: newToClinic },
+        { Metric: 'Returning Patients', Value: kpis.returningPatients },
+        { Metric: 'Retention Rate (%)', Value: pct(kpis.retentionRate) },
+        { Metric: 'Turnover Rate (%)', Value: pct(kpis.turnoverRate) },
+        { Metric: `Stopped Visiting (${inactivityDays}+ days)`, Value: kpis.stoppedVisiting },
+        { Metric: 'Came Back At Least Once (%)', Value: pct(retention.repeatRate) },
+        { Metric: 'Seen Once Then Nothing', Value: retention.onceThenQuiet.patients },
+        { Metric: 'Seen Once Then A Colleague', Value: retention.onceThenElsewhere.patients },
+        { Metric: 'Conversion Rate (%)', Value: conversion ? pct(conversion.conversionRate) : '' },
+        { Metric: 'Total Discount', Value: money(discountSummary.totalDiscount) },
+        { Metric: 'Discount (%)', Value: pct(discountSummary.discountPct) },
+        { Metric: 'YB111 Flagged Lines', Value: flagged.count },
+        { Metric: 'YB111 Flagged Value', Value: money(flagged.amount) },
+        { Metric: 'Outstanding Due', Value: money(totalDue) },
+        { Metric: 'Outstanding Invoices', Value: invoiceAging.length },
+      ],
+    },
+    {
+      name: 'Monthly Trend',
+      rows: trend.map((t) => ({
+        Month: t.month.slice(0, 7), 'Active Patients': t.activePatients, 'New Patients': t.newPatients,
+        'Returning Patients': t.returningPatients, 'Retention Rate (%)': pct(t.retentionRate),
+        Revenue: money(t.revenue), 'Line Items': t.transactions,
+      })),
+    },
+    {
+      name: 'Services',
+      rows: serviceStats.map((s) => ({
+        Service: s.serviceName, 'Item Type': s.itemType, 'Times Sold': s.count, Qty: s.qty,
+        Revenue: money(s.revenue), 'Package Redeemed': money(s.redeemedRevenue), 'Delivered Value': money(s.deliveredValue),
+      })),
+    },
+    { name: 'Departments', rows: departmentRows.map((d) => ({ Department: d.department, Revenue: money(d.revenue), Transactions: d.transactions })) },
+    { name: 'Redeemed Packages', rows: redeemedPackages.map((r) => ({ Package: r.packageName, 'Sessions Consumed': r.count, 'Value Delivered': money(r.redeemedAmount) })) },
+    { name: 'Discounts', rows: discountBreakdown.map((d) => ({ Discount: d.label, Lines: d.count, Amount: money(d.amount) })) },
+    {
+      name: 'Patient Retention',
+      rows: retention.patients.map((p) => ({
+        'Patient ID': p.patientId, Patient: p.patientName, Outcome: p.outcome, Origin: p.origin,
+        Visits: p.visitsWithProvider, 'First Seen': p.firstVisitWithProvider, 'Last Seen': p.lastVisitWithProvider,
+        Value: money(p.valueWithProvider), 'Seen After By': p.seenAfterElsewhere.join('; '), 'Days Away': p.daysSinceLastVisit,
+      })),
+    },
+    {
+      name: 'Stopped Visiting',
+      rows: atRisk.map((a) => ({
+        'Patient ID': a.patientId, Patient: a.patientName, 'Last Visit': a.lastVisit,
+        'Days Since': a.daysSinceLastVisit, 'Visits': a.lifetimeVisits, 'Revenue': money(a.lifetimeRevenue),
+      })),
+    },
+    {
+      name: 'Outstanding Invoices',
+      rows: invoiceAging.map((r) => ({
+        'Invoice No': r.invoiceNo, Patient: r.patientName, 'Sale Date': r.date, 'Age (days)': r.ageDays,
+        Bucket: r.agingBucket, Status: r.invoiceStatus, Due: money(r.dueAmount), Comments: r.notes.join('; '),
+      })),
+    },
+  ];
+
+  if (providers.length === 0) {
+    return (
+      <div className="rounded-xl border border-zinc-200 bg-white p-10 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">No providers found in the imported sales data.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 print:hidden">Provider Analytics</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Everything the other dashboards show, narrowed to one provider. Each figure is that dashboard's own
+            calculation run over this provider's lines, so the definitions match rather than approximate them.
+            Assisting staff fold into whichever doctor they assisted on the day, per your Provider Groups.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3 print:hidden">
+          <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Provider
+            <select
+              value={selected}
+              onChange={(e) => setProvider(e.target.value)}
+              className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            >
+              {providers.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+          <PeriodPresetSelect preset={preset} onPresetChange={setPreset} customRange={customRange} onCustomRangeChange={setCustomRange} />
+          <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Inactive after
+            <select
+              value={inactivityDays}
+              onChange={(e) => setInactivityDays(Number(e.target.value))}
+              className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            >
+              {[30, 60, 90, 120, 180].map((d) => <option key={d} value={d}>{d} days</option>)}
+            </select>
+          </label>
+          <ExportExcelButton fileName={`provider-${selected.replace(/\W+/g, '-')}-${range.start}-to-${range.end}.xlsx`} buildSheets={buildSheets} />
+        </div>
+      </div>
+
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        Showing <strong>{selected}</strong> for {periodLabel}, data as of {asOfISO}. Patient figures are scoped to this
+        provider's own book, so "new" means new to them - the count also new to the clinic is shown separately, since
+        those answer different questions.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <KpiCard label="Revenue" value={formatCurrency(kpis.periodRevenue)} hint={`${formatNumber(kpis.periodTransactions)} line items`} help="New cash from this provider's lines. Excludes package sessions consumed, which are reported beside it." />
+        <KpiCard label="Redeemed Revenue" value={formatCurrency(kpis.periodRedeemedRevenue)} hint="value delivered via package redemption" help="Value of previously-sold package sessions this provider delivered. Already recognized when the package was sold, so it is not counted as new revenue." />
+        <KpiCard label="Active Patients" value={formatNumber(kpis.activePatients)} help="Distinct patients this provider saw in the period." />
+        <KpiCard label="New To This Provider" value={formatNumber(kpis.newPatients)} hint={`${formatNumber(newToClinic)} of them also new to the clinic`} tone="good" help="First time seeing this provider. The hint counts those whose first-ever clinic visit was also in this period - a genuinely new patient rather than one who transferred internally." />
+        <KpiCard label="Returning Patients" value={formatNumber(kpis.returningPatients)} help="Patients who had already seen this provider before the period began." />
+        <KpiCard label="Retention Rate" value={formatPercent(kpis.retentionRate)} hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} prior-period patients returned`} tone={kpis.retentionRate != null && kpis.retentionRate < 50 ? 'bad' : 'good'} help="Of this provider's patients in the prior equivalent period, the share who saw them again in this one." />
+        <KpiCard label="Came Back At Least Once" value={formatPercent(retention.repeatRate)} hint={`${formatNumber(retention.onceThenQuiet.patients)} seen once then nothing`} tone={retention.repeatRate != null && retention.repeatRate < 40 ? 'bad' : 'good'} help="Share of patients seen in this window who returned for a second visit. A single visit followed by silence is counted separately from one who moved to a colleague." />
+        <KpiCard label="Stopped Visiting" value={formatNumber(kpis.stoppedVisiting)} hint={`no visit with this provider for ${inactivityDays}+ days`} tone="bad" help="Patients of this provider with no visit to them in the threshold, as of today. Scoped to this provider, so it counts people they have lost rather than the clinic's total." />
+        {conversion && (
+          <KpiCard label="Conversion Rate" value={formatPercent(conversion.conversionRate)} hint={`${formatNumber(conversion.total)} patients classified`} tone={conversion.conversionRate != null && conversion.conversionRate < 50 ? 'bad' : 'good'} help="From the Provider Conversion tab, using its own logic: converted divided by those who were a conversion opportunity. Follow-up and direct-service visits are excluded from the denominator." />
+        )}
+        <KpiCard label="Total Discount" value={formatCurrency(discountSummary.totalDiscount)} hint={formatPercent(discountSummary.discountPct) + ' of gross sales'} tone="bad" help="Every discount on this provider's lines except package redemption, which is not a discount." />
+        <KpiCard label="YB111 Flagged" value={formatNumber(flagged.count)} hint={formatCurrency(flagged.amount)} help="Line items on this provider's invoices whose notes contain YB111." />
+        <KpiCard label="Outstanding Due" value={formatCurrency(totalDue)} hint={`${formatNumber(invoiceAging.length)} invoices, all history`} tone={totalDue > 0 ? 'bad' : 'neutral'} help="Unpaid balances on invoices containing this provider's lines, across all sales data rather than the selected period." />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
+        <PatientTrendChart data={trend} />
+        <RevenueTrendChart data={trend} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
+        <TopServicesChart data={serviceStats} />
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Departments</h3>
+          <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+            Where this provider's revenue sits. A mixed package splits across departments by the value of the services
+            it bundles, and counts one transaction per constituent service.
+          </p>
+          {departmentRows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-zinc-500">No department-mapped revenue in this period.</p>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                <tr>
+                  <th className="py-2 pr-2">Department</th>
+                  <th className="py-2 pr-2 text-right">Revenue</th>
+                  <th className="py-2 pr-2 text-right">Transactions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {departmentRows.map((d) => (
+                  <tr key={d.department} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <td className="py-1.5 pr-2">{d.department}</td>
+                    <td className="py-1.5 pr-2 text-right font-medium">{formatCurrency(d.revenue)}</td>
+                    <td className="py-1.5 pr-2 text-right">{formatNumber(d.transactions)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <RedeemedPackagesTable data={redeemedPackages} />
+      <DiscountsBreakdownTable data={discountBreakdown} />
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Patients Who Returned After Going Quiet</h3>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Patients who went {inactivityDays}+ days without seeing this provider, then came back.
+        </p>
+        {returned.length === 0 ? (
+          <p className="py-6 text-center text-sm text-zinc-500">Nobody has returned after a gap this long.</p>
+        ) : (
+          <div className="max-h-72 overflow-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                <tr>
+                  <th className="py-2 pr-2">Patient</th>
+                  <th className="py-2 pr-2 text-right">Went Quiet</th>
+                  <th className="py-2 pr-2 text-right">Returned</th>
+                  <th className="py-2 pr-2 text-right">Since Return</th>
+                  <th className="py-2 pr-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {returned.slice(0, 50).map((r) => (
+                  <tr key={r.patientId} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <td className="py-1.5 pr-2">{r.patientName}</td>
+                    <td className="py-1.5 pr-2 text-right">{formatDate(r.wentQuietOn)}</td>
+                    <td className="py-1.5 pr-2 text-right">{formatDate(r.returnedOn)}</td>
+                    <td className="py-1.5 pr-2 text-right">{formatCurrency(r.revenueSinceReturn)}</td>
+                    <td className={`py-1.5 pr-2 ${r.currentlyActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {r.currentlyActive ? 'Still active' : 'Went quiet again'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <AtRiskPatientsTable data={atRisk} />
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Outstanding Invoices</h3>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Unpaid balances on invoices containing this provider's lines, across all sales data rather than the period above.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {agingBuckets.map((b) => (
+            <div key={b.bucket} className="rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-700">
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">{b.bucket} days</div>
+              <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{formatCurrency(b.amount)}</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">{formatNumber(b.count)} invoices</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
