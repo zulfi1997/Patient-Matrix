@@ -173,9 +173,9 @@ export function Dashboard({
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Showing <strong>{PRESET_LABELS[preset]}</strong> ({range.start} to {range.end}), compared with the equivalent
         prior period, for category <strong>{serviceType}</strong>, with a {inactivityDays}-day inactivity threshold.
-        Data as of {asOfISO}. Gift card/prepaid card purchases themselves aren't revenue (that cash is only
-        recognized when redeemed), so those line items are excluded here - but paying for a package, service, or
-        product by redeeming a gift/prepaid card still counts as revenue. Only a previously sold package's own
+        Data as of {asOfISO}. Gift and prepaid cards are a means of payment rather than a sale in themselves, so
+        buying one is never revenue and those line items are excluded here - the revenue is recognized on the
+        invoice the card later pays for, and that invoice counts in full however it was settled. Only a previously sold package's own
         sessions being consumed is excluded, since that value was already counted as revenue when the package
         itself was sold; that portion is broken out below (see "Redeemed Revenue" and "Redeemed Packages").
       </p>

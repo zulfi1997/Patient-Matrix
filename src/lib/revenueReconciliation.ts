@@ -89,7 +89,7 @@ export function computeRevenueReconciliation(
     grossRemoved: sumGross(cards),
     rows: current.length,
     gross: sumGross(current),
-    note: 'Selling a gift or prepaid card is not revenue yet - it is recognized when the card is later redeemed. Always excluded.',
+    note: 'A gift or prepaid card is a means of payment, not a sale - buying one is never revenue. Revenue is recognized on the invoice the card later pays for, and that invoice counts in full however it was settled. Always excluded.',
   });
 
   const flagged = current.filter(hasFlaggedNote);
