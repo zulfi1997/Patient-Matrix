@@ -37,11 +37,22 @@ function hasDiscount(r: SaleRecord): boolean {
 }
 
 export interface DiscountSummary {
-  /** Manual + Campaign + Price Adjusted + Other - excludes Package Redemption. */
+  /**
+   * Every real discount given this period: Manual + Campaign + Price Adjusted + Other. Package
+   * Redemption is the only category excluded, because it isn't a discount at all - it's the
+   * bookkeeping value of a package session being consumed, already tracked via
+   * SaleRecord.redeemedAmount.
+   */
   totalDiscount: number;
   manualDiscount: number;
   campaignDiscount: number;
   priceAdjustedDiscount: number;
+  /**
+   * Discounts whose name matches none of the known labels - an ad-hoc name, or a non-zero
+   * discount with no name at all. Still money given away, so it counts toward totalDiscount;
+   * broken out only so an unexpectedly large figure here is a prompt to add a classifier rule.
+   */
+  otherDiscount: number;
   /** Informational only - the value of package sessions redeemed, not a real discount. */
   packageRedemptionDiscount: number;
   /** Line items with a real (non-package-redemption) discount applied. */
@@ -56,6 +67,7 @@ export function computeDiscountSummary(records: SaleRecord[], range: DateRange):
   let manualDiscount = 0;
   let campaignDiscount = 0;
   let priceAdjustedDiscount = 0;
+  let otherDiscount = 0;
   let packageRedemptionDiscount = 0;
   let discountedLineCount = 0;
   let grossSales = 0;
@@ -74,14 +86,20 @@ export function computeDiscountSummary(records: SaleRecord[], range: DateRange):
     if (category === 'manual') manualDiscount += r.discountAmount;
     else if (category === 'campaign') campaignDiscount += r.discountAmount;
     else if (category === 'priceAdjusted') priceAdjustedDiscount += r.discountAmount;
+    else otherDiscount += r.discountAmount;
   }
 
-  const totalDiscount = manualDiscount + campaignDiscount + priceAdjustedDiscount;
+  // Package Redemption is the only category held out. Every other line counted in
+  // discountedLineCount contributes its amount here, so the KPI can never disagree with the
+  // Discounts Breakdown table beneath it, and an unrecognized discount name cannot make money
+  // silently disappear from the total.
+  const totalDiscount = manualDiscount + campaignDiscount + priceAdjustedDiscount + otherDiscount;
   return {
     totalDiscount,
     manualDiscount,
     campaignDiscount,
     priceAdjustedDiscount,
+    otherDiscount,
     packageRedemptionDiscount,
     discountedLineCount,
     grossSales,

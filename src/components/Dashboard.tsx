@@ -241,8 +241,8 @@ export function Dashboard({
         <KpiCard
           label="Total Discount"
           value={formatCurrencyCompact(discountSummary.totalDiscount)}
-          hint={`${formatCurrency(discountSummary.totalDiscount)} · manual + campaign + price adjustments, excludes package redemption`}
-          help="Sum of manual discounts, campaign discounts (e.g. Buy 1 Get 1 Free), and price adjustments applied this period. Package redemption isn't a discount, so it's excluded here."
+          hint={`${formatCurrency(discountSummary.totalDiscount)} · every discount except package redemption`}
+          help="Every discount given this period - manual, campaign (e.g. Buy 1 Get 1 Free), price adjustments, and any other named or unnamed discount. Package redemption is the one exclusion: it isn't a discount, just the value of a previously-sold package session being consumed, which is reported separately as Redeemed Revenue."
           tone="bad"
         />
         <KpiCard
