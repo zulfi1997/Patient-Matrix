@@ -107,6 +107,8 @@ export function ProviderHandoverPanel({
   const [outcomeFilter, setOutcomeFilter] = useState<RoleOutcome | 'all'>('all');
   const [patientOutcomeFilter, setPatientOutcomeFilter] = useState<ProviderPatientOutcome | 'all'>('all');
   const [originFilter, setOriginFilter] = useState<PatientOrigin | 'all'>('all');
+  const [pickedProvider, setPickedProvider] = useLocalStorageState('pm-patients-provider', '');
+  const [pickedFrom, setPickedFrom] = useLocalStorageState('pm-patients-from', '');
 
   const complete = holders.filter((h) => h.provider && h.fromDate);
   // The first holder's own start date only bounds the book, so it may be left blank.
@@ -124,17 +126,25 @@ export function ProviderHandoverPanel({
   // Everyone the current holder has seen since taking over, inherited or not, tagged by origin so
   // a weak repeat rate can be told apart from a weak handover.
   const currentHolder = summary ? summary.holders[summary.holders.length - 1] : null;
+  // Defaults to the role's current holder, but any provider can be examined - retention is worth
+  // asking about whether or not that person inherited anything.
+  const shownProvider = pickedProvider || currentHolder?.provider || '';
+  const shownFrom = pickedFrom || (pickedProvider ? '' : (currentHolder?.fromDate ?? ''));
+  const inheritedIds = useMemo(
+    () => (summary ? new Set(summary.patients.map((p) => p.patientId)) : undefined),
+    [summary],
+  );
   const providerPatients = useMemo(() => {
-    if (!summary || !currentHolder) return null;
+    if (!shownProvider) return null;
     return computeProviderPatients(records, {
-      provider: currentHolder.provider,
-      fromDate: currentHolder.fromDate,
+      provider: shownProvider,
+      fromDate: shownFrom,
       asOfISO,
-      inheritedIds: new Set(summary.patients.map((p) => p.patientId)),
+      inheritedIds,
       providerGroups,
       overrides: providerAssignmentOverrides,
     });
-  }, [summary, currentHolder, records, asOfISO, providerGroups, providerAssignmentOverrides]);
+  }, [shownProvider, shownFrom, records, asOfISO, inheritedIds, providerGroups, providerAssignmentOverrides]);
 
   const visiblePatients = providerPatients
     ? providerPatients.patients.filter(
@@ -411,17 +421,41 @@ export function ProviderHandoverPanel({
             </div>
           </div>
 
-          {providerPatients && currentHolder && (
+        </>
+      )}
+
+      {providerPatients && (
             <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-                Everyone {currentHolder.provider} has seen since {formatDate(currentHolder.fromDate)}
-              </h4>
+              <div className="mb-2 flex flex-wrap items-end justify-between gap-3">
+                <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                  Everyone {shownProvider} has seen{shownFrom ? ` since ${formatDate(shownFrom)}` : ' (all time)'}
+                </h4>
+                <div className="flex flex-wrap items-end gap-2 print:hidden">
+                  <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Provider
+                    <select
+                      value={shownProvider}
+                      onChange={(e) => setPickedProvider(e.target.value)}
+                      className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                    >
+                      {providers.map((p) => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Seen since (blank = all time)
+                    <input
+                      type="date"
+                      value={shownFrom}
+                      onChange={(e) => setPickedFrom(e.target.value)}
+                      className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                    />
+                  </label>
+                </div>
+              </div>
               <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-                Not only the inherited book. The handover table above counts a patient as kept the moment they appear
-                once, which is the right test for whether the book transferred and the wrong one for whether they are
-                being held onto - a single visit followed by silence looks identical to an established relationship
-                there. Splitting by repeat visit separates the two, and tagging where each patient came from shows
-                whether a weak repeat rate is confined to the inherited book or applies to everyone.
+                {summary
+                  ? 'Not only the inherited book. The handover table above counts a patient as kept the moment they appear once, which is the right test for whether the book transferred and the wrong one for whether they are being held onto - a single visit followed by silence looks identical to an established relationship there. Splitting by repeat visit separates the two, and tagging where each patient came from shows whether a weak repeat rate is confined to the inherited book or applies to everyone.'
+                  : 'Whether this provider holds onto the patients they see. Seeing someone once is separated from an established relationship, and a single visit is split by what followed: going to a colleague is a fit or scheduling matter inside the clinic, going quiet is a patient lost. Works on its own - no handover needs configuring above.'}
               </p>
 
               <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -429,7 +463,7 @@ export function ProviderHandoverPanel({
                   label="Patients Seen"
                   value={formatNumber(providerPatients.total.patients)}
                   hint={`${formatCurrency(providerPatients.total.value)} delivered`}
-                  help={`Distinct patients ${currentHolder.provider} has seen since taking over, from any source.`}
+                  help={`Distinct patients ${shownProvider} has seen in this window, from any source.`}
                 />
                 <KpiCard
                   label="Came Back"
@@ -463,7 +497,7 @@ export function ProviderHandoverPanel({
                     </tr>
                   </thead>
                   <tbody>
-                    {(['inherited', 'fromElsewhere', 'newToClinic'] as const).map((o) => (
+                    {(summary ? (['inherited', 'fromElsewhere', 'newToClinic'] as const) : (['fromElsewhere', 'newToClinic'] as const)).map((o) => (
                       <tr key={o} className="border-t border-zinc-100 dark:border-zinc-800">
                         <td className="py-1.5 pr-2">{ORIGIN_LABELS[o]}</td>
                         <td className="py-1.5 pr-2 text-right">{formatNumber(providerPatients.byOrigin[o].patients)}</td>
@@ -491,7 +525,7 @@ export function ProviderHandoverPanel({
                     ))}
                   </div>
                   <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
-                    {(['all', 'inherited', 'fromElsewhere', 'newToClinic'] as const).map((o) => (
+                    {(summary ? (['all', 'inherited', 'fromElsewhere', 'newToClinic'] as const) : (['all', 'fromElsewhere', 'newToClinic'] as const)).map((o) => (
                       <button
                         key={o}
                         onClick={() => setOriginFilter(o)}
@@ -546,8 +580,6 @@ export function ProviderHandoverPanel({
               </div>
             </div>
           )}
-        </>
-      )}
     </div>
   );
 }
