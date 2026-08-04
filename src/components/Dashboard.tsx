@@ -17,6 +17,8 @@ import {
 import { computeDiscountBreakdown, computeDiscountDetails, computeDiscountSummary } from '../lib/discounts';
 import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { exportDashboardPptx } from '../lib/pptxExport';
+import type { DeckConfig } from '../lib/deckSections';
+import { DeckBuilder } from './DeckBuilder';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -57,8 +59,7 @@ export function Dashboard({
   });
   const [inactivityDays, setInactivityDays] = useLocalStorageState('pm-inactivity-days', 90);
   const [serviceType, setServiceType] = useState<ItemType | 'All'>('Service');
-  const [pptxBusy, setPptxBusy] = useState(false);
-  const [pptxError, setPptxError] = useState<string | null>(null);
+  const [deckOpen, setDeckOpen] = useState(false);
 
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -108,11 +109,9 @@ export function Dashboard({
   const invoiceAging = useMemo(() => computeInvoiceAging(records, asOfISO), [records, asOfISO]);
   const agingBucketSummary = useMemo(() => computeAgingBucketSummary(invoiceAging), [invoiceAging]);
 
-  const handleExportPptx = async () => {
-    setPptxBusy(true);
-    setPptxError(null);
-    try {
-      await exportDashboardPptx({
+  const buildDeck = async (config: DeckConfig) => {
+    await exportDashboardPptx(
+      {
         periodLabel: PRESET_LABELS[preset],
         rangeStart: range.start,
         rangeEnd: range.end,
@@ -121,16 +120,17 @@ export function Dashboard({
         serviceType,
         kpis,
         discountSummary,
+        discountBreakdown,
         trend,
         topServices: serviceStats,
+        redeemedPackages,
+        invoiceAging,
+        agingBucketSummary,
         atRiskCount: atRiskPatients.length,
         returnedPatients,
-      });
-    } catch (e) {
-      setPptxError(e instanceof Error ? e.message : 'Failed to build the PowerPoint.');
-    } finally {
-      setPptxBusy(false);
-    }
+      },
+      config,
+    );
   };
 
   return (
@@ -159,14 +159,12 @@ export function Dashboard({
               Export / Print Dashboard
             </button>
             <button
-              onClick={handleExportPptx}
-              disabled={pptxBusy}
-              className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+              onClick={() => setDeckOpen((v) => !v)}
+              className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
             >
-              {pptxBusy ? 'Building…' : 'Download PowerPoint'}
+              {deckOpen ? 'Hide Presentation Builder' : 'Build Presentation'}
             </button>
           </div>
-          {pptxError && <p className="max-w-xs text-right text-xs text-rose-600 dark:text-rose-400">{pptxError}</p>}
         </div>
       </div>
 
@@ -179,6 +177,15 @@ export function Dashboard({
         sessions being consumed is excluded, since that value was already counted as revenue when the package
         itself was sold; that portion is broken out below (see "Redeemed Revenue" and "Redeemed Packages").
       </p>
+
+      {deckOpen && (
+        <DeckBuilder
+          defaultTitle="Patient Matrix"
+          defaultSubtitle="Performance Review"
+          onBuild={buildDeck}
+          onClose={() => setDeckOpen(false)}
+        />
+      )}
 
       <RevenueReconciliationPanel
         rawRecords={rawRecords}
