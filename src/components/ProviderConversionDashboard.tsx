@@ -20,6 +20,7 @@ import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { ConversionTrendChart } from './ConversionTrendChart';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
+import { ProviderHandoverPanel } from './ProviderHandoverPanel';
 
 const CATEGORY_LABELS: Record<ConversionCategory, string> = {
   newUnconverted: 'New - Unconverted',
@@ -534,6 +535,13 @@ export function ProviderConversionDashboard({
           </table>
         </div>
       </div>
+
+      <ProviderHandoverPanel
+        records={records}
+        asOfISO={asOfISO}
+        providerGroups={providerGroups}
+        providerAssignmentOverrides={providerAssignmentOverrides}
+      />
     </div>
   );
 }
