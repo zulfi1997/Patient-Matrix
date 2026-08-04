@@ -11,6 +11,7 @@ import type { DepartmentMappingImportResult } from '../hooks/useServiceDepartmen
 import type { AccountInfo } from '@azure/msal-browser';
 import { ImportSchemaError } from '../lib/excelParser';
 import { ANALYSIS_EXCLUDED_TYPES } from '../lib/filters';
+import { countUnresolvedServiceLines } from '../lib/serviceKeyResolution';
 import { formatDate, formatNumber } from '../lib/format';
 import { ONEDRIVE_SUBFOLDERS } from '../lib/oneDriveConfig';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
@@ -181,6 +182,8 @@ export function DataPage({
     return [...map.values()].sort((a, b) => a.serviceName.localeCompare(b.serviceName));
   }, [records, packageBenefits]);
 
+  const unidentifiedServiceLines = useMemo(() => countUnresolvedServiceLines(records), [records]);
+
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<ImportResult[]>([]);
@@ -343,6 +346,16 @@ export function DataPage({
       )}
 
       <SupersededRowsPanel records={records} batches={batches} onRemove={removeTransactionsByIds} />
+
+      {unidentifiedServiceLines > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-800 shadow-sm dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
+          <strong>{formatNumber(unidentifiedServiceLines)} line(s) have no Item Code and no match by name.</strong>{' '}
+          Service analytics identify a service by its Item Code; a line without one is matched by name against a
+          coded line elsewhere in the data. These lines matched neither, so they are grouped by name on their own and
+          may appear separately from the same service sold under a code. Re-exporting the affected period with the
+          Item Code column included resolves it. (Custom packages are exempt - they never carry a code.)
+        </div>
+      )}
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mb-3 flex items-center justify-between">

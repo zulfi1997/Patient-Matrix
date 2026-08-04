@@ -1,6 +1,7 @@
 import type { ItemType, SaleRecord } from '../types';
 import { toISODate } from './format';
 import { hasFlaggedNote } from './filters';
+import { buildServiceKeyResolver } from './serviceKeyResolution';
 
 export interface DateRange {
   start: string; // ISO yyyy-mm-dd, inclusive
@@ -317,15 +318,19 @@ export function computeServiceStats(
   range: DateRange,
   itemTypeFilter: ItemType | 'All',
 ): ServiceStat[] {
+  // Built from every record, not just the ones in range: the coded rows that identify a
+  // code-less service often fall outside the period being analyzed.
+  const resolveKey = buildServiceKeyResolver(records);
   const map = new Map<string, ServiceStat>();
   for (const r of records) {
     if (!isInRange(r.date, range)) continue;
     if (itemTypeFilter !== 'All' && r.itemType !== itemTypeFilter) continue;
 
-    let s = map.get(r.serviceKey);
+    const serviceKey = resolveKey(r);
+    let s = map.get(serviceKey);
     if (!s) {
       s = {
-        serviceKey: r.serviceKey,
+        serviceKey,
         serviceName: r.serviceName,
         subcategory: r.subcategory,
         itemType: r.itemType,
@@ -335,7 +340,7 @@ export function computeServiceStats(
         redeemedRevenue: 0,
         deliveredValue: 0,
       };
-      map.set(r.serviceKey, s);
+      map.set(serviceKey, s);
     }
     s.count += 1;
     s.qty += r.qty;
@@ -361,14 +366,16 @@ export function computeDormantServices(
   interface Acc extends ServiceStat {
     lastSold: string;
   }
+  const resolveKey = buildServiceKeyResolver(records);
   const map = new Map<string, Acc>();
 
   for (const r of records) {
     if (itemTypeFilter !== 'All' && r.itemType !== itemTypeFilter) continue;
-    let s = map.get(r.serviceKey);
+    const serviceKey = resolveKey(r);
+    let s = map.get(serviceKey);
     if (!s) {
       s = {
-        serviceKey: r.serviceKey,
+        serviceKey,
         serviceName: r.serviceName,
         subcategory: r.subcategory,
         itemType: r.itemType,
@@ -379,7 +386,7 @@ export function computeDormantServices(
         deliveredValue: 0,
         lastSold: r.date,
       };
-      map.set(r.serviceKey, s);
+      map.set(serviceKey, s);
     }
     s.count += 1;
     s.qty += r.qty;
