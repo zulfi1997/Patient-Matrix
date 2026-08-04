@@ -3,6 +3,8 @@ import type { ManualKpiEntry, SaleRecord, StaffScorecard, StaffScorecardKpi } fr
 import type { PatientVisitSummary } from '../lib/metrics';
 import { findKpiDefinition, parseTarget, statusFor, type KpiComputation, type KpiStatus } from '../lib/kpiRegistry';
 import { formatCurrency, formatMonthLabel, formatNumber, formatPercent, formatDate } from '../lib/format';
+import { ExportExcelButton } from './ExportExcelButton';
+import { staffScorecardSheets, contextSheet } from '../lib/dashboardExports';
 
 const STATUS_STYLE: Record<KpiStatus, string> = {
   meets: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
@@ -316,6 +318,20 @@ export function StaffScorecardsDashboard({
             etc.) can be logged manually per month, right on that KPI's row.
           </p>
         </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <ExportExcelButton
+          fileName={`staff-scorecards-${selectedMonth || 'all'}.xlsx`}
+          disabled={scorecards.length === 0}
+          buildSheets={() => [
+            contextSheet([
+              ['Report', 'Staff Scorecards'],
+              ['Month', selectedMonth || '(none selected)'],
+              ['Source', 'KPIs parsed from each uploaded offer letter (.docx).'],
+              ['Scope', 'The scorecards themselves and their KPI definitions. Measured values are computed against clinic performance on screen.'],
+            ]),
+            ...staffScorecardSheets(scorecards),
+          ]}
+        />
         {scorecards.length > 0 && (
           <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
             Month:
@@ -332,6 +348,7 @@ export function StaffScorecardsDashboard({
             </select>
           </label>
         )}
+        </div>
       </div>
 
       <div

@@ -21,6 +21,8 @@ import { KpiCard } from './KpiCard';
 import { ConversionTrendChart } from './ConversionTrendChart';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { ProviderHandoverPanel } from './ProviderHandoverPanel';
+import { ExportExcelButton } from './ExportExcelButton';
+import { conversionSheets, contextSheet } from '../lib/dashboardExports';
 
 const CATEGORY_LABELS: Record<ConversionCategory, string> = {
   newUnconverted: 'New - Unconverted',
@@ -375,6 +377,25 @@ export function ProviderConversionDashboard({
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">By Provider / Therapist - {periodLabel}</h3>
+          <ExportExcelButton
+            label="Export to Excel"
+            fileName={`provider-conversion-${viewMode === 'day' ? date : `${periodRange.start}-to-${periodRange.end}`}.xlsx`}
+            disabled={summary.providers.length === 0}
+            buildSheets={() => [
+              contextSheet([
+                ['Report', 'Provider Conversion'],
+                ['Scope', viewMode === 'day' ? `Single day: ${date}` : `${periodRange.start} to ${periodRange.end}`],
+                ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
+                ['Conversion rate', 'Converted divided by everyone classified as a conversion opportunity. Follow-up / direct-service visits are excluded from that denominator, since there was nothing to convert.'],
+                ['Provider', 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under whichever doctor she assisted that day.'],
+                ['Classification', 'Each patient is classified once per provider per day, on that day\'s own terms.'],
+              ]),
+              ...conversionSheets({
+                providers: summary.providers, overall: summary.overall, patientRows: summary.patientRows,
+                categoryLabels: CATEGORY_LABELS, followUpLabels: FOLLOW_UP_REASON_LABELS,
+              }),
+            ]}
+          />
           <button
             onClick={() => exportProviderSummaryCsv(summary.providers, summary.overall, periodLabel)}
             disabled={summary.providers.length === 0}

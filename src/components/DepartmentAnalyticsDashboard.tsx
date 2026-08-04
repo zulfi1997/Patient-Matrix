@@ -25,6 +25,8 @@ import {
 } from '../lib/departmentAnalytics';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
+import { ExportExcelButton } from './ExportExcelButton';
+import { departmentSheets, contextSheet } from '../lib/dashboardExports';
 import { KpiCard } from './KpiCard';
 import { InfoTooltip } from './InfoTooltip';
 import { formatCurrency, formatCurrencyCompact, formatMonthLabel, formatNumber, formatPercent, toISODate } from '../lib/format';
@@ -177,6 +179,23 @@ export function DepartmentAnalyticsDashboard({
           <div className="flex flex-wrap items-end gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <PeriodPresetSelect preset={preset} onPresetChange={setPreset} customRange={customRange} onCustomRangeChange={setCustomRange} />
           </div>
+          <ExportExcelButton
+            fileName={`departments-${range.start}-to-${range.end}.xlsx`}
+            buildSheets={() => [
+              contextSheet([
+                ['Report', 'Department Analytics'],
+                ['Period', `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`],
+                ['Data as of', asOfISO],
+                ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
+                ['Mixed packages', 'Revenue is split across departments in proportion to the value of the services a package bundles. Transactions count one per constituent service, so a bundled service counts the same as one bought on its own.'],
+                ['Unmapped', 'A service with no department assigned, or a package whose benefits cannot be resolved. Shown rather than dropped so it is visible.'],
+              ]),
+              ...departmentSheets({
+                revenue: revenueRows, providers: providerRows, redemptions: redemptionRows,
+                patients: patientRows, monthly: monthlyRows,
+              }),
+            ]}
+          />
           <button
             onClick={() => window.print()}
             className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"

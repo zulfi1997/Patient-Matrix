@@ -14,6 +14,8 @@ import { formatCurrency, formatCurrencyCompact, formatNumber, toISODate } from '
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
+import { ExportExcelButton } from './ExportExcelButton';
+import { flaggedSheets, contextSheet } from '../lib/dashboardExports';
 import { FlaggedTrendChart } from './FlaggedTrendChart';
 import { FlaggedBreakdownTable } from './FlaggedBreakdownTable';
 import { FlaggedTransactionsTable } from './FlaggedTransactionsTable';
@@ -72,6 +74,19 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
               onCustomRangeChange={setCustomRange}
             />
           </div>
+          <ExportExcelButton
+            fileName={`yb111-analytics-${range.start}-to-${range.end}.xlsx`}
+            buildSheets={() => [
+              contextSheet([
+                ['Report', 'YB111 Analytics'],
+                ['Period', `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`],
+                ['Data as of', asOfISO],
+                ['Scope', 'Line items whose Invoice Notes contain "YB111". Shown regardless of the Exclude YB111 toggle, since that is this tab\'s purpose.'],
+                ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
+              ]),
+              ...flaggedSheets({ summary, transactions, byStaff, byService, trend, dueInvoices }),
+            ]}
+          />
           <button
             onClick={() => window.print()}
             className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"

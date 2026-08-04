@@ -14,6 +14,8 @@ import { formatCurrency, formatCurrencyCompact, formatMonthLabel, formatNumber, 
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
+import { ExportExcelButton } from './ExportExcelButton';
+import { newPatientRevenueSheets, contextSheet } from '../lib/dashboardExports';
 import { NewPatientRevenueChart } from './NewPatientRevenueChart';
 import { NewPatientRevenueTable } from './NewPatientRevenueTable';
 import { NewPatientTopServicesChart } from './NewPatientTopServicesChart';
@@ -106,6 +108,22 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
               onCustomRangeChange={setCustomRange}
             />
           </div>
+          <ExportExcelButton
+            fileName={`new-patient-revenue-${range.start}-to-${range.end}.xlsx`}
+            buildSheets={() => [
+              contextSheet([
+                ['Report', 'New Patient Revenue'],
+                ['Period', `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`],
+                ['Data as of', asOfISO],
+                ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
+                ['Acquisition cost', 'Marketing spend comes from Segment P&L, which only has whole months - so it is divided by new patients over the months that have P&L data, not the period above.'],
+              ]),
+              ...newPatientRevenueSheets({
+                summary, details: newPatientDetails, topServices: newPatientTopServices,
+                trend, acquisition: acquisitionInputs, pacNewPatients,
+              }),
+            ]}
+          />
           <button
             onClick={() => window.print()}
             className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"

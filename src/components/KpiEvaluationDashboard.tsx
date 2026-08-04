@@ -13,6 +13,8 @@ import { summarizePatients, type DateRange } from '../lib/metrics';
 import { toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
+import { ExportExcelButton } from './ExportExcelButton';
+import { kpiEvaluationSheets, contextSheet } from '../lib/dashboardExports';
 import { KpiPicker } from './KpiPicker';
 import { KpiScorecardCard } from './KpiScorecardCard';
 import { KpiCorrelationMatrix } from './KpiCorrelationMatrix';
@@ -100,6 +102,20 @@ export function KpiEvaluationDashboard({
               onCustomRangeChange={setCustomRange}
             />
           </div>
+          <ExportExcelButton
+            fileName={`kpi-evaluation-${range.start}-to-${range.end}.xlsx`}
+            disabled={selectedKpis.length === 0}
+            buildSheets={() => [
+              contextSheet([
+                ['Report', 'KPI Evaluation'],
+                ['Period', `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`],
+                ['Data as of', asOfISO],
+                ['Scope', 'Only the KPIs selected on screen are exported.'],
+                ['Monthly Series', 'One row per KPI per month rather than a column per KPI - long shape pivots cleanly and does not break when the selection changes.'],
+              ]),
+              ...kpiEvaluationSheets({ kpis: selectedKpis, periodValueById, seriesById }),
+            ]}
+          />
           <button
             onClick={() => window.print()}
             className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"

@@ -12,6 +12,8 @@ import { formatMonthLabel } from '../lib/format';
 import { SegmentPnlSummaryTable } from './SegmentPnlSummaryTable';
 import { SegmentPnlDetailTable } from './SegmentPnlDetailTable';
 import { InfoTooltip } from './InfoTooltip';
+import { ExportExcelButton } from './ExportExcelButton';
+import { segmentPnlSheets, contextSheet } from '../lib/dashboardExports';
 
 type ViewMode = 'monthly' | 'ytd';
 
@@ -110,6 +112,20 @@ export function SegmentPnlDashboard({
             </div>
           </div>
         </div>
+        <ExportExcelButton
+          fileName={`segment-pnl-${monthsForView[0] ?? 'all'}.xlsx`}
+          disabled={results.length === 0}
+          buildSheets={() => [
+            contextSheet([
+              ['Report', 'Segment P&L'],
+              ['View', view === 'monthly' ? `Month: ${selectedMonth}` : `Cumulative: ${monthsForView.length} month(s)`],
+              ['Months included', monthsForView.join(', ')],
+              ['Currency', 'OMR. Expenses are negative, so totals are sums rather than differences.'],
+              ['Allocated share', "A segment's portion of GEN overhead, apportioned by the active allocation mode. Kept in its own column because the segment did not post it."],
+            ]),
+            ...segmentPnlSheets(results),
+          ]}
+        />
         <button
           onClick={() => window.print()}
           className="shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"

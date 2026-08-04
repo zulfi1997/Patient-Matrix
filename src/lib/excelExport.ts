@@ -16,6 +16,7 @@ import type {
 import { isInRange } from './metrics';
 import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
 import { hasFlaggedNote } from './filters';
+import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
 
 export interface WorkbookParams {
   periodLabel: string;
@@ -41,8 +42,6 @@ export interface WorkbookParams {
   providerAssignmentOverrides: ProviderAssignmentOverride[];
 }
 
-/** Rounded to fils. Written as a number, never a formatted string - a pivot cannot sum "OMR 1,234.000". */
-const money = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
  * Notes carried into the workbook. Every figure here has a basis that differs from at least one
@@ -150,15 +149,6 @@ function transactionRows(p: WorkbookParams): Record<string, string | number>[] {
     });
 }
 
-/** Sizes columns from their content so the workbook opens readable rather than full of ####. */
-function columnWidths(rows: Record<string, unknown>[]): { wch: number }[] {
-  if (rows.length === 0) return [];
-  return Object.keys(rows[0]).map((key) => {
-    const longest = rows.reduce((max, r) => Math.max(max, String(r[key] ?? '').length), key.length);
-    return { wch: Math.min(46, Math.max(9, longest + 2)) };
-  });
-}
-
 /**
  * Builds a multi-sheet workbook of everything the dashboard computed for the selected period.
  *
@@ -168,17 +158,12 @@ function columnWidths(rows: Record<string, unknown>[]): { wch: number }[] {
  * them so the bases that differ between figures survive the trip into a presentation.
  */
 export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> {
-  // Lazily loaded for the same reason excelParser.ts defers it: xlsx is large and only needed
-  // when someone actually exports.
-  const XLSX = await import('xlsx');
-  const wb = XLSX.utils.book_new();
-
-  const sheets: [string, Record<string, unknown>[]][] = [
-    ['Read Me', readMeRows(p)],
-    ['Summary', summaryRows(p)],
-    [
-      'Monthly Trend',
-      p.trend.map((t) => ({
+  const sheets: WorkbookSheet[] = [
+    { name: 'Read Me', rows: readMeRows(p) },
+    { name: 'Summary', rows: summaryRows(p) },
+    {
+      name: 'Monthly Trend',
+      rows: p.trend.map((t) => ({
         Month: t.month.slice(0, 7),
         'Active Patients': t.activePatients,
         'New Patients': t.newPatients,
@@ -191,10 +176,10 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
         'Returning Patient Revenue': money(t.returningPatientRevenue),
         'Line Items': t.transactions,
       })),
-    ],
-    [
-      'Services',
-      p.services.map((s) => ({
+    },
+    {
+      name: 'Services',
+      rows: p.services.map((s) => ({
         Service: s.serviceName,
         'Item Type': s.itemType,
         Subcategory: s.subcategory,
@@ -204,58 +189,49 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
         'Package Redeemed': money(s.redeemedRevenue),
         'Delivered Value': money(s.deliveredValue),
       })),
-    ],
-    [
-      'Redeemed Packages',
-      p.redeemedPackages.map((r) => ({ Package: r.packageName, 'Sessions Consumed': r.count, 'Value Delivered': money(r.redeemedAmount) })),
-    ],
-    [
-      'Discounts',
-      p.discountBreakdown.map((d) => ({ Discount: d.label, Category: DISCOUNT_CATEGORY_LABELS[d.category], Lines: d.count, Amount: money(d.amount) })),
-    ],
-    [
-      'Discount Details',
-      p.discountDetails.map((d) => ({
+    },
+    {
+      name: 'Redeemed Packages',
+      rows: p.redeemedPackages.map((r) => ({ Package: r.packageName, 'Sessions Consumed': r.count, 'Value Delivered': money(r.redeemedAmount) })),
+    },
+    {
+      name: 'Discounts',
+      rows: p.discountBreakdown.map((d) => ({ Discount: d.label, Category: DISCOUNT_CATEGORY_LABELS[d.category], Lines: d.count, Amount: money(d.amount) })),
+    },
+    {
+      name: 'Discount Details',
+      rows: p.discountDetails.map((d) => ({
         Date: d.date, 'Invoice No': d.invoiceNo, Patient: d.patientName, Service: d.serviceName,
         'Discount Name': d.discountName ?? '', Category: DISCOUNT_CATEGORY_LABELS[d.category],
         'Price Before': money(d.price), Discount: money(d.discountAmount), 'Price After': money(d.netPrice),
       })),
-    ],
-    [
-      'Invoice Ageing',
-      p.invoiceAging.map((r) => ({
+    },
+    {
+      name: 'Invoice Ageing',
+      rows: p.invoiceAging.map((r) => ({
         'Invoice No': r.invoiceNo, 'Patient ID': r.patientId, Patient: r.patientName, 'Sale Date': r.date,
         'Age (days)': r.ageDays, Bucket: r.agingBucket, Services: r.services.join('; '),
         Status: r.invoiceStatus, Due: money(r.dueAmount), Comments: r.notes.join('; '),
       })),
-    ],
-    [
-      'Ageing Buckets',
-      p.agingBucketSummary.map((b) => ({ Bucket: `${b.bucket} days`, Invoices: b.count, Amount: money(b.amount) })),
-    ],
-    [
-      'Stopped Visiting',
-      p.atRiskPatients.map((a) => ({
+    },
+    { name: 'Ageing Buckets', rows: p.agingBucketSummary.map((b) => ({ Bucket: `${b.bucket} days`, Invoices: b.count, Amount: money(b.amount) })) },
+    {
+      name: 'Stopped Visiting',
+      rows: p.atRiskPatients.map((a) => ({
         'Patient ID': a.patientId, Patient: a.patientName, 'First Visit': a.firstVisit, 'Last Visit': a.lastVisit,
         'Days Since Last Visit': a.daysSinceLastVisit, 'Lifetime Visits': a.lifetimeVisits, 'Lifetime Revenue': money(a.lifetimeRevenue),
       })),
-    ],
-    [
-      'Returned Patients',
-      p.returnedPatients.map((r) => ({
+    },
+    {
+      name: 'Returned Patients',
+      rows: p.returnedPatients.map((r) => ({
         'Patient ID': r.patientId, Patient: r.patientName, 'Went Quiet On': r.wentQuietOn, 'Gap (days)': r.gapDays,
         'Returned On': r.returnedOn, 'Days Since Return': r.daysSinceReturn, 'Visits Since Return': r.visitsSinceReturn,
         'Revenue Since Return': money(r.revenueSinceReturn), 'Still Active': r.currentlyActive ? 'Yes' : 'No',
       })),
-    ],
-    ['Transactions', transactionRows(p)],
+    },
+    { name: 'Transactions', rows: transactionRows(p) },
   ];
 
-  for (const [name, rows] of sheets) {
-    const ws = rows.length > 0 ? XLSX.utils.json_to_sheet(rows) : XLSX.utils.aoa_to_sheet([['No data for this period']]);
-    if (rows.length > 0) ws['!cols'] = columnWidths(rows);
-    XLSX.utils.book_append_sheet(wb, ws, name);
-  }
-
-  XLSX.writeFile(wb, `patient-matrix-${p.range.start}-to-${p.range.end}.xlsx`);
+  await downloadWorkbook(`patient-matrix-${p.range.start}-to-${p.range.end}.xlsx`, sheets);
 }
