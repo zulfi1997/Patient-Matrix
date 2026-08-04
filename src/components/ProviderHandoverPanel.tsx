@@ -37,13 +37,16 @@ function exportCsv(summary: RoleHandoverSummary) {
   const original = summary.holders[0].provider;
   const header = [
     'Patient ID', 'Patient', 'Outcome', `Last Visit With ${original}`, `Visits With ${original}`,
-    `Value With ${original} (OMR)`, 'Role Holders Seen Since', 'Other Providers Seen',
+    `Value Delivered With ${original} (OMR)`, 'Of Which Package Sessions (OMR)', `New Cash With ${original} (OMR)`,
+    'Role Holders Seen Since', 'Providers Outside The Role Seen',
     'Visits Since Handover', 'Value Since Handover (OMR)', 'Days Since Last Visit',
   ];
   const lines = summary.patients.map((p) =>
     [
       p.patientId, p.patientName, OUTCOME_LABELS[p.outcome], p.lastVisitWithOriginal, p.visitsWithOriginal,
-      p.valueWithOriginal.toFixed(3), p.seenWithHolders.join('; '), p.otherProvidersSeen.join('; '),
+      p.valueWithOriginal.toFixed(3), p.redeemedWithOriginal.toFixed(3),
+      (p.valueWithOriginal - p.redeemedWithOriginal).toFixed(3),
+      p.seenWithHolders.join('; '), p.otherProvidersSeen.join('; '),
       p.visitsSinceHandover, p.valueSinceHandover.toFixed(3), p.daysSinceLastVisit,
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
@@ -234,7 +237,7 @@ export function ProviderHandoverPanel({
                     <th className="py-2 pr-2">Tenure</th>
                     <th className="py-2 pr-2 text-right">Of the book, seen</th>
                     <th className="py-2 pr-2 text-right">Share</th>
-                    <th className="py-2 pr-2 text-right">Value</th>
+                    <th className="py-2 pr-2 text-right">Value Delivered</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -258,6 +261,13 @@ export function ProviderHandoverPanel({
                 </tbody>
               </table>
             </div>
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              Value here is Sales (Exc. Tax) - cash plus the value of package sessions consumed - a wider basis than
+              the Dashboard's Revenue KPI, which nets package redemption off. Gift and prepaid card purchases are
+              excluded from both. Of this book, {formatCurrency(summary.inherited.redeemedWithOriginal)} was package
+              sessions being consumed rather than new cash; on Revenue alone a patient part-way through a prepaid
+              package would look worthless to keep.
+            </p>
             <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
               Of {formatCurrency(summary.inherited.valueWithOriginal)} of business{' '}
               {summary.holders[0].provider} was handling,{' '}
@@ -294,7 +304,7 @@ export function ProviderHandoverPanel({
                     <th className="py-2 pr-2">Patient</th>
                     <th className="py-2 pr-2">Outcome</th>
                     <th className="py-2 pr-2 text-right">Last With {summary.holders[0].provider}</th>
-                    <th className="py-2 pr-2 text-right">Value</th>
+                    <th className="py-2 pr-2 text-right">Value Delivered</th>
                     <th className="py-2 pr-2">Since Handover</th>
                     <th className="py-2 pr-2 text-right">Days Away</th>
                   </tr>
@@ -317,10 +327,35 @@ export function ProviderHandoverPanel({
                           {formatNumber(p.visitsWithOriginal)} visit{p.visitsWithOriginal === 1 ? '' : 's'}
                         </div>
                       </td>
-                      <td className="py-1.5 pr-2 text-right font-medium">{formatCurrency(p.valueWithOriginal)}</td>
-                      <td className="py-1.5 pr-2 text-xs text-zinc-500 dark:text-zinc-400">
-                        {[...p.seenWithHolders, ...p.otherProvidersSeen].join(', ') || '—'}
-                        {p.visitsSinceHandover > 0 && ` · ${formatCurrency(p.valueSinceHandover)}`}
+                      <td className="py-1.5 pr-2 text-right font-medium">
+                        {formatCurrency(p.valueWithOriginal)}
+                        {p.redeemedWithOriginal > 0 && (
+                          <div className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+                            incl. {formatCurrency(p.redeemedWithOriginal)} via packages
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-2 text-xs">
+                        {p.seenWithHolders.length === 0 && p.otherProvidersSeen.length === 0 ? (
+                          <span className="text-zinc-500 dark:text-zinc-400">—</span>
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            {p.seenWithHolders.length > 0 && (
+                              <span className="text-emerald-700 dark:text-emerald-400">
+                                In the role: {p.seenWithHolders.join(', ')}
+                              </span>
+                            )}
+                            {p.otherProvidersSeen.length > 0 && (
+                              <span className="text-amber-700 dark:text-amber-400">
+                                Outside it: {p.otherProvidersSeen.join(', ')}
+                              </span>
+                            )}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              {formatCurrency(p.valueSinceHandover)} across {formatNumber(p.visitsSinceHandover)} visit
+                              {p.visitsSinceHandover === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5 pr-2 text-right">{formatNumber(p.daysSinceLastVisit)}</td>
                     </tr>

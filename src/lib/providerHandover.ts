@@ -27,8 +27,15 @@ export interface RolePatient {
   outcome: RoleOutcome;
   lastVisitWithOriginal: string;
   visitsWithOriginal: number;
-  /** What they were worth to the original holder - cash plus package value consumed. */
+  /**
+   * Sales (Exc. Tax) with the original holder: cash plus the value of package sessions consumed.
+   * Deliberately a wider basis than the Dashboard's Revenue KPI, which nets off redemption - a
+   * patient working through a prepaid package takes almost no new cash at the moment they are
+   * seen, so on a Revenue basis the most committed patients would look worthless to retain.
+   */
   valueWithOriginal: number;
+  /** The portion of valueWithOriginal that was package sessions consumed rather than new cash. */
+  redeemedWithOriginal: number;
   /** Role holders who saw them after the original, in tenure order. */
   seenWithHolders: string[];
   /** Providers seen since the handover who were not holding the role at that time. */
@@ -42,6 +49,8 @@ export interface HandoverBucket {
   patients: number;
   /** Combined value those patients had with the original holder - their share of the book. */
   valueWithOriginal: number;
+  /** How much of that was package sessions consumed rather than new cash. */
+  redeemedWithOriginal: number;
 }
 
 /** How much of the original book a given holder saw during their own tenure. */
@@ -78,6 +87,7 @@ interface Agg {
   patientName: string;
   originalDates: Set<string>;
   valueWithOriginal: number;
+  redeemedWithOriginal: number;
   lastVisitWithOriginal: string;
   sinceDates: Set<string>;
   valueSinceHandover: number;
@@ -88,7 +98,7 @@ interface Agg {
 }
 
 const lineValue = (r: SaleRecord) => r.amount + r.redeemedAmount;
-const emptyBucket = (): HandoverBucket => ({ patients: 0, valueWithOriginal: 0 });
+const emptyBucket = (): HandoverBucket => ({ patients: 0, valueWithOriginal: 0, redeemedWithOriginal: 0 });
 
 /** Index of the holder whose tenure covers `date`, or -1 if it predates the first. */
 function holderIndexAt(holders: RoleHolder[], date: string): number {
@@ -151,6 +161,7 @@ export function computeRoleHandover(
         patientName: r.patientName,
         originalDates: new Set(),
         valueWithOriginal: 0,
+        redeemedWithOriginal: 0,
         lastVisitWithOriginal: r.date,
         sinceDates: new Set(),
         valueSinceHandover: 0,
@@ -162,6 +173,7 @@ export function computeRoleHandover(
     }
     agg.originalDates.add(r.date);
     agg.valueWithOriginal += lineValue(r);
+    agg.redeemedWithOriginal += r.redeemedAmount;
     if (r.date > agg.lastVisitWithOriginal) agg.lastVisitWithOriginal = r.date;
     if (r.patientName) agg.patientName = r.patientName;
   }
@@ -210,8 +222,10 @@ export function computeRoleHandover(
 
     bucket.patients += 1;
     bucket.valueWithOriginal += agg.valueWithOriginal;
+    bucket.redeemedWithOriginal += agg.redeemedWithOriginal;
     inherited.patients += 1;
     inherited.valueWithOriginal += agg.valueWithOriginal;
+    inherited.redeemedWithOriginal += agg.redeemedWithOriginal;
     if (outcome === 'stillWithRole') valueRecovered += agg.valueSinceHandover;
 
     // Stage 0 is the book; later stages count who each holder actually saw.
@@ -229,6 +243,7 @@ export function computeRoleHandover(
       lastVisitWithOriginal: agg.lastVisitWithOriginal,
       visitsWithOriginal: agg.originalDates.size,
       valueWithOriginal: agg.valueWithOriginal,
+      redeemedWithOriginal: agg.redeemedWithOriginal,
       seenWithHolders: [...agg.holdersSeen].sort((a, b) => a - b).map((i) => holders[i].provider),
       otherProvidersSeen: [...agg.otherProviders].sort(),
       visitsSinceHandover: agg.sinceDates.size,
