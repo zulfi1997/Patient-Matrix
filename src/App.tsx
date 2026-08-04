@@ -223,6 +223,8 @@ function App() {
             batches={batches}
             excludeFlagged={excludeFlagged}
             excludeZeroValue={excludeZeroValue}
+            providerGroups={providerGroups}
+            providerAssignmentOverrides={providerAssignmentOverrides}
           />
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} pnlLines={pnlLines} />

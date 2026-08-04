@@ -19,6 +19,8 @@ import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, toI
 import { exportDashboardPptx } from '../lib/pptxExport';
 import type { DeckConfig } from '../lib/deckSections';
 import { DeckBuilder } from './DeckBuilder';
+import { exportDashboardWorkbook } from '../lib/excelExport';
+import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversionMetrics';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -44,6 +46,8 @@ export function Dashboard({
   batches,
   excludeFlagged,
   excludeZeroValue,
+  providerGroups,
+  providerAssignmentOverrides,
 }: {
   records: SaleRecord[];
   /** Unfiltered stored rows, so the reconciliation panel can show what the pipeline excludes. */
@@ -51,6 +55,8 @@ export function Dashboard({
   batches: ImportBatch[];
   excludeFlagged: boolean;
   excludeZeroValue: boolean;
+  providerGroups: ProviderGroup[];
+  providerAssignmentOverrides: ProviderAssignmentOverride[];
 }) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-preset', 'last30');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-custom-range', {
@@ -60,6 +66,8 @@ export function Dashboard({
   const [inactivityDays, setInactivityDays] = useLocalStorageState('pm-inactivity-days', 90);
   const [serviceType, setServiceType] = useState<ItemType | 'All'>('Service');
   const [deckOpen, setDeckOpen] = useState(false);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
+  const [xlsxError, setXlsxError] = useState<string | null>(null);
 
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -108,6 +116,26 @@ export function Dashboard({
 
   const invoiceAging = useMemo(() => computeInvoiceAging(records, asOfISO), [records, asOfISO]);
   const agingBucketSummary = useMemo(() => computeAgingBucketSummary(invoiceAging), [invoiceAging]);
+
+  const downloadWorkbook = async () => {
+    setXlsxBusy(true);
+    setXlsxError(null);
+    try {
+      await exportDashboardWorkbook({
+        periodLabel: PRESET_LABELS[preset],
+        range, asOfISO, inactivityDays, serviceType,
+        kpis, discountSummary, discountBreakdown, discountDetails,
+        trend, services: serviceStats, redeemedPackages,
+        invoiceAging, agingBucketSummary,
+        atRiskPatients, returnedPatients,
+        records, patients, providerGroups, providerAssignmentOverrides,
+      });
+    } catch (e) {
+      setXlsxError(e instanceof Error ? e.message : 'Failed to build the workbook.');
+    } finally {
+      setXlsxBusy(false);
+    }
+  };
 
   const buildDeck = async (config: DeckConfig) => {
     await exportDashboardPptx(
@@ -159,12 +187,20 @@ export function Dashboard({
               Export / Print Dashboard
             </button>
             <button
+              onClick={downloadWorkbook}
+              disabled={xlsxBusy}
+              className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {xlsxBusy ? 'Building…' : 'Export to Excel'}
+            </button>
+            <button
               onClick={() => setDeckOpen((v) => !v)}
               className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
             >
               {deckOpen ? 'Hide Presentation Builder' : 'Build Presentation'}
             </button>
           </div>
+          {xlsxError && <p className="max-w-xs text-right text-xs text-rose-600 dark:text-rose-400">{xlsxError}</p>}
         </div>
       </div>
 
