@@ -1,41 +1,50 @@
 import { useMemo, useState } from 'react';
 import type { SaleRecord } from '../types';
 import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversionMetrics';
-import { computeProviderHandover, listProviders, type HandoverOutcome, type HandoverSummary } from '../lib/providerHandover';
+import {
+  computeRoleHandover,
+  listProviders,
+  type RoleHandoverSummary,
+  type RoleHolder,
+  type RoleOutcome,
+} from '../lib/providerHandover';
 import { formatCurrency, formatDate, formatNumber, formatPercent } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 
-const OUTCOME_LABELS: Record<HandoverOutcome, string> = {
-  retained: 'Stayed with successor',
-  movedToOther: 'Went to another provider',
+const OUTCOME_LABELS: Record<RoleOutcome, string> = {
+  stillWithRole: 'Still with the role',
+  lostMidChain: 'Lost partway along',
+  wentElsewhere: 'Went to another provider',
   notSeenSince: 'Not seen since',
 };
 
-const OUTCOME_TONE: Record<HandoverOutcome, string> = {
-  retained: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
-  movedToOther: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+const OUTCOME_TONE: Record<RoleOutcome, string> = {
+  stillWithRole: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+  lostMidChain: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+  wentElsewhere: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
   notSeenSince: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
 };
 
 const LOOKBACK_OPTIONS = [
-  { value: 0, label: 'All time' },
   { value: 180, label: 'Last 6 months' },
   { value: 365, label: 'Last 12 months' },
   { value: 730, label: 'Last 24 months' },
+  { value: 0, label: 'All time' },
 ];
 
-function exportCsv(summary: HandoverSummary) {
+function exportCsv(summary: RoleHandoverSummary) {
+  const original = summary.holders[0].provider;
   const header = [
-    'Patient ID', 'Patient', 'Outcome', 'Last Visit With ' + summary.outgoing, 'Visits With ' + summary.outgoing,
-    'Value With ' + summary.outgoing + ' (OMR)', 'First Visit With ' + summary.incoming, 'Visits Since Handover',
-    'Value Since Handover (OMR)', 'Seen By Since Handover', 'Days Since Last Visit',
+    'Patient ID', 'Patient', 'Outcome', `Last Visit With ${original}`, `Visits With ${original}`,
+    `Value With ${original} (OMR)`, 'Role Holders Seen Since', 'Other Providers Seen',
+    'Visits Since Handover', 'Value Since Handover (OMR)', 'Days Since Last Visit',
   ];
   const lines = summary.patients.map((p) =>
     [
-      p.patientId, p.patientName, OUTCOME_LABELS[p.outcome], p.lastVisitWithOutgoing, p.visitsWithOutgoing,
-      p.valueWithOutgoing.toFixed(3), p.firstVisitWithIncoming ?? '', p.visitsSinceHandover,
-      p.valueSinceHandover.toFixed(3), p.seenBy.join('; '), p.daysSinceLastVisit,
+      p.patientId, p.patientName, OUTCOME_LABELS[p.outcome], p.lastVisitWithOriginal, p.visitsWithOriginal,
+      p.valueWithOriginal.toFixed(3), p.seenWithHolders.join('; '), p.otherProvidersSeen.join('; '),
+      p.visitsSinceHandover, p.valueSinceHandover.toFixed(3), p.daysSinceLastVisit,
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(','),
@@ -45,7 +54,7 @@ function exportCsv(summary: HandoverSummary) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `handover-${summary.outgoing}-to-${summary.incoming}-${summary.handoverDate}.csv`.replace(/\s+/g, '-');
+  a.download = `role-handover-${original}-${summary.handoverDate}.csv`.replace(/\s+/g, '-');
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -66,150 +75,198 @@ export function ProviderHandoverPanel({
     [records, providerGroups, providerAssignmentOverrides],
   );
 
-  const [outgoing, setOutgoing] = useLocalStorageState('pm-handover-outgoing', '');
-  const [incoming, setIncoming] = useLocalStorageState('pm-handover-incoming', '');
-  const [handoverDate, setHandoverDate] = useLocalStorageState('pm-handover-date', '');
+  const [holders, setHolders] = useLocalStorageState<RoleHolder[]>('pm-role-holders', [
+    { provider: '', fromDate: '' },
+    { provider: '', fromDate: '' },
+  ]);
   const [lookbackDays, setLookbackDays] = useLocalStorageState('pm-handover-lookback', 365);
-  const [outcomeFilter, setOutcomeFilter] = useState<HandoverOutcome | 'all'>('all');
+  const [outcomeFilter, setOutcomeFilter] = useState<RoleOutcome | 'all'>('all');
 
-  const ready = !!outgoing && !!incoming && !!handoverDate && outgoing !== incoming;
+  const complete = holders.filter((h) => h.provider && h.fromDate);
+  // The first holder's own start date only bounds the book, so it may be left blank.
+  const ready = holders.length >= 2 && holders[0].provider && complete.length >= holders.length - 1 && holders.slice(1).every((h) => h.provider && h.fromDate);
 
-  const summary = useMemo(
-    () =>
-      ready
-        ? computeProviderHandover(records, {
-            outgoing, incoming, handoverDate, asOfISO, lookbackDays,
-            providerGroups, overrides: providerAssignmentOverrides,
-          })
-        : null,
-    [ready, records, outgoing, incoming, handoverDate, asOfISO, lookbackDays, providerGroups, providerAssignmentOverrides],
-  );
+  const summary = useMemo(() => {
+    if (!ready) return null;
+    const normalized = holders.map((h, i) => ({ provider: h.provider, fromDate: h.fromDate || (i === 0 ? '0000-01-01' : h.fromDate) }));
+    return computeRoleHandover(records, {
+      holders: normalized, asOfISO, lookbackDays,
+      providerGroups, overrides: providerAssignmentOverrides,
+    });
+  }, [ready, holders, records, asOfISO, lookbackDays, providerGroups, providerAssignmentOverrides]);
 
-  const visible = summary
-    ? summary.patients.filter((p) => outcomeFilter === 'all' || p.outcome === outcomeFilter)
-    : [];
+  const update = (i: number, patch: Partial<RoleHolder>) =>
+    setHolders((prev) => prev.map((h, j) => (j === i ? { ...h, ...patch } : h)));
 
-  const share = (n: number) => (summary && summary.inherited.valueWithOutgoing > 0 ? (n / summary.inherited.valueWithOutgoing) * 100 : null);
+  const visible = summary ? summary.patients.filter((p) => outcomeFilter === 'all' || p.outcome === outcomeFilter) : [];
+  const share = (n: number) =>
+    summary && summary.inherited.valueWithOriginal > 0 ? (n / summary.inherited.valueWithOriginal) * 100 : null;
 
   return (
     <div className="flex flex-col gap-3">
       <div>
         <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Provider Handover</h3>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          When one provider replaces another, what happened to the patients they inherited. A patient still visiting
-          but seeing someone else hasn't been lost so much as redistributed - a different problem from one who hasn't
-          come back at all, so the two are counted separately. Assisting staff are folded into whichever doctor they
-          assisted on the day, per your Provider Groups.
+          Follows one role through however many changes of hands, and reports what became of the book the first holder
+          built. A patient still visiting but seeing someone outside the role hasn't been lost so much as
+          redistributed, and one who followed the role for a while before dropping off is different again - so the
+          three are counted separately. Assisting staff fold into whichever doctor they assisted on the day, per your
+          Provider Groups.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
-        <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Provider who left
-          <select
-            value={outgoing}
-            onChange={(e) => setOutgoing(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-          >
-            <option value="">Select…</option>
-            {providers.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Replaced by
-          <select
-            value={incoming}
-            onChange={(e) => setIncoming(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-          >
-            <option value="">Select…</option>
-            {providers.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Handover date
-          <input
-            type="date"
-            value={handoverDate}
-            onChange={(e) => setHandoverDate(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Book defined by
-          <select
-            value={lookbackDays}
-            onChange={(e) => setLookbackDays(Number(e.target.value))}
-            className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-          >
-            {LOOKBACK_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
-        {summary && summary.inherited.patients > 0 && (
+      <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex flex-col gap-2">
+          {holders.map((h, i) => (
+            <div key={i} className="flex flex-wrap items-end gap-2">
+              <span className="w-28 shrink-0 pb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                {i === 0 ? 'Original holder' : i === holders.length - 1 ? 'Current holder' : `Then`}
+              </span>
+              <select
+                value={h.provider}
+                onChange={(e) => update(i, { provider: e.target.value })}
+                className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              >
+                <option value="">Select provider…</option>
+                {providers.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {i === 0 ? 'Started (optional)' : 'Took over on'}
+                <input
+                  type="date"
+                  value={h.fromDate}
+                  onChange={(e) => update(i, { fromDate: e.target.value })}
+                  className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                />
+              </label>
+              {holders.length > 2 && (
+                <button
+                  onClick={() => setHolders((prev) => prev.filter((_, j) => j !== i))}
+                  className="pb-1.5 text-xs text-rose-600 hover:underline dark:text-rose-400"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
           <button
-            onClick={() => exportCsv(summary)}
+            onClick={() => setHolders((prev) => [...prev, { provider: '', fromDate: '' }])}
             className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
-            Export CSV
+            + Add another holder
           </button>
-        )}
+          <label className="flex flex-col gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Book defined by
+            <select
+              value={lookbackDays}
+              onChange={(e) => setLookbackDays(Number(e.target.value))}
+              className="rounded-lg border border-zinc-300 px-2 py-1 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            >
+              {LOOKBACK_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          {summary && summary.inherited.patients > 0 && (
+            <button
+              onClick={() => exportCsv(summary)}
+              className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Export CSV
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          "Book defined by" bounds who counts as inherited. All time includes patients who had already stopped
+          visiting long before the handover, which charges pre-existing churn to the successor.
+        </p>
       </div>
 
       {!ready ? (
         <p className="rounded-xl border border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          {outgoing && outgoing === incoming
-            ? 'Pick two different providers.'
-            : 'Pick the provider who left, who replaced them, and the handover date.'}
+          Name the original holder, then each person who took over and the date they did.
         </p>
-      ) : summary && summary.inherited.patients === 0 ? (
+      ) : !summary || summary.inherited.patients === 0 ? (
         <p className="rounded-xl border border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          No patients seen by <strong>{outgoing}</strong>
-          {summary.bookFrom ? ` between ${formatDate(summary.bookFrom)} and ${formatDate(handoverDate)}` : ` on or before ${formatDate(handoverDate)}`}.
-          Try widening "Book defined by", or check the handover date.
+          No patients seen by <strong>{holders[0].provider}</strong> in the window before{' '}
+          {summary ? formatDate(summary.handoverDate) : 'the handover'}. Try widening "Book defined by", or check the
+          takeover date.
         </p>
-      ) : summary ? (
+      ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <KpiCard
               label="Patients Inherited"
               value={formatNumber(summary.inherited.patients)}
-              hint={`${formatCurrency(summary.inherited.valueWithOutgoing)} of business with ${summary.outgoing}`}
-              help={`Distinct patients ${summary.outgoing} saw${summary.bookFrom ? ` from ${formatDate(summary.bookFrom)}` : ''} up to the handover date. This is the book that changed hands.`}
+              hint={`${formatCurrency(summary.inherited.valueWithOriginal)} of business with ${summary.holders[0].provider}`}
+              help={`Distinct patients ${summary.holders[0].provider} saw${summary.bookFrom ? ` from ${formatDate(summary.bookFrom)}` : ''} up to ${formatDate(summary.handoverDate)}. This is the book that changed hands.`}
             />
             <KpiCard
-              label="Retention Rate"
+              label="Still With The Role"
               value={formatPercent(summary.retentionRate)}
-              hint={`${formatNumber(summary.retained.patients)} of ${formatNumber(summary.inherited.patients)} came back to ${summary.incoming}`}
-              help="Share of the inherited patients who have since had at least one visit with the successor."
+              hint={`${formatNumber(summary.stillWithRole.patients)} of ${formatNumber(summary.inherited.patients)} seen by ${summary.holders[summary.holders.length - 1].provider}`}
+              help="Share of the inherited book that has visited whoever currently holds the role."
               tone={summary.retentionRate != null && summary.retentionRate < 50 ? 'bad' : 'good'}
             />
             <KpiCard
-              label="Went Elsewhere"
-              value={formatNumber(summary.movedToOther.patients)}
-              hint={`${formatCurrency(summary.movedToOther.valueWithOutgoing)} of the book, still visiting the clinic`}
-              help="Inherited patients who have visited since the handover but have not seen the successor. Still customers - just not theirs."
+              label="Lost Partway"
+              value={formatNumber(summary.lostMidChain.patients)}
+              hint={`${formatCurrency(summary.lostMidChain.valueWithOriginal)} - followed the role, then dropped off`}
+              help="Patients who stayed with the role through at least one handover but have not seen the current holder. The role had them and lost them."
             />
             <KpiCard
               label="Not Seen Since"
               value={formatNumber(summary.notSeenSince.patients)}
-              hint={`${formatCurrency(summary.notSeenSince.valueWithOutgoing)} of the book, no visit at all`}
-              help="Inherited patients with no visit anywhere in the clinic since the handover date."
+              hint={`${formatCurrency(summary.notSeenSince.valueWithOriginal)} - no visit anywhere`}
+              help="Inherited patients with no visit anywhere in the clinic since the handover. The only group that is a lost customer rather than a reassigned one."
               tone="bad"
             />
           </div>
 
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 text-xs shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <p className="text-zinc-600 dark:text-zinc-300">
-              Of {formatCurrency(summary.inherited.valueWithOutgoing)} of business {summary.outgoing} was handling,{' '}
-              <strong>{formatPercent(share(summary.retained.valueWithOutgoing))}</strong> by value stayed with{' '}
-              {summary.incoming}, <strong>{formatPercent(share(summary.movedToOther.valueWithOutgoing))}</strong> moved
-              to other providers, and <strong>{formatPercent(share(summary.notSeenSince.valueWithOutgoing))}</strong>{' '}
-              has not returned. Those retained patients have delivered{' '}
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h4 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Where the book thinned</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                  <tr>
+                    <th className="py-2 pr-2">Holder</th>
+                    <th className="py-2 pr-2">Tenure</th>
+                    <th className="py-2 pr-2 text-right">Of the book, seen</th>
+                    <th className="py-2 pr-2 text-right">Share</th>
+                    <th className="py-2 pr-2 text-right">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.stages.map((st, i) => (
+                    <tr key={`${st.provider}-${st.fromDate}`} className="border-t border-zinc-100 dark:border-zinc-800">
+                      <td className="py-1.5 pr-2 font-medium">
+                        {st.provider}
+                        {i === 0 && <span className="ml-2 text-xs font-normal text-zinc-500">built the book</span>}
+                      </td>
+                      <td className="py-1.5 pr-2 whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                        {i === 0 ? 'until' : 'from'} {formatDate(i === 0 ? summary.handoverDate : st.fromDate)}
+                        {st.untilDate && i > 0 ? ` – ${formatDate(st.untilDate)}` : ''}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">{formatNumber(st.patients)}</td>
+                      <td className="py-1.5 pr-2 text-right text-zinc-500 dark:text-zinc-400">
+                        {formatPercent(summary.inherited.patients > 0 ? (st.patients / summary.inherited.patients) * 100 : null)}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">{formatCurrency(st.value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">
+              Of {formatCurrency(summary.inherited.valueWithOriginal)} of business{' '}
+              {summary.holders[0].provider} was handling,{' '}
+              <strong>{formatPercent(share(summary.stillWithRole.valueWithOriginal))}</strong> by value is still with
+              the role, <strong>{formatPercent(share(summary.lostMidChain.valueWithOriginal))}</strong> followed it
+              then dropped off, <strong>{formatPercent(share(summary.wentElsewhere.valueWithOriginal))}</strong> moved
+              to providers outside it, and <strong>{formatPercent(share(summary.notSeenSince.valueWithOriginal))}</strong>{' '}
+              has not returned at all. Retained patients have delivered{' '}
               <strong>{formatCurrency(summary.valueRecovered)}</strong> since.
-            </p>
-            <p className="mt-1 text-zinc-500 dark:text-zinc-400">
-              Value share is worth reading alongside the headcount: losing a few high-value patients can matter more
-              than losing many small ones.
             </p>
           </div>
 
@@ -218,8 +275,8 @@ export function ProviderHandoverPanel({
               <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
                 Inherited Patients ({formatNumber(visible.length)})
               </h4>
-              <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs print:hidden dark:border-zinc-700">
-                {(['all', 'notSeenSince', 'movedToOther', 'retained'] as const).map((o) => (
+              <div className="flex flex-wrap overflow-hidden rounded-lg border border-zinc-300 text-xs print:hidden dark:border-zinc-700">
+                {(['all', 'notSeenSince', 'lostMidChain', 'wentElsewhere', 'stillWithRole'] as const).map((o) => (
                   <button
                     key={o}
                     onClick={() => setOutcomeFilter(o)}
@@ -236,8 +293,8 @@ export function ProviderHandoverPanel({
                   <tr>
                     <th className="py-2 pr-2">Patient</th>
                     <th className="py-2 pr-2">Outcome</th>
-                    <th className="py-2 pr-2 text-right">Last With {summary.outgoing}</th>
-                    <th className="py-2 pr-2 text-right">Value With {summary.outgoing}</th>
+                    <th className="py-2 pr-2 text-right">Last With {summary.holders[0].provider}</th>
+                    <th className="py-2 pr-2 text-right">Value</th>
                     <th className="py-2 pr-2">Since Handover</th>
                     <th className="py-2 pr-2 text-right">Days Away</th>
                   </tr>
@@ -255,18 +312,15 @@ export function ProviderHandoverPanel({
                         </span>
                       </td>
                       <td className="py-1.5 pr-2 text-right whitespace-nowrap">
-                        {formatDate(p.lastVisitWithOutgoing)}
+                        {formatDate(p.lastVisitWithOriginal)}
                         <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {formatNumber(p.visitsWithOutgoing)} visit{p.visitsWithOutgoing === 1 ? '' : 's'}
+                          {formatNumber(p.visitsWithOriginal)} visit{p.visitsWithOriginal === 1 ? '' : 's'}
                         </div>
                       </td>
-                      <td className="py-1.5 pr-2 text-right font-medium">{formatCurrency(p.valueWithOutgoing)}</td>
+                      <td className="py-1.5 pr-2 text-right font-medium">{formatCurrency(p.valueWithOriginal)}</td>
                       <td className="py-1.5 pr-2 text-xs text-zinc-500 dark:text-zinc-400">
-                        {p.outcome === 'retained'
-                          ? `Returned ${formatDate(p.firstVisitWithIncoming!)} · ${formatCurrency(p.valueSinceHandover)}`
-                          : p.outcome === 'movedToOther'
-                            ? `${p.seenBy.join(', ')} · ${formatCurrency(p.valueSinceHandover)}`
-                            : '—'}
+                        {[...p.seenWithHolders, ...p.otherProvidersSeen].join(', ') || '—'}
+                        {p.visitsSinceHandover > 0 && ` · ${formatCurrency(p.valueSinceHandover)}`}
                       </td>
                       <td className="py-1.5 pr-2 text-right">{formatNumber(p.daysSinceLastVisit)}</td>
                     </tr>
@@ -276,7 +330,7 @@ export function ProviderHandoverPanel({
             </div>
           </div>
         </>
-      ) : null}
+      )}
     </div>
   );
 }
