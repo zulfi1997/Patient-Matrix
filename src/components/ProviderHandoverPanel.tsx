@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react';
 import type { SaleRecord } from '../types';
 import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversionMetrics';
 import {
+  computeProviderPatients,
   computeRoleHandover,
   listProviders,
+  type PatientOrigin,
+  type ProviderPatientOutcome,
   type RoleHandoverSummary,
   type RoleHolder,
   type RoleOutcome,
@@ -24,6 +27,24 @@ const OUTCOME_TONE: Record<RoleOutcome, string> = {
   lostMidChain: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
   wentElsewhere: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
   notSeenSince: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+};
+
+const PATIENT_OUTCOME_LABELS: Record<ProviderPatientOutcome, string> = {
+  repeat: 'Came back',
+  onceThenElsewhere: 'Once, then a colleague',
+  onceThenQuiet: 'Once, then nothing',
+};
+
+const PATIENT_OUTCOME_TONE: Record<ProviderPatientOutcome, string> = {
+  repeat: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+  onceThenElsewhere: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  onceThenQuiet: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+};
+
+const ORIGIN_LABELS: Record<PatientOrigin, string> = {
+  inherited: 'Inherited',
+  fromElsewhere: 'From elsewhere in the clinic',
+  newToClinic: 'New to the clinic',
 };
 
 const LOOKBACK_OPTIONS = [
@@ -84,6 +105,8 @@ export function ProviderHandoverPanel({
   ]);
   const [lookbackDays, setLookbackDays] = useLocalStorageState('pm-handover-lookback', 365);
   const [outcomeFilter, setOutcomeFilter] = useState<RoleOutcome | 'all'>('all');
+  const [patientOutcomeFilter, setPatientOutcomeFilter] = useState<ProviderPatientOutcome | 'all'>('all');
+  const [originFilter, setOriginFilter] = useState<PatientOrigin | 'all'>('all');
 
   const complete = holders.filter((h) => h.provider && h.fromDate);
   // The first holder's own start date only bounds the book, so it may be left blank.
@@ -97,6 +120,29 @@ export function ProviderHandoverPanel({
       providerGroups, overrides: providerAssignmentOverrides,
     });
   }, [ready, holders, records, asOfISO, lookbackDays, providerGroups, providerAssignmentOverrides]);
+
+  // Everyone the current holder has seen since taking over, inherited or not, tagged by origin so
+  // a weak repeat rate can be told apart from a weak handover.
+  const currentHolder = summary ? summary.holders[summary.holders.length - 1] : null;
+  const providerPatients = useMemo(() => {
+    if (!summary || !currentHolder) return null;
+    return computeProviderPatients(records, {
+      provider: currentHolder.provider,
+      fromDate: currentHolder.fromDate,
+      asOfISO,
+      inheritedIds: new Set(summary.patients.map((p) => p.patientId)),
+      providerGroups,
+      overrides: providerAssignmentOverrides,
+    });
+  }, [summary, currentHolder, records, asOfISO, providerGroups, providerAssignmentOverrides]);
+
+  const visiblePatients = providerPatients
+    ? providerPatients.patients.filter(
+        (p) =>
+          (patientOutcomeFilter === 'all' || p.outcome === patientOutcomeFilter) &&
+          (originFilter === 'all' || p.origin === originFilter),
+      )
+    : [];
 
   const update = (i: number, patch: Partial<RoleHolder>) =>
     setHolders((prev) => prev.map((h, j) => (j === i ? { ...h, ...patch } : h)));
@@ -364,6 +410,142 @@ export function ProviderHandoverPanel({
               </table>
             </div>
           </div>
+
+          {providerPatients && currentHolder && (
+            <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                Everyone {currentHolder.provider} has seen since {formatDate(currentHolder.fromDate)}
+              </h4>
+              <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+                Not only the inherited book. The handover table above counts a patient as kept the moment they appear
+                once, which is the right test for whether the book transferred and the wrong one for whether they are
+                being held onto - a single visit followed by silence looks identical to an established relationship
+                there. Splitting by repeat visit separates the two, and tagging where each patient came from shows
+                whether a weak repeat rate is confined to the inherited book or applies to everyone.
+              </p>
+
+              <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <KpiCard
+                  label="Patients Seen"
+                  value={formatNumber(providerPatients.total.patients)}
+                  hint={`${formatCurrency(providerPatients.total.value)} delivered`}
+                  help={`Distinct patients ${currentHolder.provider} has seen since taking over, from any source.`}
+                />
+                <KpiCard
+                  label="Came Back"
+                  value={formatPercent(providerPatients.repeatRate)}
+                  hint={`${formatNumber(providerPatients.repeat.patients)} seen more than once`}
+                  help="Share who returned for a second visit. The clearest sign a relationship took hold."
+                  tone={providerPatients.repeatRate != null && providerPatients.repeatRate < 40 ? 'bad' : 'good'}
+                />
+                <KpiCard
+                  label="Once, Then A Colleague"
+                  value={formatNumber(providerPatients.onceThenElsewhere.patients)}
+                  hint={`${formatCurrency(providerPatients.onceThenElsewhere.value)} - stayed in the clinic`}
+                  help="Seen once, then went to a different provider. A fit or scheduling problem inside the clinic rather than a lost patient."
+                />
+                <KpiCard
+                  label="Once, Then Nothing"
+                  value={formatNumber(providerPatients.onceThenQuiet.patients)}
+                  hint={`${formatCurrency(providerPatients.onceThenQuiet.value)} - no visit since`}
+                  help="Seen once and not seen anywhere in the clinic since. Filter by Inherited below to see which of these came from the previous holder."
+                  tone="bad"
+                />
+              </div>
+
+              <div className="mb-3 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                    <tr>
+                      <th className="py-2 pr-2">Where they came from</th>
+                      <th className="py-2 pr-2 text-right">Patients</th>
+                      <th className="py-2 pr-2 text-right">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(['inherited', 'fromElsewhere', 'newToClinic'] as const).map((o) => (
+                      <tr key={o} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <td className="py-1.5 pr-2">{ORIGIN_LABELS[o]}</td>
+                        <td className="py-1.5 pr-2 text-right">{formatNumber(providerPatients.byOrigin[o].patients)}</td>
+                        <td className="py-1.5 pr-2 text-right">{formatCurrency(providerPatients.byOrigin[o].value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h5 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                  Patients ({formatNumber(visiblePatients.length)})
+                </h5>
+                <div className="flex flex-wrap gap-2 print:hidden">
+                  <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
+                    {(['all', 'onceThenQuiet', 'onceThenElsewhere', 'repeat'] as const).map((o) => (
+                      <button
+                        key={o}
+                        onClick={() => setPatientOutcomeFilter(o)}
+                        className={`px-2.5 py-1 ${patientOutcomeFilter === o ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+                      >
+                        {o === 'all' ? 'All' : PATIENT_OUTCOME_LABELS[o]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
+                    {(['all', 'inherited', 'fromElsewhere', 'newToClinic'] as const).map((o) => (
+                      <button
+                        key={o}
+                        onClick={() => setOriginFilter(o)}
+                        className={`px-2.5 py-1 ${originFilter === o ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+                      >
+                        {o === 'all' ? 'Any origin' : ORIGIN_LABELS[o]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="max-h-96 overflow-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                    <tr>
+                      <th className="py-2 pr-2">Patient</th>
+                      <th className="py-2 pr-2">Outcome</th>
+                      <th className="py-2 pr-2">Came From</th>
+                      <th className="py-2 pr-2 text-right">Visits</th>
+                      <th className="py-2 pr-2 text-right">Last Seen</th>
+                      <th className="py-2 pr-2 text-right">Value</th>
+                      <th className="py-2 pr-2 text-right">Days Away</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visiblePatients.map((p) => (
+                      <tr key={p.patientId} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <td className="py-1.5 pr-2">
+                          {p.patientName}
+                          <div className="text-xs text-zinc-500 dark:text-zinc-400">{p.patientId}</div>
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PATIENT_OUTCOME_TONE[p.outcome]}`}>
+                            {PATIENT_OUTCOME_LABELS[p.outcome]}
+                          </span>
+                          {p.seenAfterElsewhere.length > 0 && (
+                            <div className="text-xs text-amber-700 dark:text-amber-400">
+                              since seen by {p.seenAfterElsewhere.join(', ')}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2 text-xs text-zinc-500 dark:text-zinc-400">{ORIGIN_LABELS[p.origin]}</td>
+                        <td className="py-1.5 pr-2 text-right">{formatNumber(p.visitsWithProvider)}</td>
+                        <td className="py-1.5 pr-2 text-right whitespace-nowrap">{formatDate(p.lastVisitWithProvider)}</td>
+                        <td className="py-1.5 pr-2 text-right font-medium">{formatCurrency(p.valueWithProvider)}</td>
+                        <td className="py-1.5 pr-2 text-right">{formatNumber(p.daysSinceLastVisit)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

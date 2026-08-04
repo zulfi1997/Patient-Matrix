@@ -293,3 +293,175 @@ export function listProviders(
   for (const r of records) names.add(resolveProvider(r.staff, r.date, providerGroups, overrides));
   return [...names].sort((a, b) => a.localeCompare(b));
 }
+
+/** How a patient of the current holder came to them. */
+export type PatientOrigin = 'inherited' | 'newToClinic' | 'fromElsewhere';
+
+/**
+ * Whether the provider kept the patient. "Seen once" is split by what happened next, because the
+ * remedy differs: a patient who tried this provider once and then saw a colleague is a fit or
+ * scheduling problem inside the clinic, while one who tried once and vanished is a lost customer.
+ */
+export type ProviderPatientOutcome = 'repeat' | 'onceThenElsewhere' | 'onceThenQuiet';
+
+export interface ProviderPatient {
+  patientId: string;
+  patientName: string;
+  outcome: ProviderPatientOutcome;
+  origin: PatientOrigin;
+  firstVisitWithProvider: string;
+  lastVisitWithProvider: string;
+  visitsWithProvider: number;
+  /** Sales (Exc. Tax) with this provider - cash plus package sessions consumed. */
+  valueWithProvider: number;
+  /** Providers seen after this provider last saw them. */
+  seenAfterElsewhere: string[];
+  daysSinceLastVisit: number;
+}
+
+export interface ProviderPatientSummary {
+  provider: string;
+  fromDate: string;
+  total: HandoverBucketLite;
+  repeat: HandoverBucketLite;
+  onceThenElsewhere: HandoverBucketLite;
+  onceThenQuiet: HandoverBucketLite;
+  /** Share of patients who came back at least once. Null when the provider saw nobody. */
+  repeatRate: number | null;
+  byOrigin: Record<PatientOrigin, HandoverBucketLite>;
+  patients: ProviderPatient[];
+}
+
+export interface HandoverBucketLite {
+  patients: number;
+  value: number;
+}
+
+const emptyLite = (): HandoverBucketLite => ({ patients: 0, value: 0 });
+
+/**
+ * Every patient a provider has seen since taking over - not only the ones they inherited - and
+ * whether each came back.
+ *
+ * The handover view answers "how much of the book survived", which deliberately counts a patient
+ * as kept the moment they appear once. That is the right test for whether the book transferred,
+ * and the wrong one for whether the provider is holding onto people: a single visit followed by
+ * silence looks identical to an established relationship. Splitting by repeat visit separates
+ * them, and tagging each patient's origin shows whether a weak repeat rate is confined to the
+ * inherited book or applies to everyone the provider sees, including patients arriving from other
+ * departments and those new to the clinic.
+ */
+export function computeProviderPatients(
+  records: SaleRecord[],
+  params: {
+    provider: string;
+    /** Usually the date they took over; patients seen before it are out of scope. */
+    fromDate: string;
+    asOfISO: string;
+    /** Patient ids from the inherited book, so origin can be attributed. */
+    inheritedIds?: Set<string>;
+    providerGroups?: ProviderGroup[];
+    overrides?: ProviderAssignmentOverride[];
+  },
+): ProviderPatientSummary {
+  const { provider, fromDate, asOfISO, inheritedIds, providerGroups = [], overrides = [] } = params;
+
+  const firstVisitAnywhere = new Map<string, string>();
+  const lastVisitAnywhere = new Map<string, string>();
+  for (const r of records) {
+    const f = firstVisitAnywhere.get(r.patientId);
+    if (f === undefined || r.date < f) firstVisitAnywhere.set(r.patientId, r.date);
+    const l = lastVisitAnywhere.get(r.patientId);
+    if (l === undefined || r.date > l) lastVisitAnywhere.set(r.patientId, r.date);
+  }
+
+  interface Acc {
+    patientName: string;
+    dates: Set<string>;
+    value: number;
+    first: string;
+    last: string;
+  }
+  const byPatient = new Map<string, Acc>();
+
+  for (const r of records) {
+    if (r.date < fromDate) continue;
+    if (resolveProvider(r.staff, r.date, providerGroups, overrides) !== provider) continue;
+    let acc = byPatient.get(r.patientId);
+    if (!acc) {
+      acc = { patientName: r.patientName, dates: new Set(), value: 0, first: r.date, last: r.date };
+      byPatient.set(r.patientId, acc);
+    }
+    acc.dates.add(r.date);
+    acc.value += lineValue(r);
+    if (r.date < acc.first) acc.first = r.date;
+    if (r.date > acc.last) acc.last = r.date;
+    if (r.patientName) acc.patientName = r.patientName;
+  }
+
+  // Who they saw afterwards, which needs each patient's last visit with this provider first.
+  const afterElsewhere = new Map<string, Set<string>>();
+  for (const r of records) {
+    const acc = byPatient.get(r.patientId);
+    if (!acc || r.date <= acc.last) continue;
+    const other = resolveProvider(r.staff, r.date, providerGroups, overrides);
+    if (other === provider) continue;
+    if (!afterElsewhere.has(r.patientId)) afterElsewhere.set(r.patientId, new Set());
+    afterElsewhere.get(r.patientId)!.add(other);
+  }
+
+  const total = emptyLite();
+  const repeat = emptyLite();
+  const onceThenElsewhere = emptyLite();
+  const onceThenQuiet = emptyLite();
+  const byOrigin: Record<PatientOrigin, HandoverBucketLite> = {
+    inherited: emptyLite(), newToClinic: emptyLite(), fromElsewhere: emptyLite(),
+  };
+  const patients: ProviderPatient[] = [];
+
+  for (const [patientId, acc] of byPatient) {
+    const others = [...(afterElsewhere.get(patientId) ?? [])].sort();
+    const outcome: ProviderPatientOutcome =
+      acc.dates.size > 1 ? 'repeat' : others.length > 0 ? 'onceThenElsewhere' : 'onceThenQuiet';
+
+    const origin: PatientOrigin = inheritedIds?.has(patientId)
+      ? 'inherited'
+      : firstVisitAnywhere.get(patientId) === acc.first
+        ? 'newToClinic'
+        : 'fromElsewhere';
+
+    const bucket = outcome === 'repeat' ? repeat : outcome === 'onceThenElsewhere' ? onceThenElsewhere : onceThenQuiet;
+    for (const b of [total, bucket, byOrigin[origin]]) {
+      b.patients += 1;
+      b.value += acc.value;
+    }
+
+    patients.push({
+      patientId,
+      patientName: acc.patientName || patientId,
+      outcome,
+      origin,
+      firstVisitWithProvider: acc.first,
+      lastVisitWithProvider: acc.last,
+      visitsWithProvider: acc.dates.size,
+      valueWithProvider: acc.value,
+      seenAfterElsewhere: others,
+      daysSinceLastVisit: Math.max(0, daysBetween(lastVisitAnywhere.get(patientId) ?? acc.last, asOfISO)),
+    });
+  }
+
+  const order: Record<ProviderPatientOutcome, number> = { onceThenQuiet: 0, onceThenElsewhere: 1, repeat: 2 };
+  patients.sort((a, b) => order[a.outcome] - order[b.outcome] || b.valueWithProvider - a.valueWithProvider);
+
+  return {
+    provider,
+    fromDate,
+    total,
+    repeat,
+    onceThenElsewhere,
+    onceThenQuiet,
+    repeatRate: total.patients > 0 ? (repeat.patients / total.patients) * 100 : null,
+    byOrigin,
+    patients,
+  };
+}
