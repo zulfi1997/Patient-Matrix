@@ -151,3 +151,31 @@ describe('computeProviderCollections', () => {
     expect(cashCollectedFor(result, 'Dr A')).toBe(380);
   });
 });
+
+describe('the summary reconciles', () => {
+  it('total cash equals attributed plus unattributed, so the footer can tie to the source report', () => {
+    // The regression: the All Providers footer showed attributed cash only, so it read low against
+    // Zenoti's own Total Collections by exactly the amount that could not be matched.
+    const invoiceShares = buildInvoiceProviderShares([makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 300 })], [], []);
+    const result = computeProviderCollections([
+      payment({ id: 'p1', invoiceNo: 'TBC1', amount: 300 }),
+      payment({ id: 'p2', invoiceNo: 'GONE', amount: 120 }),
+    ], invoiceShares, RANGE);
+
+    const attributed = result.providers.reduce((s, p) => s + p.cashCollected, 0);
+    expect(attributed).toBe(300);
+    expect(result.unattributedCash).toBe(120);
+    expect(result.totalCash).toBe(attributed + result.unattributedCash);
+  });
+
+  it('holds for redemption too', () => {
+    const invoiceShares = buildInvoiceProviderShares([makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 300 })], [], []);
+    const result = computeProviderCollections([
+      payment({ id: 'p1', invoiceNo: 'TBC1', method: 'package', amount: 200 }),
+      payment({ id: 'p2', invoiceNo: 'GONE', method: 'giftCard', amount: 50 }),
+    ], invoiceShares, RANGE);
+    const attributed = result.providers.reduce((s, p) => s + p.redemptionSettled, 0);
+    expect(result.totalRedemption).toBe(attributed + result.unattributedRedemption);
+    expect(result.totalRedemption).toBe(250);
+  });
+});

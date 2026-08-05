@@ -519,13 +519,21 @@ export function ProviderConversionDashboard({
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.revenue)}</td>
                   {collectionSummary && (
                     <td className="py-1.5 pr-2 text-right text-sky-700 dark:text-sky-400">
-                      {formatNumber(collectionSummary.totalCash - collectionSummary.unattributedCash)}
+                      {formatNumber(collectionSummary.totalCash)}
                     </td>
                   )}
                 </tr>
               </tfoot>
             </table>
           </div>
+        )}
+        {collectionSummary && collectionSummary.unattributedCash !== 0 && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            {formatNumber(collectionSummary.unattributedCash)} of the collected total is on{' '}
+            {formatNumber(collectionSummary.unattributedPayments)} payment(s) whose invoice is not in your sales data -
+            usually an invoice raised before the earliest sales file you have imported. It is inside the All Providers
+            total but sits in no provider's row.
+          </p>
         )}
       </div>
 

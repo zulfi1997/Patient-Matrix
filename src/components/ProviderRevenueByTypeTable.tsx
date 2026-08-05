@@ -113,13 +113,22 @@ export function ProviderRevenueByTypeTable({
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.deliveredValue)}</td>
                 {collections && (
                   <td className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400">
-                    {formatCurrency(collections.totalCash - collections.unattributedCash)}
+                    {formatCurrency(collections.totalCash)}
                   </td>
                 )}
               </tr>
             </tfoot>
           </table>
         </div>
+      )}
+      {collections && collections.unattributedCash !== 0 && (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+          {formatCurrency(collections.unattributedCash)} of the collected total is on{' '}
+          {formatNumber(collections.unattributedPayments)} payment(s) whose invoice is not in your sales data - usually
+          an invoice raised before the earliest sales file you have imported. It is inside the All Providers total, as
+          it should be, but sits in no provider's row, so the rows above add up to{' '}
+          {formatCurrency(collections.totalCash - collections.unattributedCash)}.
+        </p>
       )}
     </div>
   );
