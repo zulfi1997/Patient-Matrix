@@ -39,6 +39,7 @@ import { money, pct, type WorkbookSheet } from '../lib/workbook';
 import { contextSheet, conversionSheets, departmentDetailSheets } from '../lib/dashboardExports';
 import {
   computeProviderRevenueByType,
+  netAdjustmentForProvider,
   REVENUE_TYPE_LABELS,
   visibleRevenueTypeKeys,
   totalRevenueByType,
@@ -154,6 +155,30 @@ export function ProviderAnalyticsDashboard({
       .filter((r) => r.provider === selected),
     [providerRecords, range, providerGroups, providerAssignmentOverrides, revenueAdjustments, selected],
   );
+  /**
+   * Revenue Adjustments are a statement about who earned what, so every per-provider revenue figure
+   * on this tab has to carry them or the tab contradicts itself. Departments and Top Services
+   * deliberately do not: an adjustment names no service and no department, so there is nothing to
+   * move there without inventing one.
+   */
+  const netAdjustment = useMemo(
+    () => netAdjustmentForProvider(selected, range, revenueAdjustments, providerGroups, providerAssignmentOverrides),
+    [selected, range, revenueAdjustments, providerGroups, providerAssignmentOverrides],
+  );
+
+  const periodRevenue = kpis.periodRevenue + netAdjustment;
+
+  const adjustedTrend = useMemo(
+    () => trend.map((t) => {
+      const monthEnd = new Date(Number(t.month.slice(0, 4)), Number(t.month.slice(5, 7)), 0);
+      const monthAdjustment = netAdjustmentForProvider(
+        selected, { start: t.month, end: toISODate(monthEnd) }, revenueAdjustments, providerGroups, providerAssignmentOverrides,
+      );
+      return monthAdjustment === 0 ? t : { ...t, revenue: t.revenue + monthAdjustment };
+    }),
+    [trend, selected, revenueAdjustments, providerGroups, providerAssignmentOverrides],
+  );
+
   const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);
   const flagged = useMemo(() => computeFlaggedSummary(providerRecords, range), [providerRecords, range]);
@@ -252,6 +277,7 @@ export function ProviderAnalyticsDashboard({
       ['Scope', 'Every figure is the clinic-wide dashboard calculation run over this provider\'s lines, so definitions match the other tabs exactly.'],
       ['Provider', 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under the doctor she assisted that day.'],
       ['New Patients', 'New to this provider. The count also new to the clinic is reported separately, since they are different questions.'],
+      ['Revenue Adjustments', 'Master Control corrections dated in this period are included in Revenue and the monthly trend. Departments and Top Services exclude them - an adjustment names no service or department, so there is nothing to move there without inventing one.'],
       ['Conversion', 'Computed across all clinic records then filtered to this provider - classifying new vs repeat from a narrowed set would make everyone look new. Zero-revenue visits are always included here, whatever the header toggle says, because an unconverted visit is defined by having produced no revenue.'],
       ['Top Services', `Category filter: ${serviceType}. Package sales are excluded under "Service", since the package is not itself a service and its value arrives later as redemptions.`],
       ['Invoice Ageing', 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.'],
@@ -260,7 +286,8 @@ export function ProviderAnalyticsDashboard({
     {
       name: 'Summary',
       rows: [
-        { Metric: 'Revenue', Value: money(kpis.periodRevenue) },
+        { Metric: 'Revenue', Value: money(periodRevenue) },
+        { Metric: 'Revenue Adjustment', Value: money(netAdjustment) },
         { Metric: 'Redeemed Revenue', Value: money(kpis.periodRedeemedRevenue) },
         { Metric: 'Line Items', Value: kpis.periodTransactions },
         { Metric: 'Active Patients', Value: kpis.activePatients },
@@ -284,7 +311,7 @@ export function ProviderAnalyticsDashboard({
     },
     {
       name: 'Monthly Trend',
-      rows: trend.map((t) => ({
+      rows: adjustedTrend.map((t) => ({
         Month: t.month.slice(0, 7), 'Active Patients': t.activePatients, 'New Patients': t.newPatients,
         'Returning Patients': t.returningPatients, 'Retention Rate (%)': pct(t.retentionRate),
         Revenue: money(t.revenue), 'Line Items': t.transactions,
@@ -399,7 +426,14 @@ export function ProviderAnalyticsDashboard({
       </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <KpiCard label="Revenue" value={formatCurrency(kpis.periodRevenue)} hint={`${formatNumber(kpis.periodTransactions)} line items`} help="New cash from this provider's lines. Excludes package sessions consumed, which are reported beside it." />
+        <KpiCard
+          label="Revenue"
+          value={formatCurrency(periodRevenue)}
+          hint={netAdjustment !== 0
+            ? `${formatNumber(kpis.periodTransactions)} line items · includes ${netAdjustment > 0 ? '+' : ''}${formatCurrency(netAdjustment)} adjustment`
+            : `${formatNumber(kpis.periodTransactions)} line items`}
+          help="New cash from this provider's lines, after any Master Control Revenue Adjustments dated in this period. Excludes package sessions consumed, which are reported beside it."
+        />
         <KpiCard label="Redeemed Revenue" value={formatCurrency(kpis.periodRedeemedRevenue)} hint="value delivered via package redemption" help="Value of previously-sold package sessions this provider delivered. Already recognized when the package was sold, so it is not counted as new revenue." />
         <KpiCard label="Active Patients" value={formatNumber(kpis.activePatients)} help="Distinct patients this provider saw in the period." />
         <KpiCard label="New To This Provider" value={formatNumber(kpis.newPatients)} hint={`${formatNumber(newToClinic)} of them also new to the clinic`} tone="good" help="First time seeing this provider. The hint counts those whose first-ever clinic visit was also in this period - a genuinely new patient rather than one who transferred internally." />
@@ -417,7 +451,7 @@ export function ProviderAnalyticsDashboard({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
         <PatientTrendChart data={trend} />
-        <RevenueTrendChart data={trend} />
+        <RevenueTrendChart data={adjustedTrend} />
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">

@@ -132,6 +132,27 @@ export function totalRevenueByType(rows: ProviderRevenueByType[]): ProviderReven
   return total;
 }
 
+/**
+ * Net effect of Revenue Adjustments on one provider over a date range - positive where revenue was
+ * moved to them, negative where it was moved away. Both ends resolve through Provider Groups, so
+ * an adjustment naming an assisting nurse lands on the doctor she assists.
+ */
+export function netAdjustmentForProvider(
+  provider: string,
+  range: DateRange,
+  adjustments: RevenueAdjustment[],
+  groups: ProviderGroup[],
+  overrides: ProviderAssignmentOverride[],
+): number {
+  let net = 0;
+  for (const adj of adjustments) {
+    if (!isInRange(adj.date, range)) continue;
+    if (resolveProvider(adj.toProvider, adj.date, groups, overrides) === provider) net += adj.amount;
+    if (resolveProvider(adj.fromProvider, adj.date, groups, overrides) === provider) net -= adj.amount;
+  }
+  return net;
+}
+
 /** True when any adjustment landed without an item type, so the extra column has something in it. */
 export function hasUntypedAdjustment(rows: ProviderRevenueByType[]): boolean {
   return rows.some((r) => r.adjustment !== 0);

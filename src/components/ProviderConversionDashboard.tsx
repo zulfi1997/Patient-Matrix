@@ -184,6 +184,16 @@ export function ProviderConversionDashboard({
 
   const staffOptions = useMemo(() => summary.providers.map((p) => p.staff), [summary.providers]);
 
+  /**
+   * Adjustments only apply to the dates they carry, so in Single Day mode - the default, on the
+   * latest date in the data - a correction made for any other day simply is not in view. Silence
+   * there reads as "the adjustment did nothing", which is the wrong conclusion, so say it plainly.
+   */
+  const adjustmentsOutOfView = useMemo(() => {
+    const inView = revenueAdjustments.filter((a) => a.date >= summary.range.start && a.date <= summary.range.end);
+    return { total: revenueAdjustments.length, shown: inView.length };
+  }, [revenueAdjustments, summary.range]);
+
   const filteredPatientRows = useMemo(
     () =>
       summary.patientRows.filter(
@@ -363,6 +373,15 @@ export function ProviderConversionDashboard({
           help="Total revenue (Sales Exc. Tax) across every visit shown above, for the selected period/day."
         />
       </div>
+
+      {adjustmentsOutOfView.total > adjustmentsOutOfView.shown && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 print:hidden dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+          {adjustmentsOutOfView.shown} of {adjustmentsOutOfView.total} Revenue Adjustments fall inside{' '}
+          {viewMode === 'day' ? 'this date' : 'this period'}. The rest are dated elsewhere and are not reflected in the
+          Revenue column above - an adjustment applies only on the day it carries.
+          {viewMode === 'day' && ' Switch to Period to cover a range of dates.'}
+        </p>
+      )}
 
       <ConversionTrendChart data={trend} />
 

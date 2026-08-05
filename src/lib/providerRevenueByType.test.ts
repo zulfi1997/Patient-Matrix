@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeProviderRevenueByType,
   hasUntypedAdjustment,
+  netAdjustmentForProvider,
   totalRevenueByType,
   visibleRevenueTypeKeys,
 } from './providerRevenueByType';
@@ -195,5 +196,38 @@ describe('revenue adjustments in the type breakdown', () => {
     const result = computeProviderRevenueByType(sales(), RANGE, groups, [], [adjustment({ toProvider: 'Nurse Reni' })]);
     expect(result.map((r) => r.provider).sort()).toEqual(['Dr A', 'Dr B']);
     expect(find(result, 'Dr B').netRevenue).toBe(700);
+  });
+});
+
+describe('netAdjustmentForProvider', () => {
+  it('nets what moved in against what moved out', () => {
+    const net = (provider: string) =>
+      netAdjustmentForProvider(provider, RANGE, [
+        adjustment({ fromProvider: 'Rini', toProvider: 'Obada', amount: 170 }),
+        adjustment({ id: 'a2', fromProvider: 'Rini', toProvider: 'Obada', amount: 85 }),
+        adjustment({ id: 'a3', fromProvider: 'Obada', toProvider: 'Fatima', amount: 100 }),
+      ], [], []);
+    expect(net('Rini')).toBe(-255);
+    expect(net('Obada')).toBe(155);
+    expect(net('Fatima')).toBe(100);
+    expect(net('Nobody')).toBe(0);
+  });
+
+  it('only counts adjustments dated inside the range', () => {
+    // The Conversion tab defaults to a single day, which is how an adjustment can look like it did
+    // nothing: it applies on its own date and no other.
+    const adjustments = [adjustment({ date: '2026-07-15', fromProvider: 'Rini', toProvider: 'Obada' })];
+    expect(netAdjustmentForProvider('Obada', { start: '2026-07-15', end: '2026-07-15' }, adjustments, [], [])).toBe(200);
+    expect(netAdjustmentForProvider('Obada', { start: '2026-07-30', end: '2026-07-30' }, adjustments, [], [])).toBe(0);
+  });
+
+  it('resolves both ends through provider groups', () => {
+    const groups = [{ id: 'g1', canonicalName: 'Dr Obada', aliases: ['Rini Antony'] }];
+    const adjustments = [adjustment({ fromProvider: 'Rini Antony', toProvider: 'Dr Fatima' })];
+    expect(netAdjustmentForProvider('Dr Obada', RANGE, adjustments, groups, [])).toBe(-200);
+  });
+
+  it('cancels out when a provider is both ends of the same move', () => {
+    expect(netAdjustmentForProvider('Dr A', RANGE, [adjustment({ fromProvider: 'Dr A', toProvider: 'Dr A' })], [], [])).toBe(0);
   });
 });
