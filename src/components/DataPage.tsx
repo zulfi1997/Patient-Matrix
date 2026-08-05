@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ImportBatch, PackageBenefitBatch, PackageBenefitRecord, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
+import type { CollectionImportBatch, ImportBatch, PackageBenefitBatch, PackageBenefitRecord, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
+import type { CollectionImportResult } from '../hooks/useCollections';
 import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from '../lib/segmentAllocation';
@@ -15,6 +16,7 @@ import { countUnresolvedServiceLines } from '../lib/serviceKeyResolution';
 import { formatDate, formatNumber } from '../lib/format';
 import { ONEDRIVE_SUBFOLDERS } from '../lib/oneDriveConfig';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
+import { CollectionsSection } from './CollectionsSection';
 import { PnlUploadSection } from './PnlUploadSection';
 import { SegmentAllocationEditor } from './SegmentAllocationEditor';
 import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
@@ -34,6 +36,9 @@ interface DataPageProps {
   packageBenefitBatches: PackageBenefitBatch[];
   importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
+  collectionBatches: CollectionImportBatch[];
+  importCollectionFile: (file: File) => Promise<CollectionImportResult>;
+  removeCollectionBatch: (id: string) => Promise<void>;
   providerGroups: ProviderGroup[];
   setProviderGroups: Dispatch<SetStateAction<ProviderGroup[]>>;
   revenueAdjustments: RevenueAdjustment[];
@@ -100,6 +105,9 @@ export function DataPage({
   packageBenefitBatches,
   importPackageBenefitFile,
   removePackageBenefitSnapshot,
+  collectionBatches,
+  importCollectionFile,
+  removeCollectionBatch,
   providerGroups,
   setProviderGroups,
   revenueAdjustments,
@@ -439,6 +447,20 @@ export function DataPage({
           onPullFromOneDrive={
             oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.packageBenefits) : undefined
           }
+        />
+      </div>
+
+      <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+        <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-100">Collections</h2>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          Cash actually received, matched to whoever sold the invoice. Adds a Collected column beside revenue on the
+          Dashboard, Provider Conversion and Provider Analytics.
+        </p>
+        <CollectionsSection
+          batches={collectionBatches}
+          importCollectionFile={importCollectionFile}
+          removeCollectionBatch={removeCollectionBatch}
+          onPullFromOneDrive={oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.collections) : undefined}
         />
       </div>
 

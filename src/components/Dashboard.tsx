@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ImportBatch, ItemType, SaleRecord } from '../types';
+import type { CollectionRecord, ImportBatch, ItemType, SaleRecord } from '../types';
 import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
 import {
   computeAgingBucketSummary,
@@ -22,6 +22,7 @@ import { DeckBuilder } from './DeckBuilder';
 import { exportDashboardWorkbook } from '../lib/excelExport';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import { computeProviderRevenueByType } from '../lib/providerRevenueByType';
+import { buildInvoiceProviderShares, computeProviderCollections } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
@@ -51,6 +52,7 @@ export function Dashboard({
   providerGroups,
   providerAssignmentOverrides,
   revenueAdjustments,
+  collections,
 }: {
   records: SaleRecord[];
   /** Unfiltered stored rows, so the reconciliation panel can show what the pipeline excludes. */
@@ -61,6 +63,7 @@ export function Dashboard({
   providerGroups: ProviderGroup[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   revenueAdjustments: RevenueAdjustment[];
+  collections: CollectionRecord[];
 }) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-preset', 'last30');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-custom-range', {
@@ -119,6 +122,18 @@ export function Dashboard({
     [records, range, providerGroups, providerAssignmentOverrides, revenueAdjustments],
   );
 
+  // Built from every record rather than the period's: a payment received in this period often
+  // settles an invoice raised before it, and narrowing first would leave that payment unattributed.
+  const invoiceShares = useMemo(
+    () => buildInvoiceProviderShares(records, providerGroups, providerAssignmentOverrides),
+    [records, providerGroups, providerAssignmentOverrides],
+  );
+
+  const collectionSummary = useMemo(
+    () => (collections.length === 0 ? null : computeProviderCollections(collections, invoiceShares, range)),
+    [collections, invoiceShares, range],
+  );
+
   const discountSummary = useMemo(() => computeDiscountSummary(records, range), [records, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(records, range), [records, range]);
   const discountDetails = useMemo(() => computeDiscountDetails(records, range), [records, range]);
@@ -138,6 +153,7 @@ export function Dashboard({
         invoiceAging, agingBucketSummary,
         atRiskPatients, returnedPatients,
         records, patients, providerGroups, providerAssignmentOverrides,
+        collectionSummary,
       });
     } catch (e) {
       setXlsxError(e instanceof Error ? e.message : 'Failed to build the workbook.');
@@ -305,7 +321,7 @@ export function Dashboard({
         />
       </div>
 
-      <ProviderRevenueByTypeTable data={revenueByType} />
+      <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />
 
       <RedeemedPackagesTable data={redeemedPackages} />
 

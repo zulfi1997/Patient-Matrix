@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTransactions } from './hooks/useTransactions';
 import { usePackageBenefits } from './hooks/usePackageBenefits';
+import { useCollections } from './hooks/useCollections';
 import { usePnl } from './hooks/usePnl';
 import { useOneDrive } from './hooks/useOneDrive';
 import { useStaffScorecards } from './hooks/useStaffScorecards';
@@ -43,6 +44,7 @@ function App() {
     removePackageBenefitSnapshot,
     refresh: refreshPackageBenefits,
   } = usePackageBenefits();
+  const { collections, collectionBatches, importCollectionFile, removeCollectionBatch } = useCollections();
   const { pnlLines, pnlBatches, importPnlFile, removePnlBatch, clearAllPnl, refresh: refreshPnl } = usePnl();
   const { scorecards, importOfferLetter, removeScorecard: removeScorecardOnly } = useStaffScorecards();
   const { entries: manualKpiEntries, setManualKpiValue, refresh: refreshManualKpiEntries } = useManualKpiEntries();
@@ -235,6 +237,7 @@ function App() {
             providerGroups={providerGroups}
             providerAssignmentOverrides={providerAssignmentOverrides}
             revenueAdjustments={revenueAdjustments}
+            collections={collections}
           />
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} pnlLines={pnlLines} />
@@ -251,6 +254,7 @@ function App() {
             providerGroups={providerGroups}
             revenueAdjustments={revenueAdjustments}
             providerAssignmentOverrides={providerAssignmentOverrides}
+            collections={collections}
           />
         ) : tab === 'providerAnalytics' ? (
           <ProviderAnalyticsDashboard
@@ -261,6 +265,7 @@ function App() {
             providerGroups={providerGroups}
             providerAssignmentOverrides={providerAssignmentOverrides}
             revenueAdjustments={revenueAdjustments}
+            collections={collections}
           />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard
@@ -308,6 +313,9 @@ function App() {
             packageBenefitBatches={packageBenefitBatches}
             importPackageBenefitFile={importPackageBenefitFile}
             removePackageBenefitSnapshot={removePackageBenefitSnapshot}
+            collectionBatches={collectionBatches}
+            importCollectionFile={importCollectionFile}
+            removeCollectionBatch={removeCollectionBatch}
             providerGroups={providerGroups}
             setProviderGroups={setProviderGroups}
             revenueAdjustments={revenueAdjustments}

@@ -23,6 +23,8 @@ import {
   visibleRevenueTypeKeys,
   type ProviderRevenueByType,
 } from './providerRevenueByType';
+import { COLLECTION_METHOD_LABELS } from './collectionsParser';
+import type { CollectionSummary } from './collections';
 import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
 
 export interface WorkbookParams {
@@ -43,6 +45,8 @@ export interface WorkbookParams {
   atRiskPatients: AtRiskPatient[];
   returnedPatients: ReturnedPatient[];
   revenueByType: ProviderRevenueByType[];
+  /** Null until a Collections export has been imported. */
+  collectionSummary: CollectionSummary | null;
   /** Records already filtered the same way the dashboard filters them. */
   records: SaleRecord[];
   patients: Map<string, PatientVisitSummary>;
@@ -88,6 +92,10 @@ function readMeRows(p: WorkbookParams): Record<string, string>[] {
       Detail: 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.',
     },
     {
+      Item: 'Collections',
+      Detail: 'Money actually received, by collection date - often not the month the sale was recognized in, so this will not tie to Revenue and is not meant to. Package, gift-card and prepaid-card settlements are reported separately and excluded from the cash figure: that money arrived when the package or card was bought. Attribution runs through the invoice number against the sales data, since the export\'s "Collected By" is the cashier, not the seller.',
+    },
+    {
       Item: 'Revenue Adjustments',
       Detail: 'Master Control corrections are applied per provider. One that names an item type moves that column; one that does not sits in an Adjustment column rather than being attributed to a type nobody stated. The All Providers row is unaffected either way, since an adjustment only moves revenue between two providers.',
     },
@@ -121,6 +129,30 @@ function revenueByTypeRows(p: WorkbookParams): Record<string, string | number>[]
   return [...p.revenueByType.map(row), row(total)];
 }
 
+/**
+ * Cash received per provider. Kept apart from the revenue sheets because the two answer different
+ * questions - revenue is what was sold in the period, collection is what was paid for in it, and
+ * an invoice raised in June settled in July belongs to both, in different months.
+ */
+function collectionRows(c: CollectionSummary): Record<string, string | number>[] {
+  const row = (name: string, s: (typeof c.providers)[number] | null, cash: number, redemption: number) => ({
+    Provider: name,
+    'Collected (Cash)': money(cash),
+    ...Object.fromEntries(
+      (Object.keys(COLLECTION_METHOD_LABELS) as (keyof typeof COLLECTION_METHOD_LABELS)[])
+        .map((m) => [COLLECTION_METHOD_LABELS[m], money(s?.byMethod[m] ?? 0)]),
+    ),
+    'Settled By Package/Card': money(redemption),
+    Invoices: s?.invoices ?? '',
+    Payments: s?.payments ?? '',
+  });
+  return [
+    ...c.providers.map((s) => row(s.provider, s, s.cashCollected, s.redemptionSettled)),
+    row('Unattributed (invoice not in sales data)', null, c.unattributedCash, c.unattributedRedemption),
+    row('All Collections', null, c.totalCash, c.totalRedemption),
+  ];
+}
+
 function summaryRows(p: WorkbookParams): Record<string, string | number>[] {
   const k = p.kpis;
   const rows: [string, string | number][] = [
@@ -140,6 +172,13 @@ function summaryRows(p: WorkbookParams): Record<string, string | number>[] {
     ['Gross Sales (pre-discount)', money(p.discountSummary.grossSales)],
     ['Total Outstanding', money(p.invoiceAging.reduce((s, r) => s + r.dueAmount, 0))],
     ['Outstanding Invoices', p.invoiceAging.length],
+    ...(p.collectionSummary
+      ? ([
+          ['Collected (Cash)', money(p.collectionSummary.totalCash)],
+          ['Settled By Package/Card', money(p.collectionSummary.totalRedemption)],
+          ['Collections Not Matched To An Invoice', money(p.collectionSummary.unattributedCash)],
+        ] as [string, string | number][])
+      : []),
   ];
   return rows.map(([Metric, Value]) => ({ Metric, Value }));
 }
@@ -217,6 +256,7 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
       })),
     },
     { name: 'Revenue By Type', rows: revenueByTypeRows(p) },
+    ...(p.collectionSummary ? [{ name: 'Collections', rows: collectionRows(p.collectionSummary) }] : []),
     {
       name: 'Services',
       rows: p.services.map((s) => ({

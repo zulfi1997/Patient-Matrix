@@ -175,3 +175,49 @@ export interface ManualKpiEntry {
   note: string | null;
   updatedAt: string; // ISO datetime
 }
+
+/**
+ * One payment line from a Zenoti "Collections" export - money actually received on an invoice,
+ * as opposed to revenue recognized when the sale was made.
+ *
+ * There is no staff column here worth using: "Collected By" is the cashier who took the payment,
+ * not whoever sold the service. Attribution to a provider therefore runs through the invoice
+ * number, against the sales data (see lib/collections.ts).
+ */
+export interface CollectionRecord {
+  id: string;
+  importBatchId: string;
+  /** ISO yyyy-mm-dd - when the money was received, not when the sale was made. */
+  date: string;
+  invoiceNo: string;
+  patientId: string;
+  patientName: string;
+  centerName: string;
+  /** Raw Payment Type, kept whole: the redemption variants carry the package/card identity after a separator. */
+  paymentType: string;
+  /** Normalized bucket the payment type falls into. */
+  method: CollectionMethod;
+  /** This payment alone. The export's "Total Paid" is a running total per invoice, so it must not be summed. */
+  amount: number;
+  taxCollected: number;
+  invoiceStatus: string;
+  collectedBy: string | null;
+  comments: string | null;
+}
+
+/**
+ * Card, Cash and bank transfers are new money. Package, gift-card and prepaid-card settlements are
+ * not - the cash for those arrived when the package or card was bought, and counting it again on
+ * redemption would book the same money twice.
+ */
+export type CollectionMethod = 'card' | 'cash' | 'bankTransfer' | 'other' | 'package' | 'giftCard' | 'prepaidCard';
+
+export interface CollectionImportBatch {
+  /** `${start}..${end}` of the period the report covers - also the primary key, so re-uploading a period replaces it wholesale. */
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  fileName: string;
+  uploadedAt: string; // ISO datetime
+  rowCount: number;
+}

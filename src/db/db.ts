@@ -1,5 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
+  CollectionImportBatch,
+  CollectionRecord,
   ImportBatch,
   ManualKpiEntry,
   PackageBenefitBatch,
@@ -57,10 +59,19 @@ interface PatientMatrixDB extends DBSchema {
     key: string;
     value: DepartmentMappingBatch;
   };
+  collections: {
+    key: string;
+    value: CollectionRecord;
+    indexes: { 'by-batch': string };
+  };
+  collectionBatches: {
+    key: string;
+    value: CollectionImportBatch;
+  };
 }
 
 const DB_NAME = 'patient-matrix';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 let dbPromise: Promise<IDBPDatabase<PatientMatrixDB>> | null = null;
 
@@ -94,6 +105,11 @@ function getDB() {
         if (oldVersion < 6) {
           db.createObjectStore('serviceDepartments', { keyPath: 'serviceKey' });
           db.createObjectStore('departmentMappingBatch');
+        }
+        if (oldVersion < 7) {
+          const collections = db.createObjectStore('collections', { keyPath: 'id' });
+          collections.createIndex('by-batch', 'importBatchId');
+          db.createObjectStore('collectionBatches', { keyPath: 'id' });
         }
       },
     });
@@ -385,4 +401,61 @@ export async function importServiceDepartmentBatch(batch: DepartmentMappingBatch
 export async function getDepartmentMappingBatch(): Promise<DepartmentMappingBatch | null> {
   const db = await getDB();
   return (await db.get('departmentMappingBatch', 'current')) ?? null;
+}
+
+
+export async function getAllCollections(): Promise<CollectionRecord[]> {
+  const db = await getDB();
+  return db.getAll('collections');
+}
+
+export async function getAllCollectionBatches(): Promise<CollectionImportBatch[]> {
+  const db = await getDB();
+  const batches = await db.getAll('collectionBatches');
+  return batches.sort((a, b) => b.periodStart.localeCompare(a.periodStart));
+}
+
+/**
+ * Stores a Collections import, first clearing every row already held for the period it covers.
+ *
+ * A Collections export is a statement about a window, not a set of new facts to merge: re-running
+ * it after a payment was voided has to be able to remove that payment, which merging by row could
+ * never do. This is the same date-range replacement addBatch performs on sales imports.
+ */
+export async function addCollectionBatch(
+  batch: CollectionImportBatch,
+  records: CollectionRecord[],
+): Promise<{ added: number; superseded: number }> {
+  const db = await getDB();
+  const tx = db.transaction(['collections', 'collectionBatches'], 'readwrite');
+  const store = tx.objectStore('collections');
+
+  let superseded = 0;
+  let cursor = await store.openCursor();
+  while (cursor) {
+    const existing = cursor.value;
+    if (existing.date >= batch.periodStart && existing.date <= batch.periodEnd) {
+      await cursor.delete();
+      superseded++;
+    }
+    cursor = await cursor.continue();
+  }
+
+  for (const record of records) await store.put(record);
+  await tx.objectStore('collectionBatches').put(batch);
+  await tx.done;
+  return { added: records.length, superseded };
+}
+
+export async function deleteCollectionBatch(id: string): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(['collections', 'collectionBatches'], 'readwrite');
+  const index = tx.objectStore('collections').index('by-batch');
+  let cursor = await index.openCursor(IDBKeyRange.only(id));
+  while (cursor) {
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.objectStore('collectionBatches').delete(id);
+  await tx.done;
 }

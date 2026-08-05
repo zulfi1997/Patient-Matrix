@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { ItemType, PackageBenefitRecord, SaleRecord } from '../types';
+import type { CollectionRecord, ItemType, PackageBenefitRecord, SaleRecord } from '../types';
 import type { ServiceDepartmentRecord } from '../lib/departments';
 import {
   buildInvoiceToPatientMap,
@@ -44,6 +44,7 @@ import {
   visibleRevenueTypeKeys,
   totalRevenueByType,
 } from '../lib/providerRevenueByType';
+import { buildInvoiceProviderShares, computeProviderCollections } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -66,6 +67,7 @@ export function ProviderAnalyticsDashboard({
   providerGroups,
   providerAssignmentOverrides,
   revenueAdjustments,
+  collections,
 }: {
   records: SaleRecord[];
   /**
@@ -79,6 +81,7 @@ export function ProviderAnalyticsDashboard({
   providerGroups: ProviderGroup[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   revenueAdjustments: RevenueAdjustment[];
+  collections: CollectionRecord[];
 }) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-provider-preset', 'last90');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-provider-custom-range', {
@@ -179,6 +182,17 @@ export function ProviderAnalyticsDashboard({
     [trend, selected, revenueAdjustments, providerGroups, providerAssignmentOverrides],
   );
 
+  // Shares come from every record, not this provider's: an invoice they share with a colleague has
+  // to divide by both their contributions, which narrowing first would hide.
+  const collectionSummary = useMemo(() => {
+    if (collections.length === 0) return null;
+    const shares = buildInvoiceProviderShares(records, providerGroups, providerAssignmentOverrides);
+    const summary = computeProviderCollections(collections, shares, range);
+    return { ...summary, providers: summary.providers.filter((p) => p.provider === selected) };
+  }, [collections, records, range, providerGroups, providerAssignmentOverrides, selected]);
+
+  const providerCollected = collectionSummary?.providers[0] ?? null;
+
   const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);
   const flagged = useMemo(() => computeFlaggedSummary(providerRecords, range), [providerRecords, range]);
@@ -277,6 +291,7 @@ export function ProviderAnalyticsDashboard({
       ['Scope', 'Every figure is the clinic-wide dashboard calculation run over this provider\'s lines, so definitions match the other tabs exactly.'],
       ['Provider', 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under the doctor she assisted that day.'],
       ['New Patients', 'New to this provider. The count also new to the clinic is reported separately, since they are different questions.'],
+      ['Collected (Cash)', 'Money actually received in the period, by collection date rather than sale date, on invoices this provider sold. Package, gift-card and prepaid-card settlements are excluded - that cash arrived when the package or card was bought. Only present once a Collections export has been imported.'],
       ['Revenue Adjustments', 'Master Control corrections dated in this period are included in Revenue and the monthly trend. Departments and Top Services exclude them - an adjustment names no service or department, so there is nothing to move there without inventing one.'],
       ['Conversion', 'Computed across all clinic records then filtered to this provider - classifying new vs repeat from a narrowed set would make everyone look new. Zero-revenue visits are always included here, whatever the header toggle says, because an unconverted visit is defined by having produced no revenue.'],
       ['Top Services', `Category filter: ${serviceType}. Package sales are excluded under "Service", since the package is not itself a service and its value arrives later as redemptions.`],
@@ -288,6 +303,8 @@ export function ProviderAnalyticsDashboard({
       rows: [
         { Metric: 'Revenue', Value: money(periodRevenue) },
         { Metric: 'Revenue Adjustment', Value: money(netAdjustment) },
+        { Metric: 'Collected (Cash)', Value: providerCollected ? money(providerCollected.cashCollected) : '' },
+        { Metric: 'Settled By Package/Card', Value: providerCollected ? money(providerCollected.redemptionSettled) : '' },
         { Metric: 'Redeemed Revenue', Value: money(kpis.periodRedeemedRevenue) },
         { Metric: 'Line Items', Value: kpis.periodTransactions },
         { Metric: 'Active Patients', Value: kpis.activePatients },
@@ -446,6 +463,14 @@ export function ProviderAnalyticsDashboard({
         )}
         <KpiCard label="Total Discount" value={formatCurrency(discountSummary.totalDiscount)} hint={formatPercent(discountSummary.discountPct) + ' of gross sales'} tone="bad" help="Every discount on this provider's lines except package redemption, which is not a discount." />
         <KpiCard label="YB111 Flagged" value={formatNumber(flagged.count)} hint={formatCurrency(flagged.amount)} help="Line items on this provider's invoices whose notes contain YB111." />
+        {providerCollected && (
+          <KpiCard
+            label="Collected (Cash)"
+            value={formatCurrency(providerCollected.cashCollected)}
+            hint={`${formatNumber(providerCollected.invoices)} invoice(s) · ${formatCurrency(providerCollected.redemptionSettled)} by package/card`}
+            help="Money actually received in this period, by collection date rather than sale date, on invoices this provider sold. Package, gift-card and prepaid-card settlements are excluded - that cash arrived when the package or card was bought. Where an invoice carries more than one provider's lines, the payment is split by each one's share of it."
+          />
+        )}
         <KpiCard label="Outstanding Due" value={formatCurrency(totalDue)} hint={`${formatNumber(invoiceAging.length)} invoices, all history`} tone={totalDue > 0 ? 'bad' : 'neutral'} help="Unpaid balances on invoices containing this provider's lines, across all sales data rather than the selected period." />
       </div>
 
@@ -607,7 +632,7 @@ export function ProviderAnalyticsDashboard({
         </div>
       </div>
 
-      <ProviderRevenueByTypeTable data={revenueByType} />
+      <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />
 
       <RedeemedPackagesTable data={redeemedPackages} />
       <DiscountsBreakdownTable data={discountBreakdown} />

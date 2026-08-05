@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { CollectionSummary } from '../lib/collections';
 import { formatCurrency, formatNumber } from '../lib/format';
 import { InfoTooltip } from './InfoTooltip';
 import {
@@ -15,10 +16,18 @@ import {
  * The refund columns are the point: a provider's net figure alone cannot distinguish someone who
  * sold little from someone who sold plenty and had much of it handed back.
  */
-export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByType[] }) {
+export function ProviderRevenueByTypeTable({
+  data,
+  collections,
+}: {
+  data: ProviderRevenueByType[];
+  /** Present once a Collections export has been imported; adds cash actually received beside revenue. */
+  collections?: CollectionSummary | null;
+}) {
   const total = useMemo(() => totalRevenueByType(data), [data]);
   const keys = useMemo(() => visibleRevenueTypeKeys(total), [total]);
   const showAdjustment = useMemo(() => hasUntypedAdjustment(data), [data]);
+  const collectedFor = (provider: string) => collections?.providers.find((p) => p.provider === provider);
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid dark:border-zinc-800 dark:bg-zinc-900">
@@ -33,6 +42,7 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
         whichever doctor they assisted, per your Provider Groups. Master Control Revenue Adjustments are applied here
         too: one that names a type moves that column, one that does not shows separately, and either way the
         All Providers row is unchanged, since an adjustment only moves revenue between two providers.
+        {collections && ' Collected (Cash) is money actually received in this period, by collection date rather than sale date, matched to whoever sold the invoice. Package, gift-card and prepaid-card settlements are excluded from it - that cash arrived when the package or card was bought.'}
       </p>
       {data.length === 0 ? (
         <p className="py-6 text-center text-sm text-zinc-500">No revenue recorded in this period.</p>
@@ -49,6 +59,7 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
                 <th className="py-2 pr-2 text-right align-bottom">Net Revenue</th>
                 <th className="break-words py-2 pr-2 text-right align-bottom">Package Redeemed</th>
                 <th className="break-words py-2 pr-2 text-right align-bottom">Delivered Value</th>
+                {collections && <th className="break-words py-2 pr-2 text-right align-bottom">Collected (Cash)</th>}
               </tr>
             </thead>
             <tbody>
@@ -77,6 +88,14 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
                   <td className="py-1.5 pr-2 text-right font-semibold tabular-nums">{formatCurrency(row.netRevenue)}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums text-zinc-500 dark:text-zinc-400">{formatCurrency(row.redeemed)}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(row.deliveredValue)}</td>
+                  {collections && (
+                    <td
+                      className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400"
+                      title={`${formatNumber(collectedFor(row.provider)?.invoices ?? 0)} invoice(s) · ${formatCurrency(collectedFor(row.provider)?.redemptionSettled ?? 0)} settled by package/card, not counted here`}
+                    >
+                      {formatCurrency(collectedFor(row.provider)?.cashCollected ?? 0)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -92,6 +111,11 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.netRevenue)}</td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.redeemed)}</td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.deliveredValue)}</td>
+                {collections && (
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400">
+                    {formatCurrency(collections.totalCash - collections.unattributedCash)}
+                  </td>
+                )}
               </tr>
             </tfoot>
           </table>

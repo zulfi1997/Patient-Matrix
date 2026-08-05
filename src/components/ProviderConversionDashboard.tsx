@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { PackageBenefitRecord, SaleRecord } from '../types';
+import type { CollectionRecord, PackageBenefitRecord, SaleRecord } from '../types';
 import {
   buildInvoiceToPatientMap,
   computeConversionTrend,
@@ -23,6 +23,7 @@ import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { ProviderHandoverPanel } from './ProviderHandoverPanel';
 import { ExportExcelButton } from './ExportExcelButton';
 import { conversionSheets, contextSheet } from '../lib/dashboardExports';
+import { buildInvoiceProviderShares, cashCollectedFor, computeProviderCollections } from '../lib/collections';
 
 const TREND_DAYS = 30;
 type ViewMode = 'day' | 'period';
@@ -67,12 +68,14 @@ export function ProviderConversionDashboard({
   providerGroups,
   revenueAdjustments,
   providerAssignmentOverrides,
+  collections,
 }: {
   records: SaleRecord[];
   packageBenefits: PackageBenefitRecord[];
   providerGroups: ProviderGroup[];
   revenueAdjustments: RevenueAdjustment[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
+  collections: CollectionRecord[];
 }) {
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -183,6 +186,14 @@ export function ProviderConversionDashboard({
   );
 
   const staffOptions = useMemo(() => summary.providers.map((p) => p.staff), [summary.providers]);
+
+  // By collection date, not sale date - the point of the column is when the money arrived. Shares
+  // come from the full sales history, since a payment here often settles an older invoice.
+  const collectionSummary = useMemo(() => {
+    if (collections.length === 0) return null;
+    const shares = buildInvoiceProviderShares(records, providerGroups, providerAssignmentOverrides);
+    return computeProviderCollections(collections, shares, summary.range);
+  }, [collections, records, providerGroups, providerAssignmentOverrides, summary.range]);
 
   /**
    * Adjustments only apply to the dates they carry, so in Single Day mode - the default, on the
@@ -400,6 +411,9 @@ export function ProviderConversionDashboard({
                 ['Conversion rate', 'Converted divided by everyone classified as a conversion opportunity. Follow-up / direct-service visits are excluded from that denominator, since there was nothing to convert.'],
                 ['Provider', 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under whichever doctor she assisted that day.'],
                 ['Classification', 'Each patient is classified once per provider per day, on that day\'s own terms.'],
+                ...(collectionSummary
+                  ? ([['Collected (Cash)', 'Money actually received in this window, by collection date rather than sale date, on invoices the provider sold. Package, gift-card and prepaid-card settlements are excluded - that cash arrived when the package or card was bought. It will not tie to Revenue, and is not meant to.']] as [string, string][])
+                  : []),
               ]),
               ...conversionSheets({
                 providers: summary.providers, overall: summary.overall, patientRows: summary.patientRows,
@@ -446,6 +460,7 @@ export function ProviderConversionDashboard({
                   <th className="break-words py-2 pr-2 text-right align-bottom">Total</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Conversion Rate</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Revenue</th>
+                  {collectionSummary && <th className="break-words py-2 pr-2 text-right align-bottom">Collected (Cash)</th>}
                 </tr>
               </thead>
               <tbody>
@@ -480,6 +495,11 @@ export function ProviderConversionDashboard({
                           </span>
                         )}
                       </td>
+                      {collectionSummary && (
+                        <td className="py-1.5 pr-2 text-right text-sky-700 dark:text-sky-400">
+                          {formatNumber(cashCollectedFor(collectionSummary, p.staff))}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -497,6 +517,11 @@ export function ProviderConversionDashboard({
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.total)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatPercent(summary.overall.conversionRate, 1)}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.revenue)}</td>
+                  {collectionSummary && (
+                    <td className="py-1.5 pr-2 text-right text-sky-700 dark:text-sky-400">
+                      {formatNumber(collectionSummary.totalCash - collectionSummary.unattributedCash)}
+                    </td>
+                  )}
                 </tr>
               </tfoot>
             </table>
