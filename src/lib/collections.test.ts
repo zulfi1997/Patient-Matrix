@@ -531,3 +531,40 @@ describe('collection, refund and net', () => {
     expect(result.totalNetCollected).toBe(attributed + result.unattributedCollected + result.unattributedRefunded);
   });
 });
+
+describe('internal transfers are neither collection nor refund', () => {
+  it('leaves both legs out, so Refund shows only money that left the clinic', () => {
+    // Real June rows: TBC26095 -104.850 and TBC26094 +104.850, same patient, same day. Counting the
+    // negative leg as a refund overstated June's refunds by 2,767.305 against the clinic's own
+    // figure of 1,459.274, and the positive leg overstated Collection by the same amount.
+    const sales = [
+      makeSale({ invoiceNo: 'TBC26094', staff: 'Dr A', amount: 104.85 }),
+      makeSale({ invoiceNo: 'TBC26095', staff: 'Dr A', amount: 104.85 }),
+      makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 500 }),
+    ];
+    const result = computeProviderCollections([
+      payment({ id: 'p1', invoiceNo: 'TBC1', amount: 500 }),
+      payment({ id: 'p2', invoiceNo: 'TBC1', method: 'bankTransfer', paymentType: 'Custom - Bank Transfer', amount: -80 }),
+      payment({ id: 'p3', invoiceNo: 'TBC26095', method: 'internalTransfer', paymentType: 'Custom - Refund - Internal', amount: -104.85 }),
+      payment({ id: 'p4', invoiceNo: 'TBC26094', method: 'internalTransfer', paymentType: 'Custom - Refund - Internal', amount: 104.85 }),
+    ], shares(sales), RANGE);
+
+    expect(result.totalCollected).toBe(500);
+    expect(result.totalRefunded).toBe(-80);
+    expect(result.totalNetCollected).toBe(420);
+    // Reported rather than dropped: the pair is counted once, not twice.
+    expect(result.totalInternalTransferred).toBeCloseTo(104.85, 6);
+  });
+
+  it('classifies the payment type Zenoti uses for it', () => {
+    expect(classifyPaymentMethod('Custom - Refund - Internal')).toBe('internalTransfer');
+    expect(isCashCollection('internalTransfer')).toBe(false);
+  });
+
+  it('still treats a bank-transfer refund as a real refund', () => {
+    // The distinction is the point: one moves money between two of the clinic's own invoices, the
+    // other hands it back to the patient.
+    expect(classifyPaymentMethod('Custom - Bank Transfer')).toBe('bankTransfer');
+    expect(classifyPaymentMethod('Custom - Bank Transfer - Bank Muscat')).toBe('bankTransfer');
+  });
+});

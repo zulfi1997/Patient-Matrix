@@ -210,7 +210,16 @@ export interface CollectionRecord {
  * not - the cash for those arrived when the package or card was bought, and counting it again on
  * redemption would book the same money twice.
  */
-export type CollectionMethod = 'card' | 'cash' | 'bankTransfer' | 'other' | 'package' | 'giftCard' | 'prepaidCard';
+export type CollectionMethod =
+  | 'card'
+  | 'cash'
+  | 'bankTransfer'
+  | 'other'
+  | 'package'
+  | 'giftCard'
+  | 'prepaidCard'
+  /** Money moved between two of the clinic's own invoices - never in or out. */
+  | 'internalTransfer';
 
 export interface CollectionImportBatch {
   /** `${start}..${end}` of the period the report covers - also the primary key, so re-uploading a period replaces it wholesale. */

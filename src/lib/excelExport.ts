@@ -107,6 +107,10 @@ function readMeRows(p: WorkbookParams): Record<string, string>[] {
       Detail: 'Money in, money out, and the two together. Kept as three figures so gross takings stay readable instead of a refund quietly eating into them. Refund is negative, so Collection + Refund = Net Collection. Package, gift-card and prepaid-card settlements are in none of the three - that cash arrived when the package or card was bought.',
     },
     {
+      Item: 'Internal Transfers',
+      Detail: 'Payment type "Custom - Refund - Internal" moves money between two of the clinic\'s own invoices - booked negative on the one losing it and positive on the one gaining it, same patient, same day. It is neither a collection nor a refund, so both legs are excluded from all three columns; Zenoti\'s own Collections summary reports this line as 0.000 for the same reason. Shown here once per pair so it is visible rather than missing.',
+    },
+    {
       Item: 'Card Refunds',
       Detail: 'A gift or prepaid card handed back - a subset of Refund, broken out because the card was paid for in an earlier period and so says nothing about this period\'s trading. Reported in its own column and kept out of Collected (Cash): the card was paid for in an earlier period, so netting its return against this period\'s takings would understate what was actually collected here. Identified from the sales lines behind the invoice - the Collections export shows a card refund as an ordinary negative payment, indistinguishable from a refunded service.',
     },
@@ -161,6 +165,7 @@ function collectionRows(c: CollectionSummary): Record<string, string | number>[]
         .map((m) => [COLLECTION_METHOD_LABELS[m], money(s?.byMethod[m] ?? 0)]),
     ),
     'Settled By Package/Card': money(redemption),
+    'Internal Transfers (neither in nor out)': money(s?.internalTransferred ?? 0),
     Invoices: s?.invoices ?? '',
     Payments: s?.payments ?? '',
   });
@@ -246,6 +251,7 @@ function summaryRows(p: WorkbookParams): Record<string, string | number>[] {
           ['Net Collection', money(p.collectionSummary.totalNetCollected)],
           ['Of Refund, Gift/Prepaid Card Handed Back', money(p.collectionSummary.totalCardRefunds)],
           ['Settled By Package/Card', money(p.collectionSummary.totalRedemption)],
+          ['Internal Transfers (neither in nor out)', money(p.collectionSummary.totalInternalTransferred)],
           ['Collections Not Matched To An Invoice', money(p.collectionSummary.unattributedCollected + p.collectionSummary.unattributedRefunded)],
         ] as [string, string | number][])
       : []),

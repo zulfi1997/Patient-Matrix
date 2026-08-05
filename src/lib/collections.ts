@@ -217,6 +217,12 @@ export interface ProviderCollectionStat {
   cardRefunds: number;
   /** Settled by consuming a package, gift card or prepaid card - already paid for earlier, so not new money. */
   redemptionSettled: number;
+  /**
+   * Money moved between two of the clinic's own invoices. Booked twice - negative on the invoice
+   * losing it, positive on the one gaining it - so it nets to nothing and belongs in neither
+   * Collection nor Refund. Counted here only so it is visible rather than missing.
+   */
+  internalTransferred: number;
   byMethod: Record<CollectionMethod, number>;
   /** Distinct invoices contributing, so a large figure can be told from a frequent one. */
   invoices: number;
@@ -243,6 +249,7 @@ export interface CollectionSummary {
   totalNetCollected: number;
   totalCardRefunds: number;
   totalRedemption: number;
+  totalInternalTransferred: number;
 }
 
 function emptyStat(provider: string): ProviderCollectionStat {
@@ -253,7 +260,8 @@ function emptyStat(provider: string): ProviderCollectionStat {
     netCollected: 0,
     cardRefunds: 0,
     redemptionSettled: 0,
-    byMethod: { card: 0, cash: 0, bankTransfer: 0, other: 0, package: 0, giftCard: 0, prepaidCard: 0 },
+    internalTransferred: 0,
+    byMethod: { card: 0, cash: 0, bankTransfer: 0, other: 0, package: 0, giftCard: 0, prepaidCard: 0, internalTransfer: 0 },
     invoices: 0,
     payments: 0,
   };
@@ -298,17 +306,20 @@ export function computeProviderCollections(
     totalNetCollected: 0,
     totalCardRefunds: 0,
     totalRedemption: 0,
+    totalInternalTransferred: 0,
   };
 
   for (const c of collections) {
     if (!isInRange(c.date, range)) continue;
+    const internal = c.method === 'internalTransfer';
     const cash = isCashCollection(c.method);
     const refund = cash && c.amount < 0;
     // A card handed back is still a refund, but of money taken in some earlier period - broken out
     // as a subset so it can be read separately without leaving the arithmetic.
     const isCardRefund = refund && cardOnlyInvoices.has(c.invoiceNo);
 
-    if (!cash) summary.totalRedemption += c.amount;
+    if (internal) summary.totalInternalTransferred += Math.abs(c.amount) / 2;
+    else if (!cash) summary.totalRedemption += c.amount;
     else if (refund) {
       summary.totalRefunded += c.amount;
       if (isCardRefund) summary.totalCardRefunds += c.amount;
@@ -319,7 +330,8 @@ export function computeProviderCollections(
       const reason = classifyUnmatched(c.invoiceNo, invoiceRanges);
       summary.unattributed.push({ payment: c, reason });
       summary.unattributedByReason[reason] += 1;
-      if (!cash) summary.unattributedRedemption += c.amount;
+      if (internal) { /* neither in nor out - nothing to report as unattributed */ }
+      else if (!cash) summary.unattributedRedemption += c.amount;
       else if (refund) summary.unattributedRefunded += c.amount;
       else summary.unattributedCollected += c.amount;
       summary.unattributedPayments += 1;
@@ -334,7 +346,8 @@ export function computeProviderCollections(
         invoicesSeen.set(provider, new Set());
       }
       const amount = c.amount * share;
-      if (!cash) stat.redemptionSettled += amount;
+      if (internal) stat.internalTransferred += Math.abs(amount) / 2;
+      else if (!cash) stat.redemptionSettled += amount;
       else if (refund) {
         stat.refunded += amount;
         if (isCardRefund) stat.cardRefunds += amount;

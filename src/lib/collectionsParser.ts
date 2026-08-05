@@ -31,6 +31,10 @@ export class CollectionPeriodError extends Error {
  */
 export function classifyPaymentMethod(paymentType: string): CollectionMethod {
   const s = paymentType.trim().toLowerCase();
+  // Checked before everything else: an internal refund is booked twice, once negative on the
+  // invoice losing the money and once positive on the one gaining it, so the pair nets to nothing.
+  // Zenoti's own Collections summary shows this line as 0.000 for the same reason.
+  if (s.includes('refund - internal')) return 'internalTransfer';
   if (s.startsWith('package')) return 'package';
   if (s.startsWith('gift card')) return 'giftCard';
   if (s.startsWith('prepaid card')) return 'prepaidCard';
@@ -40,9 +44,15 @@ export function classifyPaymentMethod(paymentType: string): CollectionMethod {
   return 'other';
 }
 
-/** True for the methods that represent cash actually collected in the period. */
+/**
+ * True for the methods that move money in or out of the clinic.
+ *
+ * Excludes the three redemption types - that cash arrived when the package or card was bought -
+ * and internal transfers, which move money between two of the clinic's own invoices and so are
+ * neither a collection nor a refund.
+ */
 export function isCashCollection(method: CollectionMethod): boolean {
-  return method !== 'package' && method !== 'giftCard' && method !== 'prepaidCard';
+  return method !== 'package' && method !== 'giftCard' && method !== 'prepaidCard' && method !== 'internalTransfer';
 }
 
 export const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
@@ -53,6 +63,7 @@ export const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
   package: 'Package Redemption',
   giftCard: 'Gift Card',
   prepaidCard: 'Prepaid Card',
+  internalTransfer: 'Internal Transfer',
 };
 
 export interface CollectionParseOutcome {
