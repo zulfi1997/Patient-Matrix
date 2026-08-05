@@ -23,7 +23,7 @@ import {
   visibleRevenueTypeKeys,
   type ProviderRevenueByType,
 } from './providerRevenueByType';
-import { COLLECTION_METHOD_LABELS } from './collectionsParser';
+import { COLLECTION_METHOD_LABELS, isCashCollection } from './collectionsParser';
 import type { CollectionSummary } from './collections';
 import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
 
@@ -153,6 +153,33 @@ function collectionRows(c: CollectionSummary): Record<string, string | number>[]
   ];
 }
 
+/**
+ * The individual payments no provider could be resolved for, so the figure can be traced instead
+ * of guessed at. The invoice date is the thing to check: a payment settling an invoice raised
+ * before the earliest sales file imported has nothing to match against, and the fix is a wider
+ * sales import rather than anything about the payment itself.
+ */
+function unattributedRows(c: CollectionSummary): Record<string, string | number>[] {
+  return c.unattributed
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date) || a.invoiceNo.localeCompare(b.invoiceNo))
+    .map((r) => ({
+      'Collection Date': r.date,
+      Month: r.date.slice(0, 7),
+      'Invoice No': r.invoiceNo,
+      'Patient ID': r.patientId,
+      Patient: r.patientName,
+      'Payment Type': r.paymentType,
+      Method: COLLECTION_METHOD_LABELS[r.method],
+      'Counts As': isCashCollection(r.method) ? 'Cash' : 'Package/card settlement',
+      Amount: money(r.amount),
+      'Tax Collected': money(r.taxCollected),
+      'Invoice Status': r.invoiceStatus,
+      'Collected By (cashier)': r.collectedBy ?? '',
+      Comments: r.comments ?? '',
+    }));
+}
+
 function summaryRows(p: WorkbookParams): Record<string, string | number>[] {
   const k = p.kpis;
   const rows: [string, string | number][] = [
@@ -256,7 +283,14 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
       })),
     },
     { name: 'Revenue By Type', rows: revenueByTypeRows(p) },
-    ...(p.collectionSummary ? [{ name: 'Collections', rows: collectionRows(p.collectionSummary) }] : []),
+    ...(p.collectionSummary
+      ? [
+          { name: 'Collections', rows: collectionRows(p.collectionSummary) },
+          ...(p.collectionSummary.unattributed.length > 0
+            ? [{ name: 'Collections Unmatched', rows: unattributedRows(p.collectionSummary) }]
+            : []),
+        ]
+      : []),
     {
       name: 'Services',
       rows: p.services.map((s) => ({

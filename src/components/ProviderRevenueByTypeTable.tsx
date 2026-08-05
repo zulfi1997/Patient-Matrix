@@ -127,7 +127,8 @@ export function ProviderRevenueByTypeTable({
           {formatNumber(collections.unattributedPayments)} payment(s) whose invoice is not in your sales data - usually
           an invoice raised before the earliest sales file you have imported. It is inside the All Providers total, as
           it should be, but sits in no provider's row, so the rows above add up to{' '}
-          {formatCurrency(collections.totalCash - collections.unattributedCash)}.
+          {formatCurrency(collections.totalCash - collections.unattributedCash)}. The Excel export lists them
+          individually on a "Collections Unmatched" sheet so each can be traced.
         </p>
       )}
     </div>

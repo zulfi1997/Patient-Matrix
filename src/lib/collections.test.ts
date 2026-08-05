@@ -205,3 +205,19 @@ describe('attribution sees the whole sales history, not the analysis set', () =>
     expect(result.providers[0].redemptionSettled).toBe(100);
   });
 });
+
+describe('unattributed payments are traceable', () => {
+  it('keeps the payments themselves, not just their total', () => {
+    // A total nobody can trace is a total nobody can act on: the useful question is which invoice,
+    // on which date, and that can only be answered from the payments.
+    const invoiceShares = buildInvoiceProviderShares([makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 300 })], [], []);
+    const result = computeProviderCollections([
+      payment({ id: 'p1', invoiceNo: 'TBC1', amount: 300 }),
+      payment({ id: 'p2', invoiceNo: 'GONE', amount: 120, date: '2026-07-21', patientName: 'Mais Qeissieh' }),
+    ], invoiceShares, RANGE);
+
+    expect(result.unattributed).toHaveLength(1);
+    expect(result.unattributed[0]).toMatchObject({ invoiceNo: 'GONE', date: '2026-07-21', patientName: 'Mais Qeissieh' });
+    expect(result.unattributed.reduce((s, r) => s + r.amount, 0)).toBe(result.unattributedCash + result.unattributedRedemption);
+  });
+});

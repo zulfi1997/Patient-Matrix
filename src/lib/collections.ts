@@ -78,6 +78,11 @@ export interface ProviderCollectionStat {
 
 export interface CollectionSummary {
   providers: ProviderCollectionStat[];
+  /**
+   * The payments themselves, so an unmatched figure can be traced to the invoice behind it rather
+   * than only wondered about. Almost always an invoice raised outside the imported sales window.
+   */
+  unattributed: CollectionRecord[];
   /** Payments whose invoice is not in the sales data, so no provider could be resolved. */
   unattributedCash: number;
   unattributedRedemption: number;
@@ -114,6 +119,7 @@ export function computeProviderCollections(
   const invoicesSeen = new Map<string, Set<string>>();
   const summary: CollectionSummary = {
     providers: [],
+    unattributed: [],
     unattributedCash: 0,
     unattributedRedemption: 0,
     unattributedPayments: 0,
@@ -129,6 +135,7 @@ export function computeProviderCollections(
 
     const shares = invoiceShares.get(c.invoiceNo);
     if (!shares || shares.length === 0) {
+      summary.unattributed.push(c);
       if (cash) summary.unattributedCash += c.amount;
       else summary.unattributedRedemption += c.amount;
       summary.unattributedPayments += 1;
