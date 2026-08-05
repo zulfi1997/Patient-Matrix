@@ -46,6 +46,20 @@ describe('computeServiceStats', () => {
     expect(computeServiceStats(rows, RANGE, 'All')[0]).toMatchObject({ count: 1, qty: 2 });
   });
 
+  it('leaves the package sale out under Service, and keeps the sessions it delivers', () => {
+    // Why the dashboards default to "Service": the package sale and the sessions redeemed against
+    // it are the same money seen twice. Under "All" the package outranks every real service - which
+    // is what put "derma-Custom Package-abeer" at the top of the Provider Analytics chart.
+    const rows = [
+      makeSale({ serviceKey: 'code:PKG', serviceName: 'derma-Custom Package-abeer', itemType: 'Package', amount: 1000 }),
+      redemption({ serviceKey: 'code:HF', serviceName: 'HydraFacial', itemType: 'Service' }),
+    ];
+    expect(computeServiceStats(rows, RANGE, 'All').map((s) => s.serviceName)).toEqual(['derma-Custom Package-abeer', 'HydraFacial']);
+    const services = computeServiceStats(rows, RANGE, 'Service');
+    expect(services.map((s) => s.serviceName)).toEqual(['HydraFacial']);
+    expect(services[0].deliveredValue).toBe(100);
+  });
+
   it('filters by item type and period', () => {
     const rows = [
       makeSale({ serviceKey: 'code:HF', serviceName: 'HydraFacial', itemType: 'Service', amount: 100 }),

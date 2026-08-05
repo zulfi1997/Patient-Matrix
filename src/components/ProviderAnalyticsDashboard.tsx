@@ -1,10 +1,13 @@
 import { useMemo } from 'react';
-import type { PackageBenefitRecord, SaleRecord } from '../types';
+import type { ItemType, PackageBenefitRecord, SaleRecord } from '../types';
 import type { ServiceDepartmentRecord } from '../lib/departments';
 import {
   buildInvoiceToPatientMap,
   computeRangeConversion,
   resolveProvider,
+  CONVERSION_CATEGORY_LABELS,
+  FOLLOW_UP_REASON_LABELS,
+  type ConversionCategory,
   type ProviderAssignmentOverride,
   type ProviderGroup,
   type RevenueAdjustment,
@@ -32,7 +35,7 @@ import { computeProviderPatients, listProviders } from '../lib/providerHandover'
 import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
 import { formatCurrency, formatDate, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { money, pct, type WorkbookSheet } from '../lib/workbook';
-import { contextSheet } from '../lib/dashboardExports';
+import { contextSheet, conversionSheets } from '../lib/dashboardExports';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
@@ -44,8 +47,11 @@ import { DiscountsBreakdownTable } from './DiscountsBreakdownTable';
 import { AtRiskPatientsTable } from './AtRiskPatientsTable';
 import { ExportExcelButton } from './ExportExcelButton';
 
+const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Package', 'All'];
+
 export function ProviderAnalyticsDashboard({
   records,
+  conversionRecords,
   packageBenefits,
   serviceDepartmentRecords,
   providerGroups,
@@ -53,6 +59,12 @@ export function ProviderAnalyticsDashboard({
   revenueAdjustments,
 }: {
   records: SaleRecord[];
+  /**
+   * Same records, but without the zero-revenue exclusion applied. Conversion is *defined* by
+   * whether a visit produced revenue, so dropping zero-value lines would delete every unconverted
+   * patient and lift the rate without anything having improved.
+   */
+  conversionRecords: SaleRecord[];
   packageBenefits: PackageBenefitRecord[];
   serviceDepartmentRecords: ServiceDepartmentRecord[];
   providerGroups: ProviderGroup[];
@@ -66,6 +78,10 @@ export function ProviderAnalyticsDashboard({
   });
   const [inactivityDays, setInactivityDays] = useLocalStorageState('pm-provider-inactivity-days', 90);
   const [provider, setProvider] = useLocalStorageState('pm-provider-selected', '');
+  // Matches the main Dashboard's default. Ranking services by "All" puts package *sales* in the
+  // list, which are not services and whose value is delivered later as redemptions.
+  const [serviceType, setServiceType] = useLocalStorageState<ItemType | 'All'>('pm-provider-service-type', 'Service');
+  const [conversionCategory, setConversionCategory] = useLocalStorageState('pm-provider-conversion-category', 'all');
 
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -120,7 +136,7 @@ export function ProviderAnalyticsDashboard({
     () => computeMonthlyTrend(providerRecords, providerPatientsMap, 12, asOfISO),
     [providerRecords, providerPatientsMap, asOfISO],
   );
-  const serviceStats = useMemo(() => computeServiceStats(providerRecords, range, 'All'), [providerRecords, range]);
+  const serviceStats = useMemo(() => computeServiceStats(providerRecords, range, serviceType), [providerRecords, range, serviceType]);
   const redeemedPackages = useMemo(() => computeRedeemedPackages(providerRecords, range), [providerRecords, range]);
   const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);
@@ -136,21 +152,36 @@ export function ProviderAnalyticsDashboard({
     [providerRecords, providerPatientsMap, inactivityDays, asOfISO],
   );
 
-  // Conversion runs over ALL records, not the filtered set: a patient is classified new or repeat
-  // by their history across the clinic, and narrowing the input first would make everyone look new.
-  const conversion = useMemo(() => {
-    const invoiceToPatient = buildInvoiceToPatientMap(records);
+  // Conversion runs over ALL records, not the provider-filtered set: a patient is classified new or
+  // repeat by their history across the clinic, and narrowing the input first would make everyone
+  // look new. It also runs over conversionRecords rather than records - see the prop's note.
+  const conversionSummary = useMemo(() => {
+    const invoiceToPatient = buildInvoiceToPatientMap(conversionRecords);
     const benefitsByDate = new Map<string, PackageBenefitRecord[]>();
     for (const b of packageBenefits) {
       if (!benefitsByDate.has(b.snapshotDate)) benefitsByDate.set(b.snapshotDate, []);
       benefitsByDate.get(b.snapshotDate)!.push(b);
     }
-    const summary = computeRangeConversion(
-      records, clinicPatients, range, invoiceToPatient, benefitsByDate,
+    return computeRangeConversion(
+      conversionRecords, summarizePatients(conversionRecords), range, invoiceToPatient, benefitsByDate,
       providerGroups, revenueAdjustments, providerAssignmentOverrides,
     );
-    return summary.providers.find((p) => p.staff === selected) ?? null;
-  }, [records, clinicPatients, range, packageBenefits, providerGroups, revenueAdjustments, providerAssignmentOverrides, selected]);
+  }, [conversionRecords, range, packageBenefits, providerGroups, revenueAdjustments, providerAssignmentOverrides]);
+
+  const conversion = useMemo(
+    () => conversionSummary.providers.find((p) => p.staff === selected) ?? null,
+    [conversionSummary, selected],
+  );
+
+  const conversionRows = useMemo(
+    () => conversionSummary.patientRows.filter((r) => r.staff === selected),
+    [conversionSummary, selected],
+  );
+
+  const visibleConversionRows = useMemo(
+    () => (conversionCategory === 'all' ? conversionRows : conversionRows.filter((r) => r.category === conversionCategory)),
+    [conversionRows, conversionCategory],
+  );
 
   const departmentRows = useMemo(() => {
     const mapping = buildServiceDepartmentMap(serviceDepartmentRecords);
@@ -180,7 +211,8 @@ export function ProviderAnalyticsDashboard({
       ['Scope', 'Every figure is the clinic-wide dashboard calculation run over this provider\'s lines, so definitions match the other tabs exactly.'],
       ['Provider', 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under the doctor she assisted that day.'],
       ['New Patients', 'New to this provider. The count also new to the clinic is reported separately, since they are different questions.'],
-      ['Conversion', 'Computed across all clinic records then filtered to this provider - classifying new vs repeat from a narrowed set would make everyone look new.'],
+      ['Conversion', 'Computed across all clinic records then filtered to this provider - classifying new vs repeat from a narrowed set would make everyone look new. Zero-revenue visits are always included here, whatever the header toggle says, because an unconverted visit is defined by having produced no revenue.'],
+      ['Top Services', `Category filter: ${serviceType}. Package sales are excluded under "Service", since the package is not itself a service and its value arrives later as redemptions.`],
       ['Invoice Ageing', 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.'],
       ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
     ]),
@@ -225,6 +257,12 @@ export function ProviderAnalyticsDashboard({
       })),
     },
     { name: 'Departments', rows: departmentRows.map((d) => ({ Department: d.department, Revenue: money(d.revenue), Transactions: d.transactions })) },
+    ...conversionSheets({
+      providers: conversion ? [conversion] : [],
+      patientRows: conversionRows,
+      categoryLabels: CONVERSION_CATEGORY_LABELS,
+      followUpLabels: FOLLOW_UP_REASON_LABELS,
+    }),
     { name: 'Redeemed Packages', rows: redeemedPackages.map((r) => ({ Package: r.packageName, 'Sessions Consumed': r.count, 'Value Delivered': money(r.redeemedAmount) })) },
     { name: 'Discounts', rows: discountBreakdown.map((d) => ({ Discount: d.label, Lines: d.count, Amount: money(d.amount) })) },
     {
@@ -322,6 +360,117 @@ export function ProviderAnalyticsDashboard({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
         <PatientTrendChart data={trend} />
         <RevenueTrendChart data={trend} />
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Conversion</h3>
+          <select
+            value={conversionCategory}
+            onChange={(e) => setConversionCategory(e.target.value)}
+            className="rounded-lg border border-zinc-300 px-2 py-1 text-xs print:hidden dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          >
+            <option value="all">All Categories</option>
+            {(Object.keys(CONVERSION_CATEGORY_LABELS) as ConversionCategory[]).map((key) => (
+              <option key={key} value={key}>{CONVERSION_CATEGORY_LABELS[key]}</option>
+            ))}
+          </select>
+        </div>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          The Provider Conversion tab's own classification, narrowed to {selected}. Each patient is classified once per
+          day on that day's terms: a visit that produced revenue converted, one that didn't did not. Follow-up / direct
+          service visits - a package redemption, a remaining package balance, or a "YB111" flag - are left out of the
+          rate entirely, since there was nothing to convert. Zero-revenue visits are always included here regardless of
+          the header toggle, because excluding them would delete the unconverted patients.
+        </p>
+        {!conversion ? (
+          <p className="py-6 text-center text-sm text-zinc-500">No visits classified for this provider in the period.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+              {([
+                ['New Unconverted', conversion.newUnconverted, 'bad'],
+                ['New Converted', conversion.newConverted, 'good'],
+                ['Repeat Unconverted', conversion.repeatUnconverted, 'bad'],
+                ['Repeat Converted', conversion.repeatConverted, 'good'],
+                ['Follow-up / Direct', conversion.followUp, 'neutral'],
+                ['Total Patients', conversion.total, 'neutral'],
+              ] as [string, number, string][]).map(([label, value, tone]) => (
+                <div key={label} className="rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-700">
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400">{label}</div>
+                  <div className={`text-sm font-semibold ${
+                    tone === 'bad' ? 'text-rose-600 dark:text-rose-400'
+                      : tone === 'good' ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-zinc-900 dark:text-zinc-100'
+                  }`}>
+                    {formatNumber(value)}
+                  </div>
+                </div>
+              ))}
+              <div className="rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-700">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">Conversion Rate</div>
+                <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{formatPercent(conversion.conversionRate)}</div>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              Follow-ups by reason:{' '}
+              {(Object.keys(FOLLOW_UP_REASON_LABELS) as (keyof typeof FOLLOW_UP_REASON_LABELS)[])
+                .map((r) => `${FOLLOW_UP_REASON_LABELS[r]}: ${formatNumber(conversion.followUpByReason[r])}`)
+                .join(' · ')}
+            </p>
+            <div className="mt-3 max-h-96 overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                  <tr>
+                    <th className="py-2 pr-2">Date</th>
+                    <th className="py-2 pr-2">Patient</th>
+                    <th className="py-2 pr-2">Category</th>
+                    <th className="py-2 pr-2">Reason</th>
+                    <th className="py-2 pr-2 text-right">Revenue</th>
+                    <th className="py-2 pr-2">Services</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleConversionRows.length === 0 ? (
+                    <tr><td colSpan={6} className="py-6 text-center text-sm text-zinc-500">No patients match this filter.</td></tr>
+                  ) : (
+                    visibleConversionRows.map((r) => (
+                      <tr key={`${r.date}-${r.patientId}`} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{formatDate(r.date)}</td>
+                        <td className="py-1.5 pr-2">{r.patientName}</td>
+                        <td className="py-1.5 pr-2">{CONVERSION_CATEGORY_LABELS[r.category]}</td>
+                        <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">
+                          {r.followUpReason ? FOLLOW_UP_REASON_LABELS[r.followUpReason] : '—'}
+                        </td>
+                        <td className="py-1.5 pr-2 text-right">{formatCurrency(r.revenue)}</td>
+                        <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{r.services.join(', ')}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
+        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Category:</span>
+        <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
+          {SERVICE_TYPE_OPTIONS.map((t) => (
+            <button
+              key={t}
+              onClick={() => setServiceType(t)}
+              className={`px-2.5 py-1 ${serviceType === t ? 'bg-indigo-600 text-white' : 'bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          Applies to Top Selling Services. "Service" is the default because a package sale is not a service - its value
+          reaches the chart later, as the sessions it bundles are redeemed.
+        </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">

@@ -22,6 +22,14 @@ import { toISODate } from './format';
 export type ConversionCategory = 'newUnconverted' | 'newConverted' | 'repeatUnconverted' | 'repeatConverted' | 'followUp';
 export type FollowUpReason = 'yb111' | 'packageRedemption' | 'packageBalance';
 
+export const CONVERSION_CATEGORY_LABELS: Record<ConversionCategory, string> = {
+  newUnconverted: 'New - Unconverted',
+  newConverted: 'New - Converted',
+  repeatUnconverted: 'Repeat - Unconverted',
+  repeatConverted: 'Repeat - Converted',
+  followUp: 'Follow-up / Direct Service',
+};
+
 export const FOLLOW_UP_REASON_LABELS: Record<FollowUpReason, string> = {
   yb111: '"YB111" Flagged',
   packageRedemption: 'Package Redemption',

@@ -255,7 +255,8 @@ export function kpiEvaluationSheets(p: {
 
 export function conversionSheets(p: {
   providers: ProviderConversionStat[];
-  overall: ProviderConversionStat;
+  /** Omitted when the workbook is already scoped to a single provider - a totals row identical to the only data row reads as a second provider. */
+  overall?: ProviderConversionStat | null;
   patientRows: PatientConversionRow[];
   categoryLabels: Record<string, string>;
   followUpLabels: Record<string, string>;
@@ -276,7 +277,10 @@ export function conversionSheets(p: {
     'Revenue Adjustment': money(s.revenueAdjustment),
   });
   return [
-    { name: 'By Provider', rows: [...p.providers.map(statRow), statRow({ ...p.overall, staff: 'All Providers' })] },
+    {
+      name: 'By Provider',
+      rows: [...p.providers.map(statRow), ...(p.overall ? [statRow({ ...p.overall, staff: 'All Providers' })] : [])],
+    },
     {
       name: 'Patient Detail',
       rows: p.patientRows.map((r) => ({

@@ -5,9 +5,9 @@ import {
   computeConversionTrend,
   computeDailyConversion,
   computeRangeConversion,
+  CONVERSION_CATEGORY_LABELS as CATEGORY_LABELS,
   FOLLOW_UP_REASON_LABELS,
   SNAPSHOT_STALENESS_CAP_DAYS,
-  type ConversionCategory,
   type ProviderAssignmentOverride,
   type ProviderConversionStat,
   type ProviderGroup,
@@ -23,14 +23,6 @@ import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { ProviderHandoverPanel } from './ProviderHandoverPanel';
 import { ExportExcelButton } from './ExportExcelButton';
 import { conversionSheets, contextSheet } from '../lib/dashboardExports';
-
-const CATEGORY_LABELS: Record<ConversionCategory, string> = {
-  newUnconverted: 'New - Unconverted',
-  newConverted: 'New - Converted',
-  repeatUnconverted: 'Repeat - Unconverted',
-  repeatConverted: 'Repeat - Converted',
-  followUp: 'Follow-up / Direct Service',
-};
 
 const TREND_DAYS = 30;
 type ViewMode = 'day' | 'period';

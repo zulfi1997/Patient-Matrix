@@ -180,7 +180,7 @@ function App() {
             </button>
           </nav>
         </div>
-        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'conversion' && tab !== 'providerAnalytics' && tab !== 'segmentPnl' && (
+        {records.length > 0 && tab !== 'data' && tab !== 'yb111' && tab !== 'segmentPnl' && (
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 pb-3">
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
@@ -193,6 +193,7 @@ function App() {
               {flaggedCount > 0 && ` (${formatNumber(flaggedCount)} rows)`}
               <InfoTooltip text={`Removes every line item whose Invoice Notes mention "YB111" (any case) from this tab's figures before anything else is computed. The dedicated "YB111" Analytics tab always shows these transactions regardless of this toggle.`} />
             </label>
+            {tab !== 'conversion' && (
             <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
               <input
                 type="checkbox"
@@ -204,6 +205,7 @@ function App() {
               {zeroValueCount > 0 && ` (${formatNumber(zeroValueCount)} rows)`}
               <InfoTooltip text="Excludes line items with no revenue and no package redemption (e.g. a complimentary service) from patient activity - New/Returning/Active/Retention/Turnover/Stopped Visiting. Package sessions redeemed from a previously-sold package still count as real visits." />
             </label>
+            )}
           </div>
         )}
       </header>
@@ -243,7 +245,7 @@ function App() {
           />
         ) : tab === 'conversion' ? (
           <ProviderConversionDashboard
-            records={baseAnalysisRecords}
+            records={flaggedFilteredRecords}
             packageBenefits={packageBenefits}
             providerGroups={providerGroups}
             revenueAdjustments={revenueAdjustments}
@@ -252,6 +254,7 @@ function App() {
         ) : tab === 'providerAnalytics' ? (
           <ProviderAnalyticsDashboard
             records={analysisRecords}
+            conversionRecords={flaggedFilteredRecords}
             packageBenefits={packageBenefits}
             serviceDepartmentRecords={serviceDepartmentRecords}
             providerGroups={providerGroups}
