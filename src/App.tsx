@@ -255,6 +255,7 @@ function App() {
             revenueAdjustments={revenueAdjustments}
             providerAssignmentOverrides={providerAssignmentOverrides}
             collections={collections}
+            rawRecords={records}
           />
         ) : tab === 'providerAnalytics' ? (
           <ProviderAnalyticsDashboard
@@ -266,6 +267,7 @@ function App() {
             providerAssignmentOverrides={providerAssignmentOverrides}
             revenueAdjustments={revenueAdjustments}
             collections={collections}
+            rawRecords={records}
           />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard

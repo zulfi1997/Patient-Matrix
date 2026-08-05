@@ -68,6 +68,7 @@ export function ProviderAnalyticsDashboard({
   providerAssignmentOverrides,
   revenueAdjustments,
   collections,
+  rawRecords,
 }: {
   records: SaleRecord[];
   /**
@@ -82,6 +83,8 @@ export function ProviderAnalyticsDashboard({
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   revenueAdjustments: RevenueAdjustment[];
   collections: CollectionRecord[];
+  /** Unfiltered stored rows - collection attribution must see gift/prepaid-card invoices, which the analysis filters drop. */
+  rawRecords: SaleRecord[];
 }) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-provider-preset', 'last90');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-provider-custom-range', {
@@ -186,10 +189,10 @@ export function ProviderAnalyticsDashboard({
   // to divide by both their contributions, which narrowing first would hide.
   const collectionSummary = useMemo(() => {
     if (collections.length === 0) return null;
-    const shares = buildInvoiceProviderShares(records, providerGroups, providerAssignmentOverrides);
+    const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides);
     const summary = computeProviderCollections(collections, shares, range);
     return { ...summary, providers: summary.providers.filter((p) => p.provider === selected) };
-  }, [collections, records, range, providerGroups, providerAssignmentOverrides, selected]);
+  }, [collections, rawRecords, range, providerGroups, providerAssignmentOverrides, selected]);
 
   const providerCollected = collectionSummary?.providers[0] ?? null;
 

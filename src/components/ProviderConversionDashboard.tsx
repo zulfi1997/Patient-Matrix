@@ -69,6 +69,7 @@ export function ProviderConversionDashboard({
   revenueAdjustments,
   providerAssignmentOverrides,
   collections,
+  rawRecords,
 }: {
   records: SaleRecord[];
   packageBenefits: PackageBenefitRecord[];
@@ -76,6 +77,8 @@ export function ProviderConversionDashboard({
   revenueAdjustments: RevenueAdjustment[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   collections: CollectionRecord[];
+  /** Unfiltered stored rows - collection attribution must see gift/prepaid-card invoices, which the analysis filters drop. */
+  rawRecords: SaleRecord[];
 }) {
   const asOfISO = useMemo(() => {
     if (records.length === 0) return toISODate(new Date());
@@ -191,9 +194,9 @@ export function ProviderConversionDashboard({
   // come from the full sales history, since a payment here often settles an older invoice.
   const collectionSummary = useMemo(() => {
     if (collections.length === 0) return null;
-    const shares = buildInvoiceProviderShares(records, providerGroups, providerAssignmentOverrides);
+    const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides);
     return computeProviderCollections(collections, shares, summary.range);
-  }, [collections, records, providerGroups, providerAssignmentOverrides, summary.range]);
+  }, [collections, rawRecords, providerGroups, providerAssignmentOverrides, summary.range]);
 
   /**
    * Adjustments only apply to the dates they carry, so in Single Day mode - the default, on the

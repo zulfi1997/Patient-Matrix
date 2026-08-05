@@ -122,11 +122,19 @@ export function Dashboard({
     [records, range, providerGroups, providerAssignmentOverrides, revenueAdjustments],
   );
 
-  // Built from every record rather than the period's: a payment received in this period often
-  // settles an invoice raised before it, and narrowing first would leave that payment unattributed.
+  /**
+   * Built from the raw stored rows, not the analysis set, and from every date rather than the
+   * period's.
+   *
+   * Both matter. A payment received now often settles an invoice raised earlier, so narrowing by
+   * date would strand it. And the analysis filters drop gift- and prepaid-card lines, which is
+   * right for revenue - a card is not a sale until it is redeemed - but an invoice that sells
+   * nothing else would then vanish entirely and its cash could be attributed to nobody, even
+   * though somebody sold that card and took the money for it.
+   */
   const invoiceShares = useMemo(
-    () => buildInvoiceProviderShares(records, providerGroups, providerAssignmentOverrides),
-    [records, providerGroups, providerAssignmentOverrides],
+    () => buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides),
+    [rawRecords, providerGroups, providerAssignmentOverrides],
   );
 
   const collectionSummary = useMemo(

@@ -179,3 +179,29 @@ describe('the summary reconciles', () => {
     expect(result.totalRedemption).toBe(250);
   });
 });
+
+describe('attribution sees the whole sales history, not the analysis set', () => {
+  it('attributes cash taken for a gift or prepaid card, whose invoice sells nothing else', () => {
+    // The regression: shares were built from analysis records, which drop gift/prepaid-card lines -
+    // right for revenue, since a card is not a sale until redeemed. But an invoice selling only a
+    // card then vanished, and the cash somebody took for it could be attributed to nobody. On the
+    // clinic's own file this accounted for 96% of everything reported as unattributed.
+    const raw = [
+      makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', itemType: 'Pre-paid card', serviceName: 'PrepaidCard#:11036', amount: 210 }),
+    ];
+    const result = computeProviderCollections([payment({ invoiceNo: 'TBC1', amount: 210 })], shares(raw), RANGE);
+    expect(cashCollectedFor(result, 'Dr A')).toBe(210);
+    expect(result.unattributedCash).toBe(0);
+  });
+
+  it('still does not count the card again when it is later redeemed', () => {
+    // Selling the card is cash in; spending it later is not. Both facts have to hold at once.
+    const raw = [makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', itemType: 'Gift card', amount: 100 })];
+    const result = computeProviderCollections([
+      payment({ id: 'p1', invoiceNo: 'TBC1', method: 'card', amount: 100 }),
+      payment({ id: 'p2', invoiceNo: 'TBC1', method: 'giftCard', amount: 100 }),
+    ], shares(raw), RANGE);
+    expect(cashCollectedFor(result, 'Dr A')).toBe(100);
+    expect(result.providers[0].redemptionSettled).toBe(100);
+  });
+});
