@@ -23,6 +23,14 @@ import { DEPARTMENT_BASIS_LABELS } from './departmentAnalytics';
 import type { SegmentPnlResult } from './segmentAllocation';
 import type { KpiDefinition, KpiPeriodValue, KpiPoint } from './kpiCatalog';
 import type { ProviderConversionStat, PatientConversionRow } from './conversionMetrics';
+import type {
+  PatientOrigin,
+  ProviderPatientOutcome,
+  ProviderPatientSummary,
+  RoleHandoverSummary,
+  RoleOutcome,
+  RoleRevenueTrend,
+} from './providerHandover';
 import { money, pct, type WorkbookSheet } from './workbook';
 
 /** Common first sheet, so a workbook opened weeks later still says what it covers. */
@@ -423,4 +431,174 @@ export function departmentDetailSheets(rows: DepartmentLineRow[]): WorkbookSheet
       })),
     },
   ];
+}
+
+
+const ROLE_OUTCOME_LABELS: Record<RoleOutcome, string> = {
+  stillWithRole: 'Still with the role',
+  lostMidChain: 'Lost partway along',
+  wentElsewhere: 'Went to another provider',
+  notSeenSince: 'Not seen since',
+};
+
+const PATIENT_OUTCOME_LABELS: Record<ProviderPatientOutcome, string> = {
+  repeat: 'Came back',
+  onceThenElsewhere: 'Once, then a colleague',
+  onceThenQuiet: 'Once, then nothing',
+};
+
+const ORIGIN_LABELS: Record<PatientOrigin, string> = {
+  inherited: 'Inherited',
+  fromElsewhere: 'From elsewhere in the clinic',
+  newToClinic: 'New to the clinic',
+};
+
+/**
+ * The Provider Handover panel, flattened.
+ *
+ * Three questions live on that panel and they are not the same one: what became of the book a
+ * departing provider built, whether whoever holds the role now is keeping the people they see, and
+ * what the role itself has earned month by month. Each gets its own sheet rather than being merged,
+ * because a patient counted as "kept" for the first question - seen once, book transferred - is
+ * precisely the patient the second question is asking about.
+ */
+export function handoverSheets(p: {
+  providerPatients: ProviderPatientSummary | null;
+  handover: RoleHandoverSummary | null;
+  revenueTrend: RoleRevenueTrend | null;
+}): WorkbookSheet[] {
+  const sheets: WorkbookSheet[] = [];
+
+  if (p.providerPatients) {
+    const s = p.providerPatients;
+    sheets.push({
+      name: 'Retention Summary',
+      rows: [
+        { Metric: 'Provider', Value: s.provider },
+        { Metric: 'Seen since', Value: s.fromDate || 'all time' },
+        { Metric: 'Patients seen', Value: s.total.patients },
+        { Metric: 'Value delivered', Value: money(s.total.value) },
+        { Metric: 'Came back at least once', Value: s.repeat.patients },
+        { Metric: 'Came back (%)', Value: pct(s.repeatRate) },
+        { Metric: 'Value from those who came back', Value: money(s.repeat.value) },
+        { Metric: 'Once, then a colleague', Value: s.onceThenElsewhere.patients },
+        { Metric: 'Value, once then a colleague', Value: money(s.onceThenElsewhere.value) },
+        { Metric: 'Once, then nothing', Value: s.onceThenQuiet.patients },
+        { Metric: 'Value, once then nothing', Value: money(s.onceThenQuiet.value) },
+        ...(Object.keys(ORIGIN_LABELS) as PatientOrigin[]).flatMap((o) => [
+          { Metric: `${ORIGIN_LABELS[o]} - patients`, Value: s.byOrigin[o].patients },
+          { Metric: `${ORIGIN_LABELS[o]} - value`, Value: money(s.byOrigin[o].value) },
+        ]),
+      ],
+    });
+
+    // The sheet a presentation is actually built from: one row per patient, with the outcome and
+    // the origin side by side so a weak repeat rate can be traced to where those patients came
+    // from rather than assumed to be spread evenly.
+    sheets.push({
+      name: 'Patients Seen',
+      rows: s.patients.map((r) => ({
+        'Patient ID': r.patientId,
+        Patient: r.patientName,
+        Outcome: PATIENT_OUTCOME_LABELS[r.outcome],
+        'Came From': ORIGIN_LABELS[r.origin],
+        Visits: r.visitsWithProvider,
+        'First Seen': r.firstVisitWithProvider,
+        'Last Seen': r.lastVisitWithProvider,
+        'Last Seen Month': r.lastVisitWithProvider.slice(0, 7),
+        Value: money(r.valueWithProvider),
+        'Days Since Last Visit': r.daysSinceLastVisit,
+        'Seen Afterwards By': r.seenAfterElsewhere.join('; '),
+      })),
+    });
+  }
+
+  if (p.handover) {
+    const h = p.handover;
+    sheets.push({
+      name: 'Handover Summary',
+      rows: [
+        { Metric: 'Book built from', Value: h.bookFrom ?? 'all time' },
+        { Metric: 'Handed over on', Value: h.handoverDate ?? '' },
+        { Metric: 'Inherited patients', Value: h.inherited.patients },
+        { Metric: 'Inherited book value', Value: money(h.inherited.valueWithOriginal) },
+        { Metric: 'Of which package sessions consumed', Value: money(h.inherited.redeemedWithOriginal) },
+        { Metric: 'Retention rate (%)', Value: pct(h.retentionRate) },
+        { Metric: 'Value delivered since handover by patients still held', Value: money(h.valueRecovered) },
+        ...(Object.keys(ROLE_OUTCOME_LABELS) as RoleOutcome[]).flatMap((o) => [
+          { Metric: `${ROLE_OUTCOME_LABELS[o]} - patients`, Value: h[o].patients },
+          { Metric: `${ROLE_OUTCOME_LABELS[o]} - value with original`, Value: money(h[o].valueWithOriginal) },
+        ]),
+      ],
+    });
+
+    sheets.push({
+      name: 'Role Stages',
+      rows: h.stages.map((st) => ({
+        Provider: st.provider,
+        From: st.fromDate,
+        Until: st.untilDate ?? 'current',
+        'Inherited Patients Seen': st.patients,
+        'Value From Them': money(st.value),
+      })),
+    });
+
+    sheets.push({
+      name: 'Inherited Patients',
+      rows: h.patients.map((r) => ({
+        'Patient ID': r.patientId,
+        Patient: r.patientName,
+        Outcome: ROLE_OUTCOME_LABELS[r.outcome],
+        'Visits With Original': r.visitsWithOriginal,
+        'Last Visit With Original': r.lastVisitWithOriginal,
+        'Value With Original': money(r.valueWithOriginal),
+        'Of Which Package Sessions': money(r.redeemedWithOriginal),
+        'Seen Since By (role holders)': r.seenWithHolders.join('; '),
+        'Seen Since By (others)': r.otherProvidersSeen.join('; '),
+        'Visits Since Handover': r.visitsSinceHandover,
+        'Value Since Handover': money(r.valueSinceHandover),
+        'Days Since Last Visit': r.daysSinceLastVisit,
+      })),
+    });
+  }
+
+  if (p.revenueTrend) {
+    // Taken from the monthly splits as well as the tenure list: a month spanning a handover names
+    // both holders, and drawing the columns from tenures alone would silently drop whichever of
+    // them the chain does not list - leaving that month's value with no column to sit in.
+    const holderNames = [...new Set([
+      ...p.revenueTrend.byHolder.map((b) => b.provider),
+      ...p.revenueTrend.points.flatMap((pt) => Object.keys(pt.byHolder)),
+    ])];
+    sheets.push({
+      name: 'Role Revenue Trend',
+      rows: p.revenueTrend.points.map((pt) => ({
+        Month: pt.month.slice(0, 7),
+        'Delivered Value': money(pt.value),
+        Revenue: money(pt.revenue),
+        'Package Redeemed': money(pt.redeemed),
+        Patients: pt.patients,
+        'Held By': pt.holders.join(' / '),
+        ...Object.fromEntries(holderNames.map((n) => [n, money(pt.byHolder[n] ?? 0)])),
+      })),
+    });
+
+    sheets.push({
+      name: 'Role By Holder',
+      rows: p.revenueTrend.byHolder.map((b) => ({
+        Provider: b.provider,
+        From: b.fromDate,
+        Until: b.untilDate ?? 'current',
+        'Days Held': b.days,
+        Patients: b.patients,
+        'Delivered Value': money(b.value),
+        Revenue: money(b.revenue),
+        // Raw totals cannot be compared when one holder held the role for two years and the next
+        // for three months, which is exactly what a recent handover creates.
+        'Value Per Month Held': b.valuePerMonth == null ? '' : money(b.valuePerMonth),
+      })),
+    });
+  }
+
+  return sheets;
 }

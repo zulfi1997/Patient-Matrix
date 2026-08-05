@@ -16,6 +16,8 @@ import { formatCurrency, formatDate, formatNumber, formatPercent } from '../lib/
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { RoleRevenueTrendChart } from './RoleRevenueTrendChart';
+import { ExportExcelButton } from './ExportExcelButton';
+import { contextSheet, handoverSheets } from '../lib/dashboardExports';
 
 const OUTCOME_LABELS: Record<RoleOutcome, string> = {
   stillWithRole: 'Still with the role',
@@ -173,15 +175,36 @@ export function ProviderHandoverPanel({
 
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Provider Handover</h3>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Provider Handover</h3>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
           Follows one role through however many changes of hands, and reports what became of the book the first holder
           built. A patient still visiting but seeing someone outside the role hasn't been lost so much as
           redistributed, and one who followed the role for a while before dropping off is different again - so the
           three are counted separately. Assisting staff fold into whichever doctor they assisted on the day, per your
-          Provider Groups.
-        </p>
+            Provider Groups.
+          </p>
+        </div>
+        <ExportExcelButton
+          label="Export to Excel"
+          fileName={`provider-handover-${(shownProvider || 'role').replace(/\W+/g, '-')}.xlsx`}
+          disabled={!providerPatients && !summary}
+          buildSheets={() => [
+            contextSheet([
+              ['Report', `Provider Handover${shownProvider ? ` - ${shownProvider}` : ''}`],
+              ['Data as of', asOfISO],
+              ['Seen since', shownFrom || 'all time'],
+              ['Role chain', summary ? summary.holders.map((h) => h.provider).join(' -> ') : 'not configured'],
+              ['Retention vs handover', 'Two different questions, on separate sheets. The handover sheets count a patient as kept the moment they appear once - the right test for whether the book transferred. The retention sheets split that by whether they came back, which is the right test for whether they are being held onto.'],
+              ['Value', 'Sales (Exc. Tax) - cash plus package sessions consumed. Deliberately wider than the Dashboard\'s Revenue KPI, which nets off redemption: a patient working through a prepaid package takes almost no new cash when seen, so on a Revenue basis the most committed patients would look worthless to retain.'],
+              ['Came From', 'Inherited means they were in the book handed over. New to the clinic means their first-ever visit was with this provider. From elsewhere means they were already a patient of the clinic but of someone else.'],
+              ['Value Per Month Held', 'On the Role By Holder sheet. Raw totals cannot be compared when one holder held the role for two years and the next for three months, which is exactly what a recent handover creates.'],
+              ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
+            ]),
+            ...handoverSheets({ providerPatients, handover: summary, revenueTrend }),
+          ]}
+        />
       </div>
 
       <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
