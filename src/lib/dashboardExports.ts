@@ -12,12 +12,14 @@ import type {
 } from './metrics';
 import type { AcquisitionCostInputs } from './acquisitionCost';
 import type {
+  DepartmentLineRow,
   DepartmentMonthlyActivityRow,
   DepartmentPatientActivityRow,
   DepartmentProviderRow,
   DepartmentRedemptionRow,
   DepartmentRevenueRow,
 } from './departmentAnalytics';
+import { DEPARTMENT_BASIS_LABELS } from './departmentAnalytics';
 import type { SegmentPnlResult } from './segmentAllocation';
 import type { KpiDefinition, KpiPeriodValue, KpiPoint } from './kpiCatalog';
 import type { ProviderConversionStat, PatientConversionRow } from './conversionMetrics';
@@ -323,4 +325,102 @@ function named(
       Services: r.services.join('; '),
     }));
   return { name, rows };
+}
+
+
+/**
+ * The detail behind a Departments summary: every line item, every department it touches, and for
+ * each the patient and service that produced it.
+ *
+ * The aggregate sheets are derived from the same rows rather than recomputed, so a total on one
+ * sheet cannot disagree with the rows on another. Package sessions consumed are reported beside
+ * revenue, never inside it - that value was recognized when the package was sold.
+ */
+export function departmentDetailSheets(rows: DepartmentLineRow[]): WorkbookSheet[] {
+  const sum = <T>(items: T[], pick: (t: T) => number) => items.reduce((s, t) => s + pick(t), 0);
+
+  const groupBy = <K>(keyOf: (r: DepartmentLineRow) => K) => {
+    const map = new Map<string, { key: K; rows: DepartmentLineRow[] }>();
+    for (const r of rows) {
+      const key = keyOf(r);
+      const id = JSON.stringify(key);
+      if (!map.has(id)) map.set(id, { key, rows: [] });
+      map.get(id)!.rows.push(r);
+    }
+    return [...map.values()];
+  };
+
+  const totals = (group: DepartmentLineRow[]) => ({
+    Revenue: money(sum(group, (r) => r.revenue)),
+    'Package Redeemed': money(sum(group, (r) => r.redeemed)),
+    'Delivered Value': money(sum(group, (r) => r.deliveredValue)),
+    Transactions: sum(group, (r) => r.transactions),
+  });
+
+  const byDepartment = groupBy((r) => r.department)
+    .map(({ key, rows: group }) => ({
+      Department: key,
+      Patients: new Set(group.map((r) => r.patientId)).size,
+      Services: new Set(group.map((r) => r.serviceName)).size,
+      'Line Items': group.length,
+      ...totals(group),
+    }))
+    .sort((a, b) => b.Revenue - a.Revenue);
+
+  const patients = groupBy((r) => ({ department: r.department, patientId: r.patientId }))
+    .map(({ key, rows: group }) => ({
+      Department: key.department,
+      'Patient ID': key.patientId,
+      Patient: group[0].patientName,
+      Visits: new Set(group.map((r) => r.date)).size,
+      'First Visit': group.reduce((min, r) => (r.date < min ? r.date : min), group[0].date),
+      'Last Visit': group.reduce((max, r) => (r.date > max ? r.date : max), group[0].date),
+      Services: [...new Set(group.map((r) => r.serviceName))].join('; '),
+      ...totals(group),
+    }))
+    .sort((a, b) => a.Department.localeCompare(b.Department) || b.Revenue - a.Revenue);
+
+  const services = groupBy((r) => ({ department: r.department, serviceName: r.serviceName }))
+    .map(({ key, rows: group }) => ({
+      Department: key.department,
+      Service: key.serviceName,
+      'Item Type': group[0].itemType,
+      Patients: new Set(group.map((r) => r.patientId)).size,
+      'Line Items': group.length,
+      ...totals(group),
+    }))
+    .sort((a, b) => a.Department.localeCompare(b.Department) || b.Revenue - a.Revenue);
+
+  return [
+    { name: 'Dept Summary', rows: byDepartment },
+    { name: 'Dept Patients', rows: patients },
+    { name: 'Dept Services', rows: services },
+    {
+      name: 'Dept Line Detail',
+      rows: rows.map((r) => ({
+        Department: r.department,
+        'Mapped Via': DEPARTMENT_BASIS_LABELS[r.basis],
+        Date: r.date,
+        Month: r.date.slice(0, 7),
+        'Invoice No': r.invoiceNo,
+        'Patient ID': r.patientId,
+        Patient: r.patientName,
+        Provider: r.provider,
+        'Raw Staff': r.rawStaff ?? '',
+        'Item Type': r.itemType,
+        Service: r.serviceName,
+        Subcategory: r.subcategory,
+        'Redeemed From Package': r.packageName ?? '',
+        Qty: r.qty,
+        // Below 1 only where a mixed package spreads across departments; the share columns for one
+        // line always add back to its full value.
+        'Department Share (%)': pct(r.share * 100),
+        'Full Line Revenue': money(r.lineRevenue),
+        Revenue: money(r.revenue),
+        'Package Redeemed': money(r.redeemed),
+        'Delivered Value': money(r.deliveredValue),
+        Transactions: r.transactions,
+      })),
+    },
+  ];
 }

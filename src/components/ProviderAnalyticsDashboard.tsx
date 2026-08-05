@@ -15,6 +15,7 @@ import {
 import {
   buildBenefitLookup,
   buildServiceDepartmentMap,
+  computeDepartmentLineDetail,
   computeDepartmentProviderContribution,
 } from '../lib/departmentAnalytics';
 import {
@@ -35,7 +36,7 @@ import { computeProviderPatients, listProviders } from '../lib/providerHandover'
 import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
 import { formatCurrency, formatDate, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { money, pct, type WorkbookSheet } from '../lib/workbook';
-import { contextSheet, conversionSheets } from '../lib/dashboardExports';
+import { contextSheet, conversionSheets, departmentDetailSheets } from '../lib/dashboardExports';
 import {
   computeProviderRevenueByType,
   REVENUE_TYPE_LABELS,
@@ -198,13 +199,38 @@ export function ProviderAnalyticsDashboard({
     [conversionRows, conversionCategory],
   );
 
-  const departmentRows = useMemo(() => {
-    const mapping = buildServiceDepartmentMap(serviceDepartmentRecords);
-    const lookup = buildBenefitLookup(packageBenefits, serviceDepartmentRecords);
-    return computeDepartmentProviderContribution(records, range, mapping, lookup, providerGroups, providerAssignmentOverrides)
+  const departmentMaps = useMemo(() => ({
+    mapping: buildServiceDepartmentMap(serviceDepartmentRecords),
+    lookup: buildBenefitLookup(packageBenefits, serviceDepartmentRecords),
+  }), [serviceDepartmentRecords, packageBenefits]);
+
+  const departmentRows = useMemo(
+    () => computeDepartmentProviderContribution(records, range, departmentMaps.mapping, departmentMaps.lookup, providerGroups, providerAssignmentOverrides)
       .filter((r) => r.provider === selected)
-      .sort((a, b) => b.revenue - a.revenue);
-  }, [records, range, serviceDepartmentRecords, packageBenefits, providerGroups, providerAssignmentOverrides, selected]);
+      .sort((a, b) => b.revenue - a.revenue),
+    [records, range, departmentMaps, providerGroups, providerAssignmentOverrides, selected],
+  );
+
+  /**
+   * The lines behind those totals. Computed lazily rather than in a memo - it is only ever needed
+   * when the export button is pressed, and it is one row per line item per department touched.
+   */
+  const departmentLines = () =>
+    computeDepartmentLineDetail(records, range, departmentMaps.mapping, departmentMaps.lookup, providerGroups, providerAssignmentOverrides)
+      .filter((r) => r.provider === selected);
+
+  const departmentReadMe = (): [string, string | number][] => [
+    ['Report', `Departments - ${selected}`],
+    ['Period', periodLabel],
+    ['Data as of', asOfISO],
+    ['Scope', `Every line item ${selected} produced in the period, and the department each one landed in.`],
+    ['Mapped Via', 'How the department was decided. "Service mapping" is your explicit mapping for that service. "Package benefits" means the package itself was not mapped, so it was attributed by the services it bundles. "No mapping found" is shown rather than dropped, so nothing goes missing quietly.'],
+    ['Department Share', 'Below 100% only where a mixed package spans departments - revenue is split by each bundled service\'s value share rather than guessing one department. A line\'s share rows always add back to its Full Line Revenue.'],
+    ['Transactions', 'One per constituent service, so a bundle counts the same as buying those services separately - not one per session.'],
+    ['Package Redeemed', 'Sessions consumed from a previously-sold package. Reported beside revenue, never inside it, since that value was recognized when the package was sold.'],
+    ['Provider', 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under whichever doctor she assisted that day.'],
+    ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
+  ];
 
   // Repeat-visit behaviour for this provider over the same window, so "did they come back" sits
   // beside the revenue it explains.
@@ -272,6 +298,7 @@ export function ProviderAnalyticsDashboard({
       })),
     },
     { name: 'Departments', rows: departmentRows.map((d) => ({ Department: d.department, Revenue: money(d.revenue), Transactions: d.transactions })) },
+    ...departmentDetailSheets(departmentLines()),
     {
       // One row per bucket rather than one wide row, since a single-provider workbook reads better
       // down the page than across it.
@@ -507,10 +534,19 @@ export function ProviderAnalyticsDashboard({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
         <TopServicesChart data={serviceStats} />
         <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Departments</h3>
+          <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Departments</h3>
+            <ExportExcelButton
+              label="Department Detail"
+              fileName={`departments-${selected.replace(/\W+/g, '-')}-${range.start}-to-${range.end}.xlsx`}
+              disabled={departmentRows.length === 0}
+              buildSheets={() => [contextSheet(departmentReadMe()), ...departmentDetailSheets(departmentLines())]}
+            />
+          </div>
           <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
             Where this provider's revenue sits. A mixed package splits across departments by the value of the services
-            it bundles, and counts one transaction per constituent service.
+            it bundles, and counts one transaction per constituent service. The export breaks these totals down to the
+            patient, the service and the individual line behind each one.
           </p>
           {departmentRows.length === 0 ? (
             <p className="py-6 text-center text-sm text-zinc-500">No department-mapped revenue in this period.</p>
