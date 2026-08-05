@@ -514,6 +514,13 @@ export function ProviderAnalyticsDashboard({
           rate entirely, since there was nothing to convert. Zero-revenue visits are always included here regardless of
           the header toggle, because excluding them would delete the unconverted patients.
         </p>
+        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+          These counts will not match the patient cards above, and are not meant to. Visits Classified counts one row
+          per patient per day, so someone seen five times appears five times, while Active Patients counts distinct
+          people. "New" differs too: the cards mean new to {selected}, whereas here it means the patient's first-ever
+          visit to the clinic, and only on that exact day - a first visit carrying a "YB111" flag is classified as a
+          follow-up instead.
+        </p>
         {!conversion ? (
           <p className="py-6 text-center text-sm text-zinc-500">No visits classified for this provider in the period.</p>
         ) : (
@@ -525,7 +532,7 @@ export function ProviderAnalyticsDashboard({
                 ['Repeat Unconverted', conversion.repeatUnconverted, 'bad'],
                 ['Repeat Converted', conversion.repeatConverted, 'good'],
                 ['Follow-up / Direct', conversion.followUp, 'neutral'],
-                ['Total Patients', conversion.total, 'neutral'],
+                ['Visits Classified', conversion.total, 'neutral'],
               ] as [string, number, string][]).map(([label, value, tone]) => (
                 <div key={label} className="rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-700">
                   <div className="text-xs text-zinc-500 dark:text-zinc-400">{label}</div>

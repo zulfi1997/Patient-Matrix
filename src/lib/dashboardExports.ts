@@ -281,7 +281,7 @@ export function conversionSheets(p: {
     'Follow-up: YB111': s.followUpByReason.yb111,
     'Follow-up: Package Redemption': s.followUpByReason.packageRedemption,
     'Follow-up: Package Balance': s.followUpByReason.packageBalance,
-    'Total Patients': s.total,
+    'Visits Classified': s.total,
     'Conversion Rate (%)': pct(s.conversionRate),
     Revenue: money(s.revenue),
     'Revenue Adjustment': money(s.revenueAdjustment),

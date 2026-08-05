@@ -45,7 +45,7 @@ function exportProviderSummaryCsv(providers: ProviderConversionStat[], overall: 
   const header = [
     'Provider', 'New Unconverted', 'New Converted', 'Total New Patients',
     'Repeat Unconverted', 'Repeat Converted', 'Total Repeat Patients',
-    'Follow-up / Direct Service', 'Total Patients', 'Conversion Rate (%)', 'Revenue',
+    'Follow-up / Direct Service', 'Visits Classified', 'Conversion Rate (%)', 'Revenue',
   ];
   const rows = [...providers, { ...overall, staff: 'All Providers' }];
   const lines = rows.map((p) =>
@@ -351,9 +351,9 @@ export function ProviderConversionDashboard({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard
-          label="Total Patients"
+          label="Visits Classified"
           value={formatNumber(summary.overall.total)}
-          help="Every patient-provider visit in the selected period/day, across all five categories below (one row per patient seen by a given provider on a given day)."
+          help="Every patient-provider visit in the period, counted once per patient per provider per day - so a patient seen on five days appears five times. That is what the conversion rate is a rate of, and it is deliberately not a headcount: the Active Patients card counts distinct people, so the two will not agree and are not meant to."
         />
         <KpiCard
           label="New Unconverted"
@@ -469,7 +469,7 @@ export function ProviderConversionDashboard({
                   <th className="break-words py-2 pr-2 text-right align-bottom">Repeat Converted</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Total Repeat Patients</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Follow-up / Direct Service</th>
-                  <th className="break-words py-2 pr-2 text-right align-bottom">Total</th>
+                  <th className="break-words py-2 pr-2 text-right align-bottom">Visits Classified</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Conversion Rate</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Revenue</th>
                   {collectionSummary && <th className="break-words py-2 pr-2 text-right align-bottom">Net Collection</th>}

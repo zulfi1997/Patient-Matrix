@@ -47,7 +47,7 @@ describe('conversionSheets', () => {
   it('adds an All Providers total row when an overall stat is given', () => {
     const rows = byProvider(sheets({ overall: stat({ staff: 'ignored', total: 40 }) }));
     expect(rows.map((r) => r.Provider)).toEqual(['Dr Fatima', 'All Providers']);
-    expect(rows[1]['Total Patients']).toBe(40);
+    expect(rows[1]['Visits Classified']).toBe(40);
   });
 
   it('omits the total row when the workbook is already scoped to one provider', () => {
