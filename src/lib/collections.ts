@@ -64,6 +64,43 @@ export function buildInvoiceProviderShares(
   return result;
 }
 
+/** The date span of the imported sales data, so an unmatched payment can be told from a boundary. */
+export interface SalesSpan {
+  start: string;
+  end: string;
+}
+
+export function salesDateSpan(salesRecords: SaleRecord[]): SalesSpan | null {
+  if (salesRecords.length === 0) return null;
+  let start = salesRecords[0].date;
+  let end = start;
+  for (const r of salesRecords) {
+    if (r.date < start) start = r.date;
+    if (r.date > end) end = r.date;
+  }
+  return { start, end };
+}
+
+/**
+ * Why a payment could not be attributed. The distinction is the whole point: a payment settling an
+ * invoice raised outside the imported sales window has nothing to match against and needs a wider
+ * sales import, whereas one inside the window is a genuine gap worth investigating. Reporting both
+ * as simply "unmatched" invites the wrong conclusion - it did here.
+ */
+export type UnmatchedReason = 'afterSalesData' | 'beforeSalesData' | 'insideSalesWindow' | 'noSalesData';
+
+export const UNMATCHED_REASON_LABELS: Record<UnmatchedReason, string> = {
+  afterSalesData: 'Invoice dated after the imported sales data ends',
+  beforeSalesData: 'Invoice dated before the imported sales data begins',
+  insideSalesWindow: 'Inside the sales window - genuinely missing',
+  noSalesData: 'No sales data imported',
+};
+
+export interface UnmatchedPayment {
+  payment: CollectionRecord;
+  reason: UnmatchedReason;
+}
+
 export interface ProviderCollectionStat {
   provider: string;
   /** New money received: card, cash, bank transfer. */
@@ -79,10 +116,13 @@ export interface ProviderCollectionStat {
 export interface CollectionSummary {
   providers: ProviderCollectionStat[];
   /**
-   * The payments themselves, so an unmatched figure can be traced to the invoice behind it rather
-   * than only wondered about. Almost always an invoice raised outside the imported sales window.
+   * The payments themselves, each with why it could not be matched, so an unmatched figure can be
+   * traced rather than only wondered about.
    */
-  unattributed: CollectionRecord[];
+  unattributed: UnmatchedPayment[];
+  /** How many fall in each reason, so the note can distinguish a window boundary from a real gap. */
+  unattributedByReason: Record<UnmatchedReason, number>;
+  salesSpan: SalesSpan | null;
   /** Payments whose invoice is not in the sales data, so no provider could be resolved. */
   unattributedCash: number;
   unattributedRedemption: number;
@@ -114,12 +154,15 @@ export function computeProviderCollections(
   collections: CollectionRecord[],
   invoiceShares: Map<string, InvoiceProviderShare[]>,
   range: DateRange,
+  salesSpan: SalesSpan | null = null,
 ): CollectionSummary {
   const byProvider = new Map<string, ProviderCollectionStat>();
   const invoicesSeen = new Map<string, Set<string>>();
   const summary: CollectionSummary = {
     providers: [],
     unattributed: [],
+    unattributedByReason: { afterSalesData: 0, beforeSalesData: 0, insideSalesWindow: 0, noSalesData: 0 },
+    salesSpan,
     unattributedCash: 0,
     unattributedRedemption: 0,
     unattributedPayments: 0,
@@ -135,7 +178,18 @@ export function computeProviderCollections(
 
     const shares = invoiceShares.get(c.invoiceNo);
     if (!shares || shares.length === 0) {
-      summary.unattributed.push(c);
+      // Dated by the collection, since the invoice's own date is unknown - it is precisely the row
+      // that could not be found. A payment cannot precede its invoice, so a collection after the
+      // sales data ends means the invoice is after it too.
+      const reason: UnmatchedReason = !salesSpan
+        ? 'noSalesData'
+        : c.date > salesSpan.end
+          ? 'afterSalesData'
+          : c.date < salesSpan.start
+            ? 'beforeSalesData'
+            : 'insideSalesWindow';
+      summary.unattributed.push({ payment: c, reason });
+      summary.unattributedByReason[reason] += 1;
       if (cash) summary.unattributedCash += c.amount;
       else summary.unattributedRedemption += c.amount;
       summary.unattributedPayments += 1;

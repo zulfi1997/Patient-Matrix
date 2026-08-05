@@ -22,7 +22,7 @@ import { DeckBuilder } from './DeckBuilder';
 import { exportDashboardWorkbook } from '../lib/excelExport';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import { computeProviderRevenueByType } from '../lib/providerRevenueByType';
-import { buildInvoiceProviderShares, computeProviderCollections } from '../lib/collections';
+import { buildInvoiceProviderShares, computeProviderCollections, salesDateSpan } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
@@ -138,8 +138,8 @@ export function Dashboard({
   );
 
   const collectionSummary = useMemo(
-    () => (collections.length === 0 ? null : computeProviderCollections(collections, invoiceShares, range)),
-    [collections, invoiceShares, range],
+    () => (collections.length === 0 ? null : computeProviderCollections(collections, invoiceShares, range, salesDateSpan(rawRecords))),
+    [collections, invoiceShares, range, rawRecords],
   );
 
   const discountSummary = useMemo(() => computeDiscountSummary(records, range), [records, range]);

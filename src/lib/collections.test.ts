@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildInvoiceProviderShares, cashCollectedFor, computeProviderCollections } from './collections';
+import { buildInvoiceProviderShares, cashCollectedFor, computeProviderCollections, salesDateSpan } from './collections';
 import { classifyPaymentMethod, isCashCollection } from './collectionsParser';
 import { makeSale } from '../test/fixtures';
 import type { CollectionRecord } from '../types';
@@ -217,7 +217,51 @@ describe('unattributed payments are traceable', () => {
     ], invoiceShares, RANGE);
 
     expect(result.unattributed).toHaveLength(1);
-    expect(result.unattributed[0]).toMatchObject({ invoiceNo: 'GONE', date: '2026-07-21', patientName: 'Mais Qeissieh' });
-    expect(result.unattributed.reduce((s, r) => s + r.amount, 0)).toBe(result.unattributedCash + result.unattributedRedemption);
+    expect(result.unattributed[0].payment).toMatchObject({ invoiceNo: 'GONE', date: '2026-07-21', patientName: 'Mais Qeissieh' });
+    expect(result.unattributed.reduce((s, u) => s + u.payment.amount, 0)).toBe(result.unattributedCash + result.unattributedRedemption);
+  });
+});
+
+describe('why a payment could not be matched', () => {
+  const invoiceShares = () => buildInvoiceProviderShares([makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', date: '2026-07-10', amount: 300 })], [], []);
+  const span = { start: '2026-07-01', end: '2026-07-20' };
+
+  it('distinguishes a payment past the end of the imported sales data', () => {
+    // This is what actually happened: matching ran against a sales file ending 20 Jul, so every
+    // 21 Jul invoice looked missing. Reporting it as simply "unmatched" pointed at the wrong thing.
+    const result = computeProviderCollections([payment({ invoiceNo: 'TBC26958', date: '2026-07-21', amount: 256 })], invoiceShares(), RANGE, span);
+    expect(result.unattributed[0].reason).toBe('afterSalesData');
+    expect(result.unattributedByReason.afterSalesData).toBe(1);
+    expect(result.unattributedByReason.insideSalesWindow).toBe(0);
+  });
+
+  it('distinguishes one before the sales data begins', () => {
+    const result = computeProviderCollections([payment({ date: '2026-07-02', invoiceNo: 'OLD', amount: 50 })], invoiceShares(), { start: '2026-01-01', end: '2026-12-31' }, { start: '2026-07-05', end: '2026-07-20' });
+    expect(result.unattributed[0].reason).toBe('beforeSalesData');
+  });
+
+  it('flags one inside the window as a genuine gap', () => {
+    const result = computeProviderCollections([payment({ date: '2026-07-10', invoiceNo: 'MISSING', amount: 50 })], invoiceShares(), RANGE, span);
+    expect(result.unattributed[0].reason).toBe('insideSalesWindow');
+    expect(result.unattributedByReason.insideSalesWindow).toBe(1);
+  });
+
+  it('reports the span it judged against, so the boundary is checkable', () => {
+    const result = computeProviderCollections([payment()], invoiceShares(), RANGE, span);
+    expect(result.salesSpan).toEqual(span);
+  });
+});
+
+describe('salesDateSpan', () => {
+  it('spans the earliest and latest sale', () => {
+    expect(salesDateSpan([
+      makeSale({ date: '2026-07-10' }),
+      makeSale({ date: '2026-02-01' }),
+      makeSale({ date: '2026-07-20' }),
+    ])).toEqual({ start: '2026-02-01', end: '2026-07-20' });
+  });
+
+  it('is null with no sales at all', () => {
+    expect(salesDateSpan([])).toBeNull();
   });
 });

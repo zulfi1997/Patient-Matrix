@@ -24,7 +24,7 @@ import {
   type ProviderRevenueByType,
 } from './providerRevenueByType';
 import { COLLECTION_METHOD_LABELS, isCashCollection } from './collectionsParser';
-import type { CollectionSummary } from './collections';
+import { UNMATCHED_REASON_LABELS, type CollectionSummary } from './collections';
 import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
 
 export interface WorkbookParams {
@@ -162,11 +162,13 @@ function collectionRows(c: CollectionSummary): Record<string, string | number>[]
 function unattributedRows(c: CollectionSummary): Record<string, string | number>[] {
   return c.unattributed
     .slice()
-    .sort((a, b) => a.date.localeCompare(b.date) || a.invoiceNo.localeCompare(b.invoiceNo))
-    .map((r) => ({
+    .sort((a, b) => a.payment.date.localeCompare(b.payment.date) || a.payment.invoiceNo.localeCompare(b.payment.invoiceNo))
+    .map(({ payment: r, reason }) => ({
       'Collection Date': r.date,
       Month: r.date.slice(0, 7),
       'Invoice No': r.invoiceNo,
+      'Why Unmatched': UNMATCHED_REASON_LABELS[reason],
+      'Needs Action': reason === 'insideSalesWindow' ? 'Yes' : 'No - widen the sales import',
       'Patient ID': r.patientId,
       Patient: r.patientName,
       'Payment Type': r.paymentType,
@@ -177,6 +179,7 @@ function unattributedRows(c: CollectionSummary): Record<string, string | number>
       'Invoice Status': r.invoiceStatus,
       'Collected By (cashier)': r.collectedBy ?? '',
       Comments: r.comments ?? '',
+      'Sales Data Spans': c.salesSpan ? `${c.salesSpan.start} to ${c.salesSpan.end}` : 'none imported',
     }));
 }
 

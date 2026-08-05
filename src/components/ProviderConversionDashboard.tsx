@@ -23,7 +23,7 @@ import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { ProviderHandoverPanel } from './ProviderHandoverPanel';
 import { ExportExcelButton } from './ExportExcelButton';
 import { conversionSheets, contextSheet } from '../lib/dashboardExports';
-import { buildInvoiceProviderShares, cashCollectedFor, computeProviderCollections } from '../lib/collections';
+import { buildInvoiceProviderShares, cashCollectedFor, computeProviderCollections, salesDateSpan } from '../lib/collections';
 
 const TREND_DAYS = 30;
 type ViewMode = 'day' | 'period';
@@ -195,7 +195,7 @@ export function ProviderConversionDashboard({
   const collectionSummary = useMemo(() => {
     if (collections.length === 0) return null;
     const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides);
-    return computeProviderCollections(collections, shares, summary.range);
+    return computeProviderCollections(collections, shares, summary.range, salesDateSpan(rawRecords));
   }, [collections, rawRecords, providerGroups, providerAssignmentOverrides, summary.range]);
 
   /**

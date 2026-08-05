@@ -44,7 +44,7 @@ import {
   visibleRevenueTypeKeys,
   totalRevenueByType,
 } from '../lib/providerRevenueByType';
-import { buildInvoiceProviderShares, computeProviderCollections } from '../lib/collections';
+import { buildInvoiceProviderShares, computeProviderCollections, salesDateSpan } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -190,7 +190,7 @@ export function ProviderAnalyticsDashboard({
   const collectionSummary = useMemo(() => {
     if (collections.length === 0) return null;
     const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides);
-    const summary = computeProviderCollections(collections, shares, range);
+    const summary = computeProviderCollections(collections, shares, range, salesDateSpan(rawRecords));
     return { ...summary, providers: summary.providers.filter((p) => p.provider === selected) };
   }, [collections, rawRecords, range, providerGroups, providerAssignmentOverrides, selected]);
 

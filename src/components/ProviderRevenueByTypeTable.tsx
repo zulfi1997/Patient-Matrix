@@ -124,11 +124,23 @@ export function ProviderRevenueByTypeTable({
       {collections && collections.unattributedCash !== 0 && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
           {formatCurrency(collections.unattributedCash)} of the collected total is on{' '}
-          {formatNumber(collections.unattributedPayments)} payment(s) whose invoice is not in your sales data - usually
-          an invoice raised before the earliest sales file you have imported. It is inside the All Providers total, as
-          it should be, but sits in no provider's row, so the rows above add up to{' '}
-          {formatCurrency(collections.totalCash - collections.unattributedCash)}. The Excel export lists them
-          individually on a "Collections Unmatched" sheet so each can be traced.
+          {formatNumber(collections.unattributedPayments)} payment(s) whose invoice is not in your sales data. It is
+          inside the All Providers total, as it should be, but sits in no provider's row, so the rows above add up to{' '}
+          {formatCurrency(collections.totalCash - collections.unattributedCash)}.{' '}
+          {collections.salesSpan && (
+            <>
+              Your sales data runs {collections.salesSpan.start} to {collections.salesSpan.end}
+              {collections.unattributedByReason.afterSalesData > 0 &&
+                `; ${formatNumber(collections.unattributedByReason.afterSalesData)} of these were collected after it ends, so import newer sales and they will resolve`}
+              {collections.unattributedByReason.beforeSalesData > 0 &&
+                `; ${formatNumber(collections.unattributedByReason.beforeSalesData)} before it begins`}
+              {collections.unattributedByReason.insideSalesWindow > 0
+                ? `; ${formatNumber(collections.unattributedByReason.insideSalesWindow)} fall inside the window and are a genuine gap worth checking`
+                : '. None fall inside the window, so nothing here is missing from your data'}
+              .{' '}
+            </>
+          )}
+          The Excel export lists them individually on a "Collections Unmatched" sheet, each with the reason.
         </p>
       )}
     </div>
