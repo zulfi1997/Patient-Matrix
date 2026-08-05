@@ -28,6 +28,7 @@ export function ProviderRevenueByTypeTable({
   const keys = useMemo(() => visibleRevenueTypeKeys(total), [total]);
   const showAdjustment = useMemo(() => hasUntypedAdjustment(data), [data]);
   const collectedFor = (provider: string) => collections?.providers.find((p) => p.provider === provider);
+  const showRefunds = !!collections && collections.totalRefunded !== 0;
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid dark:border-zinc-800 dark:bg-zinc-900">
@@ -42,7 +43,7 @@ export function ProviderRevenueByTypeTable({
         whichever doctor they assisted, per your Provider Groups. Master Control Revenue Adjustments are applied here
         too: one that names a type moves that column, one that does not shows separately, and either way the
         All Providers row is unchanged, since an adjustment only moves revenue between two providers.
-        {collections && ' Collected (Cash) is money actually received in this period, by collection date rather than sale date, matched to whoever sold the invoice. Package, gift-card and prepaid-card settlements are excluded from it - that cash arrived when the package or card was bought.'}
+        {collections && ' Collection is money in and Refund is money out, both by collection date rather than sale date and matched to whoever sold the invoice; Net Collection is the two together, so gross takings stay readable instead of a refund quietly eating into them. Package, gift-card and prepaid-card settlements are in none of the three - that cash arrived when the package or card was bought. Hover a Refund to see how much of it is a gift or prepaid card handed back, which was paid for in an earlier period and so says nothing about this one.'}
       </p>
       {data.length === 0 ? (
         <p className="py-6 text-center text-sm text-zinc-500">No revenue recorded in this period.</p>
@@ -59,7 +60,9 @@ export function ProviderRevenueByTypeTable({
                 <th className="py-2 pr-2 text-right align-bottom">Net Revenue</th>
                 <th className="break-words py-2 pr-2 text-right align-bottom">Package Redeemed</th>
                 <th className="break-words py-2 pr-2 text-right align-bottom">Delivered Value</th>
-                {collections && <th className="break-words py-2 pr-2 text-right align-bottom">Collected (Cash)</th>}
+                {collections && <th className="break-words py-2 pr-2 text-right align-bottom">Collection</th>}
+                {showRefunds && <th className="break-words py-2 pr-2 text-right align-bottom">Refund</th>}
+                {collections && <th className="break-words py-2 pr-2 text-right align-bottom">Net Collection</th>}
               </tr>
             </thead>
             <tbody>
@@ -93,7 +96,20 @@ export function ProviderRevenueByTypeTable({
                       className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400"
                       title={`${formatNumber(collectedFor(row.provider)?.invoices ?? 0)} invoice(s) · ${formatCurrency(collectedFor(row.provider)?.redemptionSettled ?? 0)} settled by package/card, not counted here`}
                     >
-                      {formatCurrency(collectedFor(row.provider)?.cashCollected ?? 0)}
+                      {formatCurrency(collectedFor(row.provider)?.collected ?? 0)}
+                    </td>
+                  )}
+                  {showRefunds && (
+                    <td
+                      className="py-1.5 pr-2 text-right tabular-nums text-rose-600 dark:text-rose-400"
+                      title={`of which ${formatCurrency(collectedFor(row.provider)?.cardRefunds ?? 0)} is a gift or prepaid card handed back, paid for in an earlier period`}
+                    >
+                      {formatCurrency(collectedFor(row.provider)?.refunded ?? 0)}
+                    </td>
+                  )}
+                  {collections && (
+                    <td className="py-1.5 pr-2 text-right font-semibold tabular-nums text-sky-700 dark:text-sky-400">
+                      {formatCurrency(collectedFor(row.provider)?.netCollected ?? 0)}
                     </td>
                   )}
                 </tr>
@@ -113,7 +129,17 @@ export function ProviderRevenueByTypeTable({
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.deliveredValue)}</td>
                 {collections && (
                   <td className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400">
-                    {formatCurrency(collections.totalCash)}
+                    {formatCurrency(collections.totalCollected)}
+                  </td>
+                )}
+                {showRefunds && (
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-rose-600 dark:text-rose-400">
+                    {formatCurrency(collections.totalRefunded)}
+                  </td>
+                )}
+                {collections && (
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400">
+                    {formatCurrency(collections.totalNetCollected)}
                   </td>
                 )}
               </tr>
@@ -121,12 +147,12 @@ export function ProviderRevenueByTypeTable({
           </table>
         </div>
       )}
-      {collections && collections.unattributedCash !== 0 && (
+      {collections && collections.unattributedCollected + collections.unattributedRefunded !== 0 && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-          {formatCurrency(collections.unattributedCash)} of the collected total is on{' '}
+          {formatCurrency(collections.unattributedCollected + collections.unattributedRefunded)} of the collected total is on{' '}
           {formatNumber(collections.unattributedPayments)} payment(s) whose invoice is not in your sales data. It is
           inside the All Providers total, as it should be, but sits in no provider's row, so the rows above add up to{' '}
-          {formatCurrency(collections.totalCash - collections.unattributedCash)}.{' '}
+          {formatCurrency(collections.totalNetCollected - collections.unattributedCollected - collections.unattributedRefunded)}.{' '}
           {collections.unattributedByReason.withinImportedRange > 0 ? (
             <>
               {formatNumber(collections.unattributedByReason.withinImportedRange)} of them are numbered inside the range

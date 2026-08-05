@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { CollectionRecord, ImportBatch, ItemType, SaleRecord } from '../types';
+import type { CollectionAttributionOverride, CollectionRecord, ImportBatch, ItemType, SaleRecord } from '../types';
 import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges';
 import {
   computeAgingBucketSummary,
@@ -23,6 +23,7 @@ import { exportDashboardWorkbook } from '../lib/excelExport';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import { computeProviderRevenueByType } from '../lib/providerRevenueByType';
 import {
+  buildCardOnlyInvoices,
   buildInvoiceProviderShares,
   computeProviderCollections,
   invoiceAttributionDetail,
@@ -59,6 +60,7 @@ export function Dashboard({
   providerAssignmentOverrides,
   revenueAdjustments,
   collections,
+  collectionAttributionOverrides,
 }: {
   records: SaleRecord[];
   /** Unfiltered stored rows, so the reconciliation panel can show what the pipeline excludes. */
@@ -70,6 +72,7 @@ export function Dashboard({
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   revenueAdjustments: RevenueAdjustment[];
   collections: CollectionRecord[];
+  collectionAttributionOverrides: CollectionAttributionOverride[];
 }) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-preset', 'last30');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-custom-range', {
@@ -139,12 +142,12 @@ export function Dashboard({
    * though somebody sold that card and took the money for it.
    */
   const invoiceShares = useMemo(
-    () => buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides),
-    [rawRecords, providerGroups, providerAssignmentOverrides],
+    () => buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides, collectionAttributionOverrides),
+    [rawRecords, providerGroups, providerAssignmentOverrides, collectionAttributionOverrides],
   );
 
   const collectionSummary = useMemo(
-    () => (collections.length === 0 ? null : computeProviderCollections(collections, invoiceShares, range, salesDateSpan(rawRecords), invoiceNumberRanges(rawRecords))),
+    () => (collections.length === 0 ? null : computeProviderCollections(collections, invoiceShares, range, salesDateSpan(rawRecords), invoiceNumberRanges(rawRecords), buildCardOnlyInvoices(rawRecords))),
     [collections, invoiceShares, range, rawRecords],
   );
 

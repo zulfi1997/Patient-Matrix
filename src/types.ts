@@ -221,3 +221,18 @@ export interface CollectionImportBatch {
   uploadedAt: string; // ISO datetime
   rowCount: number;
 }
+
+/**
+ * A manual instruction that one invoice's collections belong wholly to one provider.
+ *
+ * The escape hatch for a payment the sales data cannot attribute on its own - a refund whose
+ * invoice carries no seller, or one split across people in a way the clinic knows is wrong.
+ * Stated explicitly, it beats any rule the app could infer, so it wins outright and no split
+ * happens.
+ */
+export interface CollectionAttributionOverride {
+  id: string;
+  invoiceNo: string;
+  provider: string;
+  note: string;
+}

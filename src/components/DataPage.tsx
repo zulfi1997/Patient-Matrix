@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { CollectionImportBatch, ImportBatch, PackageBenefitBatch, PackageBenefitRecord, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
+import type { CollectionAttributionOverride, CollectionImportBatch, ImportBatch, PackageBenefitBatch, PackageBenefitRecord, PnlImportBatch, PnlLineRecord, SaleRecord } from '../types';
 import type { ImportResult } from '../hooks/useTransactions';
 import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { CollectionImportResult } from '../hooks/useCollections';
@@ -43,6 +43,8 @@ interface DataPageProps {
   setProviderGroups: Dispatch<SetStateAction<ProviderGroup[]>>;
   revenueAdjustments: RevenueAdjustment[];
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
+  collectionAttributionOverrides: CollectionAttributionOverride[];
+  setCollectionAttributionOverrides: Dispatch<SetStateAction<CollectionAttributionOverride[]>>;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
   serviceDepartmentRecords: ServiceDepartmentRecord[];
@@ -112,6 +114,8 @@ export function DataPage({
   setProviderGroups,
   revenueAdjustments,
   setRevenueAdjustments,
+  collectionAttributionOverrides,
+  setCollectionAttributionOverrides,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
   serviceDepartmentRecords,
@@ -507,6 +511,8 @@ export function DataPage({
           setProviderGroups={setProviderGroups}
           revenueAdjustments={revenueAdjustments}
           setRevenueAdjustments={setRevenueAdjustments}
+          collectionAttributionOverrides={collectionAttributionOverrides}
+          setCollectionAttributionOverrides={setCollectionAttributionOverrides}
           providerAssignmentOverrides={providerAssignmentOverrides}
           setProviderAssignmentOverrides={setProviderAssignmentOverrides}
           knownStaff={knownStaff}

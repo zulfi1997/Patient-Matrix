@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCardOnlyInvoices,
   buildInvoiceProviderShares,
   cashCollectedFor,
   computeProviderCollections,
@@ -113,7 +114,7 @@ describe('computeProviderCollections', () => {
     ], shares(sales()), RANGE);
     expect(cashCollectedFor(result, 'Dr A')).toBe(100);
     expect(result.providers[0].redemptionSettled).toBe(575);
-    expect(result.totalCash).toBe(100);
+    expect(result.totalNetCollected).toBe(100);
   });
 
   it('splits a shared invoice\'s payment across its providers', () => {
@@ -129,10 +130,10 @@ describe('computeProviderCollections', () => {
   it('reports a payment whose invoice is not in the sales data instead of dropping it', () => {
     const result = computeProviderCollections([payment({ invoiceNo: 'UNKNOWN', amount: 80 })], shares(sales()), RANGE);
     expect(result.providers).toEqual([]);
-    expect(result.unattributedCash).toBe(80);
+    expect(result.unattributedCollected).toBe(80);
     expect(result.unattributedPayments).toBe(1);
     // Still in the total, so the file reconciles even where attribution could not.
-    expect(result.totalCash).toBe(80);
+    expect(result.totalNetCollected).toBe(80);
   });
 
   it('filters by collection date, not sale date', () => {
@@ -140,7 +141,7 @@ describe('computeProviderCollections', () => {
       payment({ id: 'p1', date: '2026-07-10', amount: 100 }),
       payment({ id: 'p2', date: '2026-08-01', amount: 999 }),
     ], shares(sales()), RANGE);
-    expect(result.totalCash).toBe(100);
+    expect(result.totalNetCollected).toBe(100);
   });
 
   it('counts distinct invoices separately from payments, so instalments are visible', () => {
@@ -148,7 +149,7 @@ describe('computeProviderCollections', () => {
       payment({ id: 'p1', invoiceNo: 'TBC1', amount: 60 }),
       payment({ id: 'p2', invoiceNo: 'TBC1', amount: 40 }),
     ], shares(sales()), RANGE);
-    expect(result.providers[0]).toMatchObject({ invoices: 1, payments: 2, cashCollected: 100 });
+    expect(result.providers[0]).toMatchObject({ invoices: 1, payments: 2, netCollected: 100 });
   });
 
   it('keeps a refund negative rather than dropping it', () => {
@@ -170,10 +171,10 @@ describe('the summary reconciles', () => {
       payment({ id: 'p2', invoiceNo: 'GONE', amount: 120 }),
     ], invoiceShares, RANGE);
 
-    const attributed = result.providers.reduce((s, p) => s + p.cashCollected, 0);
+    const attributed = result.providers.reduce((s, p) => s + p.netCollected, 0);
     expect(attributed).toBe(300);
-    expect(result.unattributedCash).toBe(120);
-    expect(result.totalCash).toBe(attributed + result.unattributedCash);
+    expect(result.unattributedCollected).toBe(120);
+    expect(result.totalNetCollected).toBe(attributed + result.unattributedCollected + result.unattributedRefunded);
   });
 
   it('holds for redemption too', () => {
@@ -199,7 +200,7 @@ describe('attribution sees the whole sales history, not the analysis set', () =>
     ];
     const result = computeProviderCollections([payment({ invoiceNo: 'TBC1', amount: 210 })], shares(raw), RANGE);
     expect(cashCollectedFor(result, 'Dr A')).toBe(210);
-    expect(result.unattributedCash).toBe(0);
+    expect(result.unattributedCollected).toBe(0);
   });
 
   it('still does not count the card again when it is later redeemed', () => {
@@ -226,7 +227,7 @@ describe('unattributed payments are traceable', () => {
 
     expect(result.unattributed).toHaveLength(1);
     expect(result.unattributed[0].payment).toMatchObject({ invoiceNo: 'GONE', date: '2026-07-21', patientName: 'Mais Qeissieh' });
-    expect(result.unattributed.reduce((s, u) => s + u.payment.amount, 0)).toBe(result.unattributedCash + result.unattributedRedemption);
+    expect(result.unattributed.reduce((s, u) => s + u.payment.amount, 0)).toBe(result.unattributedCollected + result.unattributedRefunded + result.unattributedRedemption);
   });
 });
 
@@ -373,18 +374,6 @@ describe('refund invoices', () => {
     expect(cashCollectedFor(result, 'Fatima')).toBeCloseTo(-117.426, 6);
   });
 
-  it('files a line with no staff under Unassigned, which then takes a share of its own', () => {
-    // Worth seeing rather than hiding: Unassigned beside a real name means that line has no seller
-    // recorded in the sales data, and the provider's figure is short by exactly that share.
-    const result = shares([
-      makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', amount: -100 }),
-      makeSale({ invoiceNo: 'TBC1', staff: null, amount: -100 }),
-    ]);
-    expect(result.get('TBC1')).toEqual([
-      { provider: 'Fatima', share: 0.5 },
-      { provider: 'Unassigned', share: 0.5 },
-    ]);
-  });
 });
 
 describe('invoiceAttributionDetail', () => {
@@ -404,5 +393,141 @@ describe('invoiceAttributionDetail', () => {
     expect(rows.map((r) => [r.provider, r.attributed])).toEqual([['Dr B', 100], ['Fatima', 300]]);
     expect(rows.every((r) => r.providersOnInvoice === 2)).toBe(true);
     expect(rows.reduce((s, r) => s + r.attributed, 0)).toBe(400);
+  });
+});
+
+describe('blank staff does not dilute a named seller', () => {
+  it('gives the whole payment to the named provider when another line has no staff', () => {
+    // "If it's blank why does it split" - it should not. A line with no staff recorded is an
+    // absence of information, not a claim on the money.
+    const result = shares([
+      makeSale({ invoiceNo: 'TBC25204', staff: 'Fatima', amount: -117.426 }),
+      makeSale({ invoiceNo: 'TBC25204', staff: null, amount: -9.261 }),
+    ]);
+    expect(result.get('TBC25204')).toEqual([{ provider: 'Fatima', share: 1 }]);
+  });
+
+  it('still splits between two named providers', () => {
+    const result = shares([
+      makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', amount: 300 }),
+      makeSale({ invoiceNo: 'TBC1', staff: 'Dr B', amount: 100 }),
+    ]);
+    expect(result.get('TBC1')).toHaveLength(2);
+  });
+
+  it('leaves it with Unassigned when nothing on the invoice has a seller', () => {
+    // Visible rather than silently handed to whoever happens to be nearby.
+    const result = shares([makeSale({ invoiceNo: 'TBC1', staff: null, amount: 100 })]);
+    expect(result.get('TBC1')).toEqual([{ provider: 'Unassigned', share: 1 }]);
+  });
+});
+
+describe('gift and prepaid card refunds', () => {
+  const cardSale = () => makeSale({ invoiceNo: 'TBC25204', staff: 'Fatima', itemType: 'Pre-paid card', amount: -117.426, qty: -1 });
+  const refund = () => payment({
+    invoiceNo: 'TBC25204', method: 'bankTransfer', paymentType: 'Custom - Bank Transfer', amount: -117.426,
+  });
+  const compute = (sales: Parameters<typeof shares>[0], payments: CollectionRecord[]) =>
+    computeProviderCollections(payments, shares(sales), RANGE, null, new Map(), buildCardOnlyInvoices(sales));
+
+  it('keeps a card refund out of cash collected and in its own figure', () => {
+    // The card was paid for in an earlier period, so netting its return against this period's
+    // takings would understate what was actually collected here.
+    const result = compute([cardSale()], [refund()]);
+    expect(result.providers[0].collected).toBe(0);
+    expect(result.providers[0].refunded).toBeCloseTo(-117.426, 6);
+    expect(result.providers[0].cardRefunds).toBeCloseTo(-117.426, 6);
+    expect(result.totalNetCollected).toBeCloseTo(-117.426, 6);
+    expect(result.totalCardRefunds).toBeCloseTo(-117.426, 6);
+  });
+
+  it('still counts selling the card as cash collected', () => {
+    // Only the refund direction is separated; taking money for a card is money arriving.
+    const sale = makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', itemType: 'Pre-paid card', amount: 210 });
+    const result = compute([sale], [payment({ invoiceNo: 'TBC1', amount: 210 })]);
+    expect(cashCollectedFor(result, 'Fatima')).toBe(210);
+    expect(result.totalCardRefunds).toBe(0);
+  });
+
+  it('leaves a refunded service netting off as before', () => {
+    // Only card invoices are separated - refunding a service is this period's money going back out.
+    const service = makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', itemType: 'Service', amount: -50 });
+    const result = compute([service], [payment({ invoiceNo: 'TBC1', amount: -50 })]);
+    expect(cashCollectedFor(result, 'Fatima')).toBe(-50);
+    expect(result.totalCardRefunds).toBe(0);
+  });
+
+  it('will not treat a mixed invoice as a card movement', () => {
+    // A card sold alongside services is not purely a card refund, and guessing which part is would
+    // be worse than leaving it in cash where it can at least be reconciled.
+    const mixed = [
+      makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', itemType: 'Pre-paid card', amount: -100 }),
+      makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', itemType: 'Service', amount: -20 }),
+    ];
+    const result = compute(mixed, [payment({ invoiceNo: 'TBC1', amount: -120 })]);
+    expect(result.totalCardRefunds).toBe(0);
+    expect(cashCollectedFor(result, 'Fatima')).toBe(-120);
+  });
+});
+
+describe('manual collection attribution', () => {
+  const override = (invoiceNo: string, provider: string) => ({ id: 'o1', invoiceNo, provider, note: '' });
+
+  it('gives the whole payment to the named provider instead of splitting', () => {
+    // The escape hatch: when the sales data cannot say who a refund belongs to, saying so by hand
+    // beats any rule the app could infer.
+    const sales = [
+      makeSale({ invoiceNo: 'TBC25204', staff: 'Dr A', amount: -100 }),
+      makeSale({ invoiceNo: 'TBC25204', staff: 'Dr B', amount: -100 }),
+    ];
+    const withOverride = buildInvoiceProviderShares(sales, [], [], [override('TBC25204', 'Fatima')]);
+    expect(withOverride.get('TBC25204')).toEqual([{ provider: 'Fatima', share: 1 }]);
+  });
+
+  it('attributes an invoice the sales data never mentions', () => {
+    const withOverride = buildInvoiceProviderShares([], [], [], [override('TBC99999', 'Fatima')]);
+    const result = computeProviderCollections([payment({ invoiceNo: 'TBC99999', amount: 250 })], withOverride, RANGE);
+    expect(cashCollectedFor(result, 'Fatima')).toBe(250);
+    expect(result.unattributed).toEqual([]);
+  });
+
+  it('ignores a blank invoice or provider rather than mapping everything to nothing', () => {
+    const sales = [makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 100 })];
+    const result = buildInvoiceProviderShares(sales, [], [], [override('  ', 'Fatima'), override('TBC1', '  ')]);
+    expect(result.get('TBC1')).toEqual([{ provider: 'Dr A', share: 1 }]);
+  });
+
+  it('leaves other invoices alone', () => {
+    const sales = [
+      makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 100 }),
+      makeSale({ invoiceNo: 'TBC2', staff: 'Dr B', amount: 100 }),
+    ];
+    const result = buildInvoiceProviderShares(sales, [], [], [override('TBC1', 'Fatima')]);
+    expect(result.get('TBC1')).toEqual([{ provider: 'Fatima', share: 1 }]);
+    expect(result.get('TBC2')).toEqual([{ provider: 'Dr B', share: 1 }]);
+  });
+});
+
+describe('collection, refund and net', () => {
+  it('keeps money in and money out apart, and adds them for the net', () => {
+    const sales = [makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 500 })];
+    const result = computeProviderCollections([
+      payment({ id: 'p1', invoiceNo: 'TBC1', amount: 500 }),
+      payment({ id: 'p2', invoiceNo: 'TBC1', amount: -120 }),
+    ], shares(sales), RANGE);
+    expect(result.providers[0]).toMatchObject({ collected: 500, refunded: -120, netCollected: 380 });
+    expect(result.totalCollected).toBe(500);
+    expect(result.totalRefunded).toBe(-120);
+    expect(result.totalNetCollected).toBe(380);
+  });
+
+  it('adds up across providers and unattributed alike', () => {
+    const sales = [makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', amount: 500 })];
+    const result = computeProviderCollections([
+      payment({ id: 'p1', invoiceNo: 'TBC1', amount: 500 }),
+      payment({ id: 'p2', invoiceNo: 'GONE', amount: -120 }),
+    ], shares(sales), RANGE);
+    const attributed = result.providers.reduce((s, p) => s + p.netCollected, 0);
+    expect(result.totalNetCollected).toBe(attributed + result.unattributedCollected + result.unattributedRefunded);
   });
 });

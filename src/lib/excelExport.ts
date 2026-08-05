@@ -103,6 +103,14 @@ function readMeRows(p: WorkbookParams): Record<string, string>[] {
       Detail: 'Money actually received, by collection date - often not the month the sale was recognized in, so this will not tie to Revenue and is not meant to. Package, gift-card and prepaid-card settlements are reported separately and excluded from the cash figure: that money arrived when the package or card was bought. Attribution runs through the invoice number against the sales data, since the export\'s "Collected By" is the cashier, not the seller.',
     },
     {
+      Item: 'Collection, Refund, Net Collection',
+      Detail: 'Money in, money out, and the two together. Kept as three figures so gross takings stay readable instead of a refund quietly eating into them. Refund is negative, so Collection + Refund = Net Collection. Package, gift-card and prepaid-card settlements are in none of the three - that cash arrived when the package or card was bought.',
+    },
+    {
+      Item: 'Card Refunds',
+      Detail: 'A gift or prepaid card handed back - a subset of Refund, broken out because the card was paid for in an earlier period and so says nothing about this period\'s trading. Reported in its own column and kept out of Collected (Cash): the card was paid for in an earlier period, so netting its return against this period\'s takings would understate what was actually collected here. Identified from the sales lines behind the invoice - the Collections export shows a card refund as an ordinary negative payment, indistinguishable from a refunded service.',
+    },
+    {
       Item: 'Revenue Adjustments',
       Detail: 'Master Control corrections are applied per provider. One that names an item type moves that column; one that does not sits in an Adjustment column rather than being attributed to a type nobody stated. The All Providers row is unaffected either way, since an adjustment only moves revenue between two providers.',
     },
@@ -142,9 +150,12 @@ function revenueByTypeRows(p: WorkbookParams): Record<string, string | number>[]
  * an invoice raised in June settled in July belongs to both, in different months.
  */
 function collectionRows(c: CollectionSummary): Record<string, string | number>[] {
-  const row = (name: string, s: (typeof c.providers)[number] | null, cash: number, redemption: number) => ({
+  const row = (name: string, s: (typeof c.providers)[number] | null, collected: number, refunded: number, redemption: number) => ({
     Provider: name,
-    'Collected (Cash)': money(cash),
+    Collection: money(collected),
+    Refund: money(refunded),
+    'Net Collection': money(collected + refunded),
+    'Of Refund, Gift/Prepaid Card Handed Back': money(s?.cardRefunds ?? 0),
     ...Object.fromEntries(
       (Object.keys(COLLECTION_METHOD_LABELS) as (keyof typeof COLLECTION_METHOD_LABELS)[])
         .map((m) => [COLLECTION_METHOD_LABELS[m], money(s?.byMethod[m] ?? 0)]),
@@ -154,9 +165,9 @@ function collectionRows(c: CollectionSummary): Record<string, string | number>[]
     Payments: s?.payments ?? '',
   });
   return [
-    ...c.providers.map((s) => row(s.provider, s, s.cashCollected, s.redemptionSettled)),
-    row('Unattributed (invoice not in sales data)', null, c.unattributedCash, c.unattributedRedemption),
-    row('All Collections', null, c.totalCash, c.totalRedemption),
+    ...c.providers.map((s) => row(s.provider, s, s.collected, s.refunded, s.redemptionSettled)),
+    row('Unattributed (invoice not in sales data)', null, c.unattributedCollected, c.unattributedRefunded, c.unattributedRedemption),
+    row('All Collections', null, c.totalCollected, c.totalRefunded, c.totalRedemption),
   ];
 }
 
@@ -230,9 +241,12 @@ function summaryRows(p: WorkbookParams): Record<string, string | number>[] {
     ['Outstanding Invoices', p.invoiceAging.length],
     ...(p.collectionSummary
       ? ([
-          ['Collected (Cash)', money(p.collectionSummary.totalCash)],
+          ['Collection', money(p.collectionSummary.totalCollected)],
+          ['Refund', money(p.collectionSummary.totalRefunded)],
+          ['Net Collection', money(p.collectionSummary.totalNetCollected)],
+          ['Of Refund, Gift/Prepaid Card Handed Back', money(p.collectionSummary.totalCardRefunds)],
           ['Settled By Package/Card', money(p.collectionSummary.totalRedemption)],
-          ['Collections Not Matched To An Invoice', money(p.collectionSummary.unattributedCash)],
+          ['Collections Not Matched To An Invoice', money(p.collectionSummary.unattributedCollected + p.collectionSummary.unattributedRefunded)],
         ] as [string, string | number][])
       : []),
   ];

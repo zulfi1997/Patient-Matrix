@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { CollectionRecord, ItemType, PackageBenefitRecord, SaleRecord } from '../types';
+import type { CollectionAttributionOverride, CollectionRecord, ItemType, PackageBenefitRecord, SaleRecord } from '../types';
 import type { ServiceDepartmentRecord } from '../lib/departments';
 import {
   buildInvoiceToPatientMap,
@@ -44,7 +44,13 @@ import {
   visibleRevenueTypeKeys,
   totalRevenueByType,
 } from '../lib/providerRevenueByType';
-import { buildInvoiceProviderShares, computeProviderCollections, invoiceNumberRanges, salesDateSpan } from '../lib/collections';
+import {
+  buildCardOnlyInvoices,
+  buildInvoiceProviderShares,
+  computeProviderCollections,
+  invoiceNumberRanges,
+  salesDateSpan,
+} from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -68,6 +74,7 @@ export function ProviderAnalyticsDashboard({
   providerAssignmentOverrides,
   revenueAdjustments,
   collections,
+  collectionAttributionOverrides,
   rawRecords,
 }: {
   records: SaleRecord[];
@@ -83,6 +90,7 @@ export function ProviderAnalyticsDashboard({
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   revenueAdjustments: RevenueAdjustment[];
   collections: CollectionRecord[];
+  collectionAttributionOverrides: CollectionAttributionOverride[];
   /** Unfiltered stored rows - collection attribution must see gift/prepaid-card invoices, which the analysis filters drop. */
   rawRecords: SaleRecord[];
 }) {
@@ -189,10 +197,10 @@ export function ProviderAnalyticsDashboard({
   // to divide by both their contributions, which narrowing first would hide.
   const collectionSummary = useMemo(() => {
     if (collections.length === 0) return null;
-    const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides);
-    const summary = computeProviderCollections(collections, shares, range, salesDateSpan(rawRecords), invoiceNumberRanges(rawRecords));
+    const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides, collectionAttributionOverrides);
+    const summary = computeProviderCollections(collections, shares, range, salesDateSpan(rawRecords), invoiceNumberRanges(rawRecords), buildCardOnlyInvoices(rawRecords));
     return { ...summary, providers: summary.providers.filter((p) => p.provider === selected) };
-  }, [collections, rawRecords, range, providerGroups, providerAssignmentOverrides, selected]);
+  }, [collections, rawRecords, range, providerGroups, providerAssignmentOverrides, collectionAttributionOverrides, selected]);
 
   const providerCollected = collectionSummary?.providers[0] ?? null;
 
@@ -306,7 +314,10 @@ export function ProviderAnalyticsDashboard({
       rows: [
         { Metric: 'Revenue', Value: money(periodRevenue) },
         { Metric: 'Revenue Adjustment', Value: money(netAdjustment) },
-        { Metric: 'Collected (Cash)', Value: providerCollected ? money(providerCollected.cashCollected) : '' },
+        { Metric: 'Collection', Value: providerCollected ? money(providerCollected.collected) : '' },
+        { Metric: 'Refund', Value: providerCollected ? money(providerCollected.refunded) : '' },
+        { Metric: 'Net Collection', Value: providerCollected ? money(providerCollected.netCollected) : '' },
+        { Metric: 'Of Refund, Gift/Prepaid Card Handed Back', Value: providerCollected ? money(providerCollected.cardRefunds) : '' },
         { Metric: 'Settled By Package/Card', Value: providerCollected ? money(providerCollected.redemptionSettled) : '' },
         { Metric: 'Redeemed Revenue', Value: money(kpis.periodRedeemedRevenue) },
         { Metric: 'Line Items', Value: kpis.periodTransactions },
@@ -468,9 +479,9 @@ export function ProviderAnalyticsDashboard({
         <KpiCard label="YB111 Flagged" value={formatNumber(flagged.count)} hint={formatCurrency(flagged.amount)} help="Line items on this provider's invoices whose notes contain YB111." />
         {providerCollected && (
           <KpiCard
-            label="Collected (Cash)"
-            value={formatCurrency(providerCollected.cashCollected)}
-            hint={`${formatNumber(providerCollected.invoices)} invoice(s) · ${formatCurrency(providerCollected.redemptionSettled)} by package/card`}
+            label="Net Collection"
+            value={formatCurrency(providerCollected.netCollected)}
+            hint={`${formatCurrency(providerCollected.collected)} in, ${formatCurrency(providerCollected.refunded)} out · ${formatNumber(providerCollected.invoices)} invoice(s)`}
             help="Money actually received in this period, by collection date rather than sale date, on invoices this provider sold. Package, gift-card and prepaid-card settlements are excluded - that cash arrived when the package or card was bought. Where an invoice carries more than one provider's lines, the payment is split by each one's share of it."
           />
         )}

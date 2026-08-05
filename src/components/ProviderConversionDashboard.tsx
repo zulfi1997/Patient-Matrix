@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { CollectionRecord, PackageBenefitRecord, SaleRecord } from '../types';
+import type { CollectionAttributionOverride, CollectionRecord, PackageBenefitRecord, SaleRecord } from '../types';
 import {
   buildInvoiceToPatientMap,
   computeConversionTrend,
@@ -23,7 +23,14 @@ import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { ProviderHandoverPanel } from './ProviderHandoverPanel';
 import { ExportExcelButton } from './ExportExcelButton';
 import { conversionSheets, contextSheet } from '../lib/dashboardExports';
-import { buildInvoiceProviderShares, cashCollectedFor, computeProviderCollections, invoiceNumberRanges, salesDateSpan } from '../lib/collections';
+import {
+  buildCardOnlyInvoices,
+  buildInvoiceProviderShares,
+  cashCollectedFor,
+  computeProviderCollections,
+  invoiceNumberRanges,
+  salesDateSpan,
+} from '../lib/collections';
 
 const TREND_DAYS = 30;
 type ViewMode = 'day' | 'period';
@@ -69,6 +76,7 @@ export function ProviderConversionDashboard({
   revenueAdjustments,
   providerAssignmentOverrides,
   collections,
+  collectionAttributionOverrides,
   rawRecords,
 }: {
   records: SaleRecord[];
@@ -77,6 +85,7 @@ export function ProviderConversionDashboard({
   revenueAdjustments: RevenueAdjustment[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   collections: CollectionRecord[];
+  collectionAttributionOverrides: CollectionAttributionOverride[];
   /** Unfiltered stored rows - collection attribution must see gift/prepaid-card invoices, which the analysis filters drop. */
   rawRecords: SaleRecord[];
 }) {
@@ -194,9 +203,9 @@ export function ProviderConversionDashboard({
   // come from the full sales history, since a payment here often settles an older invoice.
   const collectionSummary = useMemo(() => {
     if (collections.length === 0) return null;
-    const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides);
-    return computeProviderCollections(collections, shares, summary.range, salesDateSpan(rawRecords), invoiceNumberRanges(rawRecords));
-  }, [collections, rawRecords, providerGroups, providerAssignmentOverrides, summary.range]);
+    const shares = buildInvoiceProviderShares(rawRecords, providerGroups, providerAssignmentOverrides, collectionAttributionOverrides);
+    return computeProviderCollections(collections, shares, summary.range, salesDateSpan(rawRecords), invoiceNumberRanges(rawRecords), buildCardOnlyInvoices(rawRecords));
+  }, [collections, rawRecords, providerGroups, providerAssignmentOverrides, collectionAttributionOverrides, summary.range]);
 
   /**
    * Adjustments only apply to the dates they carry, so in Single Day mode - the default, on the
@@ -463,7 +472,7 @@ export function ProviderConversionDashboard({
                   <th className="break-words py-2 pr-2 text-right align-bottom">Total</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Conversion Rate</th>
                   <th className="break-words py-2 pr-2 text-right align-bottom">Revenue</th>
-                  {collectionSummary && <th className="break-words py-2 pr-2 text-right align-bottom">Collected (Cash)</th>}
+                  {collectionSummary && <th className="break-words py-2 pr-2 text-right align-bottom">Net Collection</th>}
                 </tr>
               </thead>
               <tbody>
@@ -522,7 +531,7 @@ export function ProviderConversionDashboard({
                   <td className="py-1.5 pr-2 text-right">{formatNumber(summary.overall.revenue)}</td>
                   {collectionSummary && (
                     <td className="py-1.5 pr-2 text-right text-sky-700 dark:text-sky-400">
-                      {formatNumber(collectionSummary.totalCash)}
+                      {formatNumber(collectionSummary.totalNetCollected)}
                     </td>
                   )}
                 </tr>
@@ -530,9 +539,9 @@ export function ProviderConversionDashboard({
             </table>
           </div>
         )}
-        {collectionSummary && collectionSummary.unattributedCash !== 0 && (
+        {collectionSummary && collectionSummary.unattributedCollected + collectionSummary.unattributedRefunded !== 0 && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-            {formatNumber(collectionSummary.unattributedCash)} of the collected total is on{' '}
+            {formatNumber(collectionSummary.unattributedCollected + collectionSummary.unattributedRefunded)} of the collected total is on{' '}
             {formatNumber(collectionSummary.unattributedPayments)} payment(s) whose invoice is not in your sales data -
             usually an invoice raised before the earliest sales file you have imported. It is inside the All Providers
             total but sits in no provider's row.

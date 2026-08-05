@@ -1,7 +1,10 @@
-import type { CollectionMethod, CollectionRecord, SaleRecord } from '../types';
+import type { CollectionAttributionOverride, CollectionMethod, CollectionRecord, SaleRecord } from '../types';
 import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
 import { isCashCollection } from './collectionsParser';
 import { isInRange, type DateRange } from './metrics';
+
+/** What resolveProvider returns for a sale line with no staff recorded. */
+export const UNASSIGNED = 'Unassigned';
 
 /** The provider(s) an invoice's money belongs to, and how much of it each earned. */
 export interface InvoiceProviderShare {
@@ -32,6 +35,7 @@ export function buildInvoiceProviderShares(
   salesRecords: SaleRecord[],
   providerGroups: ProviderGroup[],
   overrides: ProviderAssignmentOverride[],
+  attributionOverrides: CollectionAttributionOverride[] = [],
 ): Map<string, InvoiceProviderShare[]> {
   const byInvoice = new Map<string, Map<string, { amount: number; delivered: number; lines: number }>>();
 
@@ -52,7 +56,13 @@ export function buildInvoiceProviderShares(
 
   const result = new Map<string, InvoiceProviderShare[]>();
   for (const [invoiceNo, providers] of byInvoice) {
-    const entries = [...providers.entries()];
+    const all = [...providers.entries()];
+    // A line with no staff recorded is an absence of information, not a claim on the money. Where
+    // the invoice names anyone at all, the payment belongs to the people it names and the blank
+    // lines are dropped rather than diluting them. Only when nothing on the invoice has a seller
+    // does it stay with Unassigned, where it is visible instead of silently handed to someone.
+    const named = all.filter(([provider]) => provider !== UNASSIGNED);
+    const entries = named.length > 0 ? named : all;
     // Weighted by magnitude, not by signed value. A refund invoice carries only negative amounts,
     // and clamping those to zero collapsed every weight - so the split fell through to counting
     // lines and divided the money equally between people who had sold wildly different shares of
@@ -70,7 +80,34 @@ export function buildInvoiceProviderShares(
       }
     }
   }
+  // Applied last, so a stated attribution beats anything derived - including an invoice the sales
+  // data never mentions, which is the case the manual mapping mostly exists for.
+  for (const o of attributionOverrides) {
+    const invoiceNo = o.invoiceNo.trim();
+    const provider = o.provider.trim();
+    if (invoiceNo && provider) result.set(invoiceNo, [{ provider, share: 1 }]);
+  }
+
   return result;
+}
+
+/**
+ * Invoices that sell nothing but a gift or prepaid card.
+ *
+ * Needed because the Collections export cannot say so itself: refunding a card comes back as an
+ * ordinary bank transfer or card payment with a negative amount, indistinguishable from a service
+ * being refunded. Only the sales lines behind the invoice reveal that what was handed back was a
+ * card. Mixed invoices are deliberately excluded - if a card was sold alongside services, the
+ * payment is not purely a card movement and guessing which part is would be worse than not saying.
+ */
+export function buildCardOnlyInvoices(salesRecords: SaleRecord[]): Set<string> {
+  const allCard = new Map<string, boolean>();
+  for (const r of salesRecords) {
+    if (!r.invoiceNo) continue;
+    const isCard = r.itemType === 'Pre-paid card' || r.itemType === 'Gift card';
+    allCard.set(r.invoiceNo, (allCard.get(r.invoiceNo) ?? true) && isCard);
+  }
+  return new Set([...allCard.entries()].filter(([, v]) => v).map(([k]) => k));
 }
 
 /** The date span of the imported sales data, so an unmatched payment can be told from a boundary. */
@@ -166,8 +203,18 @@ export interface UnmatchedPayment {
 
 export interface ProviderCollectionStat {
   provider: string;
-  /** New money received: card, cash, bank transfer. */
-  cashCollected: number;
+  /** Money in: every positive cash payment, before anything is handed back. */
+  collected: number;
+  /** Money out: every negative cash payment, kept negative so the three columns add up. */
+  refunded: number;
+  /** collected + refunded. */
+  netCollected: number;
+  /**
+   * The part of `refunded` that is a gift or prepaid card being handed back rather than a service.
+   * A subset, not a fourth bucket - it sits inside refunded and is broken out because the card was
+   * paid for in an earlier period, so it says nothing about this period's trading.
+   */
+  cardRefunds: number;
   /** Settled by consuming a package, gift card or prepaid card - already paid for earlier, so not new money. */
   redemptionSettled: number;
   byMethod: Record<CollectionMethod, number>;
@@ -187,17 +234,24 @@ export interface CollectionSummary {
   unattributedByReason: Record<UnmatchedReason, number>;
   salesSpan: SalesSpan | null;
   /** Payments whose invoice is not in the sales data, so no provider could be resolved. */
-  unattributedCash: number;
+  unattributedCollected: number;
+  unattributedRefunded: number;
   unattributedRedemption: number;
   unattributedPayments: number;
-  totalCash: number;
+  totalCollected: number;
+  totalRefunded: number;
+  totalNetCollected: number;
+  totalCardRefunds: number;
   totalRedemption: number;
 }
 
 function emptyStat(provider: string): ProviderCollectionStat {
   return {
     provider,
-    cashCollected: 0,
+    collected: 0,
+    refunded: 0,
+    netCollected: 0,
+    cardRefunds: 0,
     redemptionSettled: 0,
     byMethod: { card: 0, cash: 0, bankTransfer: 0, other: 0, package: 0, giftCard: 0, prepaidCard: 0 },
     invoices: 0,
@@ -223,6 +277,7 @@ export function computeProviderCollections(
   range: DateRange,
   salesSpan: SalesSpan | null = null,
   invoiceRanges: InvoiceNumberRanges = new Map(),
+  cardOnlyInvoices: Set<string> = new Set(),
 ): CollectionSummary {
   const byProvider = new Map<string, ProviderCollectionStat>();
   const invoicesSeen = new Map<string, Set<string>>();
@@ -234,26 +289,39 @@ export function computeProviderCollections(
       unrecognizedInvoiceNo: 0, noSalesData: 0,
     },
     salesSpan,
-    unattributedCash: 0,
+    unattributedCollected: 0,
+    unattributedRefunded: 0,
     unattributedRedemption: 0,
     unattributedPayments: 0,
-    totalCash: 0,
+    totalCollected: 0,
+    totalRefunded: 0,
+    totalNetCollected: 0,
+    totalCardRefunds: 0,
     totalRedemption: 0,
   };
 
   for (const c of collections) {
     if (!isInRange(c.date, range)) continue;
     const cash = isCashCollection(c.method);
-    if (cash) summary.totalCash += c.amount;
-    else summary.totalRedemption += c.amount;
+    const refund = cash && c.amount < 0;
+    // A card handed back is still a refund, but of money taken in some earlier period - broken out
+    // as a subset so it can be read separately without leaving the arithmetic.
+    const isCardRefund = refund && cardOnlyInvoices.has(c.invoiceNo);
+
+    if (!cash) summary.totalRedemption += c.amount;
+    else if (refund) {
+      summary.totalRefunded += c.amount;
+      if (isCardRefund) summary.totalCardRefunds += c.amount;
+    } else summary.totalCollected += c.amount;
 
     const shares = invoiceShares.get(c.invoiceNo);
     if (!shares || shares.length === 0) {
       const reason = classifyUnmatched(c.invoiceNo, invoiceRanges);
       summary.unattributed.push({ payment: c, reason });
       summary.unattributedByReason[reason] += 1;
-      if (cash) summary.unattributedCash += c.amount;
-      else summary.unattributedRedemption += c.amount;
+      if (!cash) summary.unattributedRedemption += c.amount;
+      else if (refund) summary.unattributedRefunded += c.amount;
+      else summary.unattributedCollected += c.amount;
       summary.unattributedPayments += 1;
       continue;
     }
@@ -266,22 +334,29 @@ export function computeProviderCollections(
         invoicesSeen.set(provider, new Set());
       }
       const amount = c.amount * share;
-      if (cash) stat.cashCollected += amount;
-      else stat.redemptionSettled += amount;
+      if (!cash) stat.redemptionSettled += amount;
+      else if (refund) {
+        stat.refunded += amount;
+        if (isCardRefund) stat.cardRefunds += amount;
+      } else stat.collected += amount;
       stat.byMethod[c.method] += amount;
       stat.payments += 1;
       invoicesSeen.get(provider)!.add(c.invoiceNo);
     }
   }
 
-  for (const [provider, stat] of byProvider) stat.invoices = invoicesSeen.get(provider)!.size;
-  summary.providers = [...byProvider.values()].sort((a, b) => b.cashCollected - a.cashCollected);
+  for (const [provider, stat] of byProvider) {
+    stat.invoices = invoicesSeen.get(provider)!.size;
+    stat.netCollected = stat.collected + stat.refunded;
+  }
+  summary.totalNetCollected = summary.totalCollected + summary.totalRefunded;
+  summary.providers = [...byProvider.values()].sort((a, b) => b.netCollected - a.netCollected);
   return summary;
 }
 
-/** Cash collected for one provider, for the places that show a single figure beside their revenue. */
+/** Net cash for one provider - collections less refunds - for places showing a single figure. */
 export function cashCollectedFor(summary: CollectionSummary, provider: string): number {
-  return summary.providers.find((p) => p.provider === provider)?.cashCollected ?? 0;
+  return summary.providers.find((p) => p.provider === provider)?.netCollected ?? 0;
 }
 
 

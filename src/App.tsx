@@ -22,6 +22,7 @@ import { InfoTooltip } from './components/InfoTooltip';
 import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisitValue, toAnalysisRecords } from './lib/filters';
 import { summarizePatients } from './lib/metrics';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
+import type { CollectionAttributionOverride } from './types';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
@@ -76,6 +77,10 @@ function App() {
   const [revenueAdjustments, setRevenueAdjustments] = useLocalStorageState<RevenueAdjustment[]>('pm-revenue-adjustments', []);
   const [providerAssignmentOverrides, setProviderAssignmentOverrides] = useLocalStorageState<ProviderAssignmentOverride[]>(
     'pm-provider-assignment-overrides',
+    [],
+  );
+  const [collectionAttributionOverrides, setCollectionAttributionOverrides] = useLocalStorageState<CollectionAttributionOverride[]>(
+    'pm-collection-attribution-overrides',
     [],
   );
   const [allocationRules, setAllocationRules] = useLocalStorageState<SegmentAllocationRule[]>('pm-segment-allocation-rules', []);
@@ -238,6 +243,7 @@ function App() {
             providerAssignmentOverrides={providerAssignmentOverrides}
             revenueAdjustments={revenueAdjustments}
             collections={collections}
+            collectionAttributionOverrides={collectionAttributionOverrides}
           />
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} pnlLines={pnlLines} />
@@ -256,6 +262,7 @@ function App() {
             providerAssignmentOverrides={providerAssignmentOverrides}
             collections={collections}
             rawRecords={records}
+            collectionAttributionOverrides={collectionAttributionOverrides}
           />
         ) : tab === 'providerAnalytics' ? (
           <ProviderAnalyticsDashboard
@@ -268,6 +275,7 @@ function App() {
             revenueAdjustments={revenueAdjustments}
             collections={collections}
             rawRecords={records}
+            collectionAttributionOverrides={collectionAttributionOverrides}
           />
         ) : tab === 'yb111' ? (
           <FlaggedTransactionsDashboard
@@ -322,6 +330,8 @@ function App() {
             setProviderGroups={setProviderGroups}
             revenueAdjustments={revenueAdjustments}
             setRevenueAdjustments={setRevenueAdjustments}
+            collectionAttributionOverrides={collectionAttributionOverrides}
+            setCollectionAttributionOverrides={setCollectionAttributionOverrides}
             providerAssignmentOverrides={providerAssignmentOverrides}
             setProviderAssignmentOverrides={setProviderAssignmentOverrides}
             serviceDepartmentRecords={serviceDepartmentRecords}

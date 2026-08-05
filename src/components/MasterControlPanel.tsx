@@ -1,5 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
+import type { CollectionAttributionOverride } from '../types';
 import { isRevenueTypeKey, REVENUE_TYPE_KEYS, REVENUE_TYPE_LABELS } from '../lib/revenueTypes';
 import { formatDate, formatNumber } from '../lib/format';
 
@@ -266,6 +267,114 @@ function TemporaryReassignmentsEditor({
   );
 }
 
+function CollectionAttributionEditor({
+  overrides,
+  setOverrides,
+}: {
+  overrides: CollectionAttributionOverride[];
+  setOverrides: Dispatch<SetStateAction<CollectionAttributionOverride[]>>;
+}) {
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [provider, setProvider] = useState('');
+  const [note, setNote] = useState('');
+
+  const add = () => {
+    if (!invoiceNo.trim() || !provider.trim()) return;
+    setOverrides((prev) => [
+      ...prev.filter((o) => o.invoiceNo.trim().toUpperCase() !== invoiceNo.trim().toUpperCase()),
+      { id: newId(), invoiceNo: invoiceNo.trim(), provider: provider.trim(), note: note.trim() },
+    ]);
+    setInvoiceNo('');
+    setProvider('');
+    setNote('');
+  };
+
+  return (
+    <div>
+      <h4 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Collection Attribution</h4>
+      <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+        Names the provider a specific invoice's collections belong to - the answer for a payment the sales data cannot
+        attribute on its own, typically a refund whose invoice carries no seller. The whole payment goes to whoever you
+        name and nothing is split. Stated here, it beats anything the app would otherwise work out, so it also fixes an
+        invoice the sales data never mentions at all. Find the candidates on the "Collections By Invoice" and
+        "Collections Unmatched" sheets of the Dashboard's Excel export.
+      </p>
+
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Invoice No</label>
+          <input
+            value={invoiceNo}
+            onChange={(e) => setInvoiceNo(e.target.value)}
+            placeholder="TBC25204"
+            className="mt-0.5 w-36 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Provider</label>
+          <input
+            list="master-control-staff-options"
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            placeholder="Fatima Abobakir Algaoud"
+            className="mt-0.5 w-52 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Note (optional)</label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. prepaid card refund, no seller on the line"
+            className="mt-0.5 w-64 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <button
+          onClick={add}
+          disabled={!invoiceNo.trim() || !provider.trim()}
+          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+        >
+          Map Invoice
+        </button>
+      </div>
+
+      {overrides.length === 0 ? (
+        <p className="py-3 text-center text-xs text-zinc-500">No invoices mapped yet.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-zinc-500 dark:text-zinc-400">
+            <tr>
+              <th className="py-1.5 pr-2">Invoice No</th>
+              <th className="py-1.5 pr-2">Provider</th>
+              <th className="py-1.5 pr-2">Note</th>
+              <th className="py-1.5 pr-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {[...overrides]
+              .sort((a, b) => a.invoiceNo.localeCompare(b.invoiceNo))
+              .map((o) => (
+                <tr key={o.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <td className="py-1.5 pr-2 font-medium">{o.invoiceNo}</td>
+                  <td className="py-1.5 pr-2">{o.provider}</td>
+                  <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{o.note || '\u2014'}</td>
+                  <td className="py-1.5 pr-2 text-right">
+                    <button
+                      onClick={() => setOverrides((prev) => prev.filter((x) => x.id !== o.id))}
+                      className="text-xs text-rose-600 hover:underline dark:text-rose-400"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function RevenueAdjustmentsEditor({
   adjustments,
   setAdjustments,
@@ -433,6 +542,8 @@ export function MasterControlPanel({
   setProviderGroups,
   revenueAdjustments,
   setRevenueAdjustments,
+  collectionAttributionOverrides,
+  setCollectionAttributionOverrides,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
   knownStaff,
@@ -441,6 +552,8 @@ export function MasterControlPanel({
   setProviderGroups: Dispatch<SetStateAction<ProviderGroup[]>>;
   revenueAdjustments: RevenueAdjustment[];
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
+  collectionAttributionOverrides: CollectionAttributionOverride[];
+  setCollectionAttributionOverrides: Dispatch<SetStateAction<CollectionAttributionOverride[]>>;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
   knownStaff: string[];
@@ -452,6 +565,10 @@ export function MasterControlPanel({
       <TemporaryReassignmentsEditor overrides={providerAssignmentOverrides} setOverrides={setProviderAssignmentOverrides} />
       <div className="border-t border-zinc-200 dark:border-zinc-800" />
       <RevenueAdjustmentsEditor adjustments={revenueAdjustments} setAdjustments={setRevenueAdjustments} />
+      <CollectionAttributionEditor
+        overrides={collectionAttributionOverrides}
+        setOverrides={setCollectionAttributionOverrides}
+      />
     </div>
   );
 }
