@@ -22,7 +22,13 @@ import { DeckBuilder } from './DeckBuilder';
 import { exportDashboardWorkbook } from '../lib/excelExport';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
 import { computeProviderRevenueByType } from '../lib/providerRevenueByType';
-import { buildInvoiceProviderShares, computeProviderCollections, invoiceNumberRanges, salesDateSpan } from '../lib/collections';
+import {
+  buildInvoiceProviderShares,
+  computeProviderCollections,
+  invoiceAttributionDetail,
+  invoiceNumberRanges,
+  salesDateSpan,
+} from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
@@ -162,6 +168,7 @@ export function Dashboard({
         atRiskPatients, returnedPatients,
         records, patients, providerGroups, providerAssignmentOverrides,
         collectionSummary,
+        collectionAttribution: collections.length === 0 ? [] : invoiceAttributionDetail(collections, invoiceShares, range),
       });
     } catch (e) {
       setXlsxError(e instanceof Error ? e.message : 'Failed to build the workbook.');

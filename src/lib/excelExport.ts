@@ -24,7 +24,12 @@ import {
   type ProviderRevenueByType,
 } from './providerRevenueByType';
 import { COLLECTION_METHOD_LABELS, isCashCollection } from './collectionsParser';
-import { needsInvestigation, UNMATCHED_REASON_LABELS, type CollectionSummary } from './collections';
+import {
+  needsInvestigation,
+  UNMATCHED_REASON_LABELS,
+  type CollectionSummary,
+  type InvoiceAttributionRow,
+} from './collections';
 import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
 
 export interface WorkbookParams {
@@ -47,6 +52,8 @@ export interface WorkbookParams {
   revenueByType: ProviderRevenueByType[];
   /** Null until a Collections export has been imported. */
   collectionSummary: CollectionSummary | null;
+  /** One row per payment per provider it was attributed to - the trace behind every split. */
+  collectionAttribution: InvoiceAttributionRow[];
   /** Records already filtered the same way the dashboard filters them. */
   records: SaleRecord[];
   patients: Map<string, PatientVisitSummary>;
@@ -159,6 +166,25 @@ function collectionRows(c: CollectionSummary): Record<string, string | number>[]
  * before the earliest sales file imported has nothing to match against, and the fix is a wider
  * sales import rather than anything about the payment itself.
  */
+/** The trace behind each provider's collected figure: which payment, which share, and why. */
+function attributionRows(rows: InvoiceAttributionRow[]): Record<string, string | number>[] {
+  return rows.map((r) => ({
+    'Collection Date': r.date,
+    Month: r.date.slice(0, 7),
+    'Invoice No': r.invoiceNo,
+    Patient: r.patientName,
+    'Payment Type': r.paymentType,
+    Method: COLLECTION_METHOD_LABELS[r.method],
+    'Counts As': isCashCollection(r.method) ? 'Cash' : 'Package/card settlement',
+    'Payment Amount': money(r.amount),
+    Provider: r.provider,
+    'Providers On Invoice': r.providersOnInvoice,
+    'Share (%)': Math.round(r.share * 1000) / 10,
+    'Attributed To Provider': money(r.attributed),
+    Split: r.providersOnInvoice > 1 ? 'Yes - shared invoice' : 'No - sole provider',
+  }));
+}
+
 function unattributedRows(c: CollectionSummary): Record<string, string | number>[] {
   return c.unattributed
     .slice()
@@ -289,6 +315,7 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
     ...(p.collectionSummary
       ? [
           { name: 'Collections', rows: collectionRows(p.collectionSummary) },
+          { name: 'Collections By Invoice', rows: attributionRows(p.collectionAttribution) },
           ...(p.collectionSummary.unattributed.length > 0
             ? [{ name: 'Collections Unmatched', rows: unattributedRows(p.collectionSummary) }]
             : []),

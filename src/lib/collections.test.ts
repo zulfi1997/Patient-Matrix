@@ -3,6 +3,7 @@ import {
   buildInvoiceProviderShares,
   cashCollectedFor,
   computeProviderCollections,
+  invoiceAttributionDetail,
   invoiceNumberRanges,
   needsInvestigation,
   salesDateSpan,
@@ -337,5 +338,71 @@ describe('salesDateSpan', () => {
 
   it('is null with no sales at all', () => {
     expect(salesDateSpan([])).toBeNull();
+  });
+});
+
+describe('refund invoices', () => {
+  it('splits a refund by who sold it, not equally between whoever touched it', () => {
+    // The regression: every amount on a refund invoice is negative, so clamping weights at zero
+    // collapsed them all and the split fell through to counting lines - handing 50/50 to two
+    // providers who had sold 93% and 7% of it. A refund is still that provider's money moving.
+    const result = shares([
+      makeSale({ invoiceNo: 'TBC25204', staff: 'Fatima', itemType: 'Pre-paid card', amount: -117.426, qty: -1 }),
+      makeSale({ invoiceNo: 'TBC25204', staff: 'Dr B', amount: -9.261, qty: -1 }),
+    ]);
+    const [fatima, other] = result.get('TBC25204')!;
+    expect(fatima.provider).toBe('Fatima');
+    expect(fatima.share).toBeCloseTo(117.426 / 126.687, 6);
+    expect(other.share).toBeCloseTo(9.261 / 126.687, 6);
+    expect(fatima.share + other.share).toBeCloseTo(1, 9);
+  });
+
+  it('gives the whole refund to the only provider on the invoice', () => {
+    // "Sold by Fatima, so what is there to split" - nothing, and nothing should happen.
+    const result = shares([makeSale({ invoiceNo: 'TBC25204', staff: 'Fatima', amount: -117.426, qty: -1 })]);
+    expect(result.get('TBC25204')).toEqual([{ provider: 'Fatima', share: 1 }]);
+  });
+
+  it('carries the refund through to the provider as a negative collection', () => {
+    const invoiceShares = shares([makeSale({ invoiceNo: 'TBC25204', staff: 'Fatima', amount: -117.426, qty: -1 })]);
+    const result = computeProviderCollections(
+      [payment({ invoiceNo: 'TBC25204', date: '2026-07-03', method: 'bankTransfer', paymentType: 'Custom - Bank Transfer', amount: -117.426 })],
+      invoiceShares,
+      RANGE,
+    );
+    expect(cashCollectedFor(result, 'Fatima')).toBeCloseTo(-117.426, 6);
+  });
+
+  it('files a line with no staff under Unassigned, which then takes a share of its own', () => {
+    // Worth seeing rather than hiding: Unassigned beside a real name means that line has no seller
+    // recorded in the sales data, and the provider's figure is short by exactly that share.
+    const result = shares([
+      makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', amount: -100 }),
+      makeSale({ invoiceNo: 'TBC1', staff: null, amount: -100 }),
+    ]);
+    expect(result.get('TBC1')).toEqual([
+      { provider: 'Fatima', share: 0.5 },
+      { provider: 'Unassigned', share: 0.5 },
+    ]);
+  });
+});
+
+describe('invoiceAttributionDetail', () => {
+  it('says outright when nothing was split', () => {
+    const invoiceShares = shares([makeSale({ invoiceNo: 'TBC25204', staff: 'Fatima', amount: -117.426 })]);
+    const [row] = invoiceAttributionDetail([payment({ invoiceNo: 'TBC25204', amount: -117.426 })], invoiceShares, RANGE);
+    expect(row).toMatchObject({ provider: 'Fatima', share: 1, providersOnInvoice: 1, attributed: -117.426 });
+  });
+
+  it('lists every provider taking a piece, so a short figure explains itself', () => {
+    const invoiceShares = shares([
+      makeSale({ invoiceNo: 'TBC1', staff: 'Fatima', amount: 300 }),
+      makeSale({ invoiceNo: 'TBC1', staff: 'Dr B', amount: 100 }),
+    ]);
+    const rows = invoiceAttributionDetail([payment({ invoiceNo: 'TBC1', amount: 400 })], invoiceShares, RANGE);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => [r.provider, r.attributed])).toEqual([['Dr B', 100], ['Fatima', 300]]);
+    expect(rows.every((r) => r.providersOnInvoice === 2)).toBe(true);
+    expect(rows.reduce((s, r) => s + r.attributed, 0)).toBe(400);
   });
 });

@@ -17,12 +17,16 @@ export interface InvoiceProviderShare {
  * payment, not whoever sold the service - so attribution runs through the invoice number against
  * the sales data, which is what the clinic asked for.
  *
- * Most invoices are one provider and resolve to a single 100% share. Where an invoice carries
- * several providers' lines, the payment is split by each one's share of that invoice's revenue
- * rather than handed whole to whichever happened to be first. Weighting falls back to delivered
- * value for an invoice that took no new cash (a pure redemption), and to an equal split when even
- * that is zero - a collection has to land somewhere, and silently dropping it would make the
- * column quietly understate every provider.
+ * Most invoices are one provider and resolve to a single 100% share - there is nothing to split,
+ * and none happens. Where an invoice genuinely carries several providers' lines, the payment is
+ * split by each one's share of that invoice's value rather than handed whole to whichever happened
+ * to be first. Weighting falls back to delivered value for an invoice that took no new cash (a
+ * pure redemption), and only then to an equal split - a collection has to land somewhere, and
+ * silently dropping it would make the column quietly understate every provider.
+ *
+ * A line with no staff on it resolves to "Unassigned", which is a provider like any other here: it
+ * will take its share, and seeing it beside a real name on an invoice means that line has no seller
+ * recorded in the sales data.
  */
 export function buildInvoiceProviderShares(
   salesRecords: SaleRecord[],
@@ -49,9 +53,14 @@ export function buildInvoiceProviderShares(
   const result = new Map<string, InvoiceProviderShare[]>();
   for (const [invoiceNo, providers] of byInvoice) {
     const entries = [...providers.entries()];
+    // Weighted by magnitude, not by signed value. A refund invoice carries only negative amounts,
+    // and clamping those to zero collapsed every weight - so the split fell through to counting
+    // lines and divided the money equally between people who had sold wildly different shares of
+    // it. Attribution is a question of whose money this is, which the size of a line answers just
+    // as well when it is being handed back as when it was taken.
     for (const weightOf of [
-      (v: { amount: number }) => Math.max(v.amount, 0),
-      (v: { delivered: number }) => Math.max(v.delivered, 0),
+      (v: { amount: number }) => Math.abs(v.amount),
+      (v: { delivered: number }) => Math.abs(v.delivered),
       (v: { lines: number }) => v.lines,
     ]) {
       const total = entries.reduce((s, [, v]) => s + weightOf(v), 0);
@@ -273,4 +282,55 @@ export function computeProviderCollections(
 /** Cash collected for one provider, for the places that show a single figure beside their revenue. */
 export function cashCollectedFor(summary: CollectionSummary, provider: string): number {
   return summary.providers.find((p) => p.provider === provider)?.cashCollected ?? 0;
+}
+
+
+export interface InvoiceAttributionRow {
+  invoiceNo: string;
+  date: string;
+  patientName: string;
+  paymentType: string;
+  method: CollectionMethod;
+  amount: number;
+  provider: string;
+  share: number;
+  attributed: number;
+  /** How many providers the invoice resolved to - 1 means nothing was split. */
+  providersOnInvoice: number;
+}
+
+/**
+ * One row per payment per provider it was attributed to, with the share applied.
+ *
+ * Exists to answer "why is this provider's figure not the whole payment" without anyone having to
+ * reason about it: either the invoice resolved to one provider and the share is 100%, or it did
+ * not and every provider taking a piece is listed beside them. "Unassigned" appearing here means a
+ * line on that invoice has no seller recorded in the sales data.
+ */
+export function invoiceAttributionDetail(
+  collections: CollectionRecord[],
+  invoiceShares: Map<string, InvoiceProviderShare[]>,
+  range: DateRange,
+): InvoiceAttributionRow[] {
+  const rows: InvoiceAttributionRow[] = [];
+  for (const c of collections) {
+    if (!isInRange(c.date, range)) continue;
+    const shares = invoiceShares.get(c.invoiceNo);
+    if (!shares || shares.length === 0) continue;
+    for (const { provider, share } of shares) {
+      rows.push({
+        invoiceNo: c.invoiceNo,
+        date: c.date,
+        patientName: c.patientName,
+        paymentType: c.paymentType,
+        method: c.method,
+        amount: c.amount,
+        provider,
+        share,
+        attributed: c.amount * share,
+        providersOnInvoice: shares.length,
+      });
+    }
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.invoiceNo.localeCompare(b.invoiceNo) || a.provider.localeCompare(b.provider));
 }
