@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildInvoiceProviderShares, cashCollectedFor, computeProviderCollections, salesDateSpan } from './collections';
+import {
+  buildInvoiceProviderShares,
+  cashCollectedFor,
+  computeProviderCollections,
+  invoiceNumberRanges,
+  needsInvestigation,
+  salesDateSpan,
+} from './collections';
 import { classifyPaymentMethod, isCashCollection } from './collectionsParser';
 import { makeSale } from '../test/fixtures';
 import type { CollectionRecord } from '../types';
@@ -223,32 +230,99 @@ describe('unattributed payments are traceable', () => {
 });
 
 describe('why a payment could not be matched', () => {
-  const invoiceShares = () => buildInvoiceProviderShares([makeSale({ invoiceNo: 'TBC1', staff: 'Dr A', date: '2026-07-10', amount: 300 })], [], []);
-  const span = { start: '2026-07-01', end: '2026-07-20' };
+  // Sales data holding TBC26900 and TBC26993, so the imported number range is 26900-26993.
+  const sales = [
+    makeSale({ invoiceNo: 'TBC26900', staff: 'Dr A', date: '2026-07-01', amount: 100 }),
+    makeSale({ invoiceNo: 'TBC26993', staff: 'Dr A', date: '2026-07-20', amount: 300 }),
+  ];
+  const summaryFor = (invoiceNo: string, date = '2026-07-21', range: DateRange = RANGE) =>
+    computeProviderCollections(
+      [payment({ invoiceNo, date, amount: 256 })],
+      shares(sales),
+      range,
+      salesDateSpan(sales),
+      invoiceNumberRanges(sales),
+    );
 
-  it('distinguishes a payment past the end of the imported sales data', () => {
-    // This is what actually happened: matching ran against a sales file ending 20 Jul, so every
-    // 21 Jul invoice looked missing. Reporting it as simply "unmatched" pointed at the wrong thing.
-    const result = computeProviderCollections([payment({ invoiceNo: 'TBC26958', date: '2026-07-21', amount: 256 })], invoiceShares(), RANGE, span);
-    expect(result.unattributed[0].reason).toBe('afterSalesData');
-    expect(result.unattributedByReason.afterSalesData).toBe(1);
-    expect(result.unattributedByReason.insideSalesWindow).toBe(0);
+  it('judges by invoice number, not collection date, because instalments break the date inference', () => {
+    // TBC26958 sits inside the imported range but is absent: a real gap, whatever date it was paid.
+    // Judging by collection date instead called this "after the sales data" purely because the
+    // payment landed on the 21st, which pointed at the wrong fix.
+    expect(summaryFor('TBC26958').unattributed[0].reason).toBe('withinImportedRange');
+    expect(summaryFor('TBC26958').unattributedByReason.withinImportedRange).toBe(1);
   });
 
-  it('distinguishes one before the sales data begins', () => {
-    const result = computeProviderCollections([payment({ date: '2026-07-02', invoiceNo: 'OLD', amount: 50 })], invoiceShares(), { start: '2026-01-01', end: '2026-12-31' }, { start: '2026-07-05', end: '2026-07-20' });
-    expect(result.unattributed[0].reason).toBe('beforeSalesData');
+  it('does not blame the date when an instalment settles an old invoice late', () => {
+    // Paid long after the sales data ends, but the invoice number is inside the imported range, so
+    // the diagnosis is "missing row", not "import newer sales".
+    const late = summaryFor('TBC26950', '2026-11-30', { start: '2026-11-01', end: '2026-11-30' });
+    expect(late.unattributed[0].reason).toBe('withinImportedRange');
   });
 
-  it('flags one inside the window as a genuine gap', () => {
-    const result = computeProviderCollections([payment({ date: '2026-07-10', invoiceNo: 'MISSING', amount: 50 })], invoiceShares(), RANGE, span);
-    expect(result.unattributed[0].reason).toBe('insideSalesWindow');
-    expect(result.unattributedByReason.insideSalesWindow).toBe(1);
+  it('recognizes an invoice numbered beyond everything imported', () => {
+    const result = summaryFor('TBC27030');
+    expect(result.unattributed[0].reason).toBe('beyondImportedRange');
+    expect(needsInvestigation(result.unattributed[0].reason)).toBe(false);
   });
 
-  it('reports the span it judged against, so the boundary is checkable', () => {
-    const result = computeProviderCollections([payment()], invoiceShares(), RANGE, span);
-    expect(result.salesSpan).toEqual(span);
+  it('recognizes an invoice numbered before everything imported', () => {
+    expect(summaryFor('TBC12345').unattributed[0].reason).toBe('belowImportedRange');
+  });
+
+  it('will not guess when the invoice number is not comparable', () => {
+    // A different centre's prefix, or a format this app has never seen: saying nothing beats
+    // asserting a range comparison that means nothing.
+    expect(summaryFor('XYZ55').unattributed[0].reason).toBe('unrecognizedInvoiceNo');
+    expect(summaryFor('TBC-26/958').unattributed[0].reason).toBe('unrecognizedInvoiceNo');
+  });
+
+  it('flags only the in-range case as needing investigation', () => {
+    expect(needsInvestigation('withinImportedRange')).toBe(true);
+    for (const r of ['beyondImportedRange', 'belowImportedRange', 'unrecognizedInvoiceNo', 'noSalesData'] as const) {
+      expect(needsInvestigation(r)).toBe(false);
+    }
+  });
+});
+
+describe('instalments', () => {
+  it('credits a late payment to whoever sold the original invoice, in the month the money arrived', () => {
+    // The clinic's rule: regardless of when it is collected, the original sold-by is matched from
+    // the earlier sales data and the cash lands in the collection month.
+    const sales = [makeSale({ invoiceNo: 'TBC100', staff: 'Dr A', date: '2026-02-10', amount: 900 })];
+    const invoiceShares = shares(sales);
+
+    const july = computeProviderCollections([payment({ invoiceNo: 'TBC100', date: '2026-07-15', amount: 300 })], invoiceShares, RANGE);
+    expect(cashCollectedFor(july, 'Dr A')).toBe(300);
+    expect(july.unattributed).toEqual([]);
+
+    // The same invoice's next instalment falls in a different month and must not appear in July's.
+    const august = computeProviderCollections(
+      [payment({ invoiceNo: 'TBC100', date: '2026-08-15', amount: 300 })],
+      invoiceShares,
+      { start: '2026-08-01', end: '2026-08-31' },
+    );
+    expect(cashCollectedFor(august, 'Dr A')).toBe(300);
+    expect(cashCollectedFor(july, 'Dr A')).toBe(300);
+  });
+
+  it('finds the seller however long ago the sale was', () => {
+    const sales = [makeSale({ invoiceNo: 'TBC100', staff: 'Dr A', date: '2024-03-01', amount: 500 })];
+    const result = computeProviderCollections([payment({ invoiceNo: 'TBC100', amount: 500 })], shares(sales), RANGE);
+    expect(cashCollectedFor(result, 'Dr A')).toBe(500);
+  });
+});
+
+describe('invoiceNumberRanges', () => {
+  it('spans the lowest and highest number per prefix', () => {
+    const ranges = invoiceNumberRanges([
+      makeSale({ invoiceNo: 'TBC100' }), makeSale({ invoiceNo: 'TBC26993' }), makeSale({ invoiceNo: 'ABC7' }),
+    ]);
+    expect(ranges.get('TBC')).toEqual({ min: 100, max: 26993 });
+    expect(ranges.get('ABC')).toEqual({ min: 7, max: 7 });
+  });
+
+  it('skips invoice numbers it cannot parse rather than mangling them', () => {
+    expect(invoiceNumberRanges([makeSale({ invoiceNo: 'TBC-1/2' })]).size).toBe(0);
   });
 });
 

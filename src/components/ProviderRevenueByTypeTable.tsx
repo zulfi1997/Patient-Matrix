@@ -127,19 +127,21 @@ export function ProviderRevenueByTypeTable({
           {formatNumber(collections.unattributedPayments)} payment(s) whose invoice is not in your sales data. It is
           inside the All Providers total, as it should be, but sits in no provider's row, so the rows above add up to{' '}
           {formatCurrency(collections.totalCash - collections.unattributedCash)}.{' '}
-          {collections.salesSpan && (
+          {collections.unattributedByReason.withinImportedRange > 0 ? (
             <>
-              Your sales data runs {collections.salesSpan.start} to {collections.salesSpan.end}
-              {collections.unattributedByReason.afterSalesData > 0 &&
-                `; ${formatNumber(collections.unattributedByReason.afterSalesData)} of these were collected after it ends, so import newer sales and they will resolve`}
-              {collections.unattributedByReason.beforeSalesData > 0 &&
-                `; ${formatNumber(collections.unattributedByReason.beforeSalesData)} before it begins`}
-              {collections.unattributedByReason.insideSalesWindow > 0
-                ? `; ${formatNumber(collections.unattributedByReason.insideSalesWindow)} fall inside the window and are a genuine gap worth checking`
-                : '. None fall inside the window, so nothing here is missing from your data'}
-              .{' '}
+              {formatNumber(collections.unattributedByReason.withinImportedRange)} of them are numbered inside the range
+              your sales data already covers
+              {collections.salesSpan && ` (${collections.salesSpan.start} to ${collections.salesSpan.end})`}, so those
+              are a genuine gap worth checking. The rest are outside it and will resolve once you import sales covering
+              them.
             </>
-          )}
+          ) : (
+            <>
+              None are numbered inside the range your sales data covers
+              {collections.salesSpan && ` (${collections.salesSpan.start} to ${collections.salesSpan.end})`}, so nothing
+              is missing from your data - they will resolve once you import sales covering those invoices.
+            </>
+          )}{' '}
           The Excel export lists them individually on a "Collections Unmatched" sheet, each with the reason.
         </p>
       )}

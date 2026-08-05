@@ -82,19 +82,73 @@ export function salesDateSpan(salesRecords: SaleRecord[]): SalesSpan | null {
 }
 
 /**
- * Why a payment could not be attributed. The distinction is the whole point: a payment settling an
- * invoice raised outside the imported sales window has nothing to match against and needs a wider
- * sales import, whereas one inside the window is a genuine gap worth investigating. Reporting both
- * as simply "unmatched" invites the wrong conclusion - it did here.
+ * The span of invoice *numbers* present in the sales data, per prefix.
+ *
+ * This, not the collection date, is what can tell a missing invoice from an un-imported one. A
+ * payment's date says almost nothing about its invoice's: instalments mean money arrives months
+ * after the sale, so "collected after the sales data ends" does not imply the invoice is after it
+ * too. The invoice number does imply it - Zenoti allocates them sequentially, so a number above
+ * everything imported was raised later, and one sitting inside the range should have been there.
  */
-export type UnmatchedReason = 'afterSalesData' | 'beforeSalesData' | 'insideSalesWindow' | 'noSalesData';
+export type InvoiceNumberRanges = Map<string, { min: number; max: number }>;
+
+const INVOICE_PATTERN = /^([A-Za-z]*)(\d+)$/;
+
+export function invoiceNumberRanges(salesRecords: SaleRecord[]): InvoiceNumberRanges {
+  const ranges: InvoiceNumberRanges = new Map();
+  for (const r of salesRecords) {
+    const m = INVOICE_PATTERN.exec(r.invoiceNo.trim());
+    if (!m) continue;
+    const prefix = m[1].toUpperCase();
+    const n = Number(m[2]);
+    const range = ranges.get(prefix);
+    if (!range) ranges.set(prefix, { min: n, max: n });
+    else {
+      if (n < range.min) range.min = n;
+      if (n > range.max) range.max = n;
+    }
+  }
+  return ranges;
+}
+
+/**
+ * Why a payment could not be attributed.
+ *
+ * The distinction that matters is whether a wider sales import would fix it. An invoice numbered
+ * beyond everything imported has simply not been imported yet; one numbered inside the imported
+ * range is a genuine gap. Only the second deserves anyone's attention.
+ */
+export type UnmatchedReason =
+  | 'beyondImportedRange'
+  | 'belowImportedRange'
+  | 'withinImportedRange'
+  | 'unrecognizedInvoiceNo'
+  | 'noSalesData';
 
 export const UNMATCHED_REASON_LABELS: Record<UnmatchedReason, string> = {
-  afterSalesData: 'Invoice dated after the imported sales data ends',
-  beforeSalesData: 'Invoice dated before the imported sales data begins',
-  insideSalesWindow: 'Inside the sales window - genuinely missing',
+  beyondImportedRange: 'Invoice raised after the imported sales data - import newer sales',
+  belowImportedRange: 'Invoice raised before the imported sales data - import older sales',
+  withinImportedRange: 'Invoice number falls inside the imported range - genuinely missing',
+  unrecognizedInvoiceNo: 'Invoice number not comparable to the imported sales data',
   noSalesData: 'No sales data imported',
 };
+
+/** True only for the reason a wider import would not fix. */
+export function needsInvestigation(reason: UnmatchedReason): boolean {
+  return reason === 'withinImportedRange';
+}
+
+export function classifyUnmatched(invoiceNo: string, ranges: InvoiceNumberRanges): UnmatchedReason {
+  if (ranges.size === 0) return 'noSalesData';
+  const m = INVOICE_PATTERN.exec(invoiceNo.trim());
+  if (!m) return 'unrecognizedInvoiceNo';
+  const range = ranges.get(m[1].toUpperCase());
+  if (!range) return 'unrecognizedInvoiceNo';
+  const n = Number(m[2]);
+  if (n > range.max) return 'beyondImportedRange';
+  if (n < range.min) return 'belowImportedRange';
+  return 'withinImportedRange';
+}
 
 export interface UnmatchedPayment {
   payment: CollectionRecord;
@@ -146,6 +200,10 @@ function emptyStat(provider: string): ProviderCollectionStat {
  * Cash collected per provider over a date range, by collection date rather than sale date - the
  * point of this figure is when the money arrived, which is often not when the sale was recognized.
  *
+ * An instalment is the ordinary case, not an edge case: money for a June invoice arriving in August
+ * counts in August, credited to whoever sold that June invoice. Shares are therefore built from the
+ * whole sales history, never the period, so the seller is found however long ago the sale was.
+ *
  * Package, gift-card and prepaid-card settlements are reported separately and deliberately kept
  * out of the cash figure: that money was collected when the package or card was bought, and
  * counting it again as it is consumed would book the same cash twice.
@@ -155,13 +213,17 @@ export function computeProviderCollections(
   invoiceShares: Map<string, InvoiceProviderShare[]>,
   range: DateRange,
   salesSpan: SalesSpan | null = null,
+  invoiceRanges: InvoiceNumberRanges = new Map(),
 ): CollectionSummary {
   const byProvider = new Map<string, ProviderCollectionStat>();
   const invoicesSeen = new Map<string, Set<string>>();
   const summary: CollectionSummary = {
     providers: [],
     unattributed: [],
-    unattributedByReason: { afterSalesData: 0, beforeSalesData: 0, insideSalesWindow: 0, noSalesData: 0 },
+    unattributedByReason: {
+      beyondImportedRange: 0, belowImportedRange: 0, withinImportedRange: 0,
+      unrecognizedInvoiceNo: 0, noSalesData: 0,
+    },
     salesSpan,
     unattributedCash: 0,
     unattributedRedemption: 0,
@@ -178,16 +240,7 @@ export function computeProviderCollections(
 
     const shares = invoiceShares.get(c.invoiceNo);
     if (!shares || shares.length === 0) {
-      // Dated by the collection, since the invoice's own date is unknown - it is precisely the row
-      // that could not be found. A payment cannot precede its invoice, so a collection after the
-      // sales data ends means the invoice is after it too.
-      const reason: UnmatchedReason = !salesSpan
-        ? 'noSalesData'
-        : c.date > salesSpan.end
-          ? 'afterSalesData'
-          : c.date < salesSpan.start
-            ? 'beforeSalesData'
-            : 'insideSalesWindow';
+      const reason = classifyUnmatched(c.invoiceNo, invoiceRanges);
       summary.unattributed.push({ payment: c, reason });
       summary.unattributedByReason[reason] += 1;
       if (cash) summary.unattributedCash += c.amount;

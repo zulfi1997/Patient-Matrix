@@ -24,7 +24,7 @@ import {
   type ProviderRevenueByType,
 } from './providerRevenueByType';
 import { COLLECTION_METHOD_LABELS, isCashCollection } from './collectionsParser';
-import { UNMATCHED_REASON_LABELS, type CollectionSummary } from './collections';
+import { needsInvestigation, UNMATCHED_REASON_LABELS, type CollectionSummary } from './collections';
 import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
 
 export interface WorkbookParams {
@@ -168,7 +168,7 @@ function unattributedRows(c: CollectionSummary): Record<string, string | number>
       Month: r.date.slice(0, 7),
       'Invoice No': r.invoiceNo,
       'Why Unmatched': UNMATCHED_REASON_LABELS[reason],
-      'Needs Action': reason === 'insideSalesWindow' ? 'Yes' : 'No - widen the sales import',
+      'Needs Action': needsInvestigation(reason) ? 'Yes' : 'No - widen the sales import',
       'Patient ID': r.patientId,
       Patient: r.patientName,
       'Payment Type': r.paymentType,
