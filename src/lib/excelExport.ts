@@ -16,6 +16,12 @@ import type {
 import { isInRange } from './metrics';
 import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
 import { hasFlaggedNote } from './filters';
+import {
+  REVENUE_TYPE_LABELS,
+  totalRevenueByType,
+  visibleRevenueTypeKeys,
+  type ProviderRevenueByType,
+} from './providerRevenueByType';
 import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
 
 export interface WorkbookParams {
@@ -35,6 +41,7 @@ export interface WorkbookParams {
   agingBucketSummary: AgingBucketStat[];
   atRiskPatients: AtRiskPatient[];
   returnedPatients: ReturnedPatient[];
+  revenueByType: ProviderRevenueByType[];
   /** Records already filtered the same way the dashboard filters them. */
   records: SaleRecord[];
   patients: Map<string, PatientVisitSummary>;
@@ -79,7 +86,32 @@ function readMeRows(p: WorkbookParams): Record<string, string>[] {
       Item: 'Invoice Ageing',
       Detail: 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.',
     },
+    {
+      Item: 'Refunds',
+      Detail: 'The sales export has no refund item type. A refund is the original line reversed - same Item Type, negative quantity and amount - so the Revenue By Type sheet splits sales from refunds by the sign of the line, and refunds stay negative so the columns add up.',
+    },
   ];
+}
+
+/**
+ * One row per provider, revenue split by what was sold and whether it was a sale or a reversal.
+ * Sale and refund stay in separate columns rather than netted, since a provider who sold little
+ * and one who sold plenty and had it handed back are the same number once they are netted.
+ */
+function revenueByTypeRows(p: WorkbookParams): Record<string, string | number>[] {
+  const total = totalRevenueByType(p.revenueByType);
+  const keys = visibleRevenueTypeKeys(total);
+  const row = (r: ProviderRevenueByType) => ({
+    Provider: r.provider,
+    ...Object.fromEntries(keys.flatMap((k) => [
+      [REVENUE_TYPE_LABELS[k], money(r.amounts[k])],
+      [`${REVENUE_TYPE_LABELS[k]} Lines`, r.lines[k]],
+    ])),
+    'Net Revenue': money(r.netRevenue),
+    'Package Redeemed': money(r.redeemed),
+    'Delivered Value': money(r.deliveredValue),
+  });
+  return [...p.revenueByType.map(row), row(total)];
 }
 
 function summaryRows(p: WorkbookParams): Record<string, string | number>[] {
@@ -177,6 +209,7 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
         'Line Items': t.transactions,
       })),
     },
+    { name: 'Revenue By Type', rows: revenueByTypeRows(p) },
     {
       name: 'Services',
       rows: p.services.map((s) => ({

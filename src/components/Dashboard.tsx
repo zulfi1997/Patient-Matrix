@@ -21,6 +21,8 @@ import type { DeckConfig } from '../lib/deckSections';
 import { DeckBuilder } from './DeckBuilder';
 import { exportDashboardWorkbook } from '../lib/excelExport';
 import type { ProviderAssignmentOverride, ProviderGroup } from '../lib/conversionMetrics';
+import { computeProviderRevenueByType } from '../lib/providerRevenueByType';
+import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -110,6 +112,11 @@ export function Dashboard({
 
   const redeemedPackages = useMemo(() => computeRedeemedPackages(records, range), [records, range]);
 
+  const revenueByType = useMemo(
+    () => computeProviderRevenueByType(records, range, providerGroups, providerAssignmentOverrides),
+    [records, range, providerGroups, providerAssignmentOverrides],
+  );
+
   const discountSummary = useMemo(() => computeDiscountSummary(records, range), [records, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(records, range), [records, range]);
   const discountDetails = useMemo(() => computeDiscountDetails(records, range), [records, range]);
@@ -125,7 +132,7 @@ export function Dashboard({
         periodLabel: PRESET_LABELS[preset],
         range, asOfISO, inactivityDays, serviceType,
         kpis, discountSummary, discountBreakdown, discountDetails,
-        trend, services: serviceStats, redeemedPackages,
+        trend, services: serviceStats, redeemedPackages, revenueByType,
         invoiceAging, agingBucketSummary,
         atRiskPatients, returnedPatients,
         records, patients, providerGroups, providerAssignmentOverrides,
@@ -295,6 +302,8 @@ export function Dashboard({
           help="Total Discount divided by gross sales before any discount was applied (Price, not Sales Exc. Tax) - i.e. how much of the original sticker price was given away this period."
         />
       </div>
+
+      <ProviderRevenueByTypeTable data={revenueByType} />
 
       <RedeemedPackagesTable data={redeemedPackages} />
 

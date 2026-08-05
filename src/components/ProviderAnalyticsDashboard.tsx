@@ -36,6 +36,13 @@ import { PRESET_LABELS, resolvePreset, type PresetKey } from '../lib/dateRanges'
 import { formatCurrency, formatDate, formatNumber, formatPercent, toISODate } from '../lib/format';
 import { money, pct, type WorkbookSheet } from '../lib/workbook';
 import { contextSheet, conversionSheets } from '../lib/dashboardExports';
+import {
+  computeProviderRevenueByType,
+  REVENUE_TYPE_LABELS,
+  visibleRevenueTypeKeys,
+  totalRevenueByType,
+} from '../lib/providerRevenueByType';
+import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
@@ -138,6 +145,10 @@ export function ProviderAnalyticsDashboard({
   );
   const serviceStats = useMemo(() => computeServiceStats(providerRecords, range, serviceType), [providerRecords, range, serviceType]);
   const redeemedPackages = useMemo(() => computeRedeemedPackages(providerRecords, range), [providerRecords, range]);
+  const revenueByType = useMemo(
+    () => computeProviderRevenueByType(providerRecords, range, providerGroups, providerAssignmentOverrides),
+    [providerRecords, range, providerGroups, providerAssignmentOverrides],
+  );
   const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);
   const flagged = useMemo(() => computeFlaggedSummary(providerRecords, range), [providerRecords, range]);
@@ -257,6 +268,22 @@ export function ProviderAnalyticsDashboard({
       })),
     },
     { name: 'Departments', rows: departmentRows.map((d) => ({ Department: d.department, Revenue: money(d.revenue), Transactions: d.transactions })) },
+    {
+      // One row per bucket rather than one wide row, since a single-provider workbook reads better
+      // down the page than across it.
+      name: 'Revenue By Type',
+      rows: (() => {
+        const total = totalRevenueByType(revenueByType);
+        return [
+          ...visibleRevenueTypeKeys(total).map((k) => ({
+            Type: REVENUE_TYPE_LABELS[k], Revenue: money(total.amounts[k]), 'Line Items': total.lines[k],
+          })),
+          { Type: 'Net Revenue', Revenue: money(total.netRevenue), 'Line Items': '' },
+          { Type: 'Package Redeemed (not revenue)', Revenue: money(total.redeemed), 'Line Items': '' },
+          { Type: 'Delivered Value', Revenue: money(total.deliveredValue), 'Line Items': '' },
+        ];
+      })(),
+    },
     ...conversionSheets({
       providers: conversion ? [conversion] : [],
       patientRows: conversionRows,
@@ -505,6 +532,8 @@ export function ProviderAnalyticsDashboard({
           )}
         </div>
       </div>
+
+      <ProviderRevenueByTypeTable data={revenueByType} />
 
       <RedeemedPackagesTable data={redeemedPackages} />
       <DiscountsBreakdownTable data={discountBreakdown} />
