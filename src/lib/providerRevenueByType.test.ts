@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { computeProviderRevenueByType, totalRevenueByType, visibleRevenueTypeKeys } from './providerRevenueByType';
+import {
+  computeProviderRevenueByType,
+  hasUntypedAdjustment,
+  totalRevenueByType,
+  visibleRevenueTypeKeys,
+} from './providerRevenueByType';
+import type { RevenueAdjustment } from './conversionMetrics';
 import { makeSale } from '../test/fixtures';
 import type { DateRange } from './metrics';
 
 const RANGE: DateRange = { start: '2026-07-01', end: '2026-07-31' };
 const compute = (rows: Parameters<typeof computeProviderRevenueByType>[0], groups = [], overrides = []) =>
   computeProviderRevenueByType(rows, RANGE, groups, overrides);
+
+const adjustment = (over: Partial<RevenueAdjustment> = {}): RevenueAdjustment => ({
+  id: 'a1', date: '2026-07-15', fromProvider: 'Dr A', toProvider: 'Dr B', amount: 200, note: '', ...over,
+});
+
+const withAdjustments = (rows: Parameters<typeof computeProviderRevenueByType>[0], adjustments: RevenueAdjustment[]) =>
+  computeProviderRevenueByType(rows, RANGE, [], [], adjustments);
+
+const find = (result: ReturnType<typeof compute>, provider: string) => result.find((r) => r.provider === provider)!;
 
 describe('computeProviderRevenueByType', () => {
   it('splits a reversal out of the sale column instead of netting it away', () => {
@@ -121,5 +136,64 @@ describe('visibleRevenueTypeKeys', () => {
     const total = totalRevenueByType(compute([makeSale({ staff: 'Dr A', itemType: 'Membership', amount: 10 })]));
     expect(visibleRevenueTypeKeys(total)).toContain('other');
     expect(total.amounts.other).toBe(10);
+  });
+});
+
+describe('revenue adjustments in the type breakdown', () => {
+  const sales = () => [
+    makeSale({ staff: 'Dr A', itemType: 'Service', amount: 1000 }),
+    makeSale({ staff: 'Dr B', itemType: 'Service', amount: 500 }),
+  ];
+
+  it('moves the named column when the adjustment states a type', () => {
+    const result = withAdjustments(sales(), [adjustment({ itemType: 'service' })]);
+    expect(find(result, 'Dr A').amounts.service).toBe(800);
+    expect(find(result, 'Dr B').amounts.service).toBe(700);
+    // Nothing lands in the catch-all column, so it stays hidden.
+    expect(hasUntypedAdjustment(result)).toBe(false);
+  });
+
+  it('can move a column other than the one the revenue was earned in', () => {
+    // The correction says the 200 belonged to a product sale; the app has no business overriding
+    // that with a guess drawn from where the money currently sits.
+    const result = withAdjustments(sales(), [adjustment({ itemType: 'product' })]);
+    expect(find(result, 'Dr A')).toMatchObject({ netRevenue: 800 });
+    expect(find(result, 'Dr A').amounts.service).toBe(1000);
+    expect(find(result, 'Dr A').amounts.product).toBe(-200);
+  });
+
+  it('holds an untyped adjustment in its own column rather than guessing a type', () => {
+    const result = withAdjustments(sales(), [adjustment()]);
+    expect(hasUntypedAdjustment(result)).toBe(true);
+    expect(find(result, 'Dr A')).toMatchObject({ adjustment: -200, netRevenue: 800 });
+    expect(find(result, 'Dr B')).toMatchObject({ adjustment: 200, netRevenue: 700 });
+    // The type columns still report what the source data actually said.
+    expect(find(result, 'Dr A').amounts.service).toBe(1000);
+  });
+
+  it('leaves the clinic-wide total untouched, since an adjustment only moves revenue sideways', () => {
+    const unadjusted = totalRevenueByType(compute(sales()));
+    for (const adj of [[adjustment()], [adjustment({ itemType: 'service' })]]) {
+      const total = totalRevenueByType(withAdjustments(sales(), adj));
+      expect(total.netRevenue).toBe(unadjusted.netRevenue);
+      expect(total.deliveredValue).toBe(unadjusted.deliveredValue);
+    }
+  });
+
+  it('ignores an adjustment dated outside the period', () => {
+    const result = withAdjustments(sales(), [adjustment({ date: '2026-08-01' })]);
+    expect(find(result, 'Dr A').netRevenue).toBe(1000);
+  });
+
+  it('creates a row for a provider who only appears in an adjustment', () => {
+    const result = withAdjustments(sales(), [adjustment({ toProvider: 'Dr C' })]);
+    expect(find(result, 'Dr C')).toMatchObject({ adjustment: 200, netRevenue: 200, redeemed: 0 });
+  });
+
+  it('resolves an adjustment through provider groups, like everything else', () => {
+    const groups = [{ id: 'g1', canonicalName: 'Dr B', aliases: ['Nurse Reni'] }];
+    const result = computeProviderRevenueByType(sales(), RANGE, groups, [], [adjustment({ toProvider: 'Nurse Reni' })]);
+    expect(result.map((r) => r.provider).sort()).toEqual(['Dr A', 'Dr B']);
+    expect(find(result, 'Dr B').netRevenue).toBe(700);
   });
 });

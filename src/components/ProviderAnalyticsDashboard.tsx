@@ -145,9 +145,13 @@ export function ProviderAnalyticsDashboard({
   );
   const serviceStats = useMemo(() => computeServiceStats(providerRecords, range, serviceType), [providerRecords, range, serviceType]);
   const redeemedPackages = useMemo(() => computeRedeemedPackages(providerRecords, range), [providerRecords, range]);
+  // Filtered after the fact, not before: an adjustment moving revenue *to* this provider comes
+  // from someone else, and computing it here would otherwise leave that other provider's row
+  // sitting on a single-provider tab.
   const revenueByType = useMemo(
-    () => computeProviderRevenueByType(providerRecords, range, providerGroups, providerAssignmentOverrides),
-    [providerRecords, range, providerGroups, providerAssignmentOverrides],
+    () => computeProviderRevenueByType(providerRecords, range, providerGroups, providerAssignmentOverrides, revenueAdjustments)
+      .filter((r) => r.provider === selected),
+    [providerRecords, range, providerGroups, providerAssignmentOverrides, revenueAdjustments, selected],
   );
   const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);

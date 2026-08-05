@@ -1,6 +1,7 @@
 import type { PackageBenefitRecord, SaleRecord } from '../types';
 import { hasFlaggedNote } from './filters';
 import type { DateRange, PatientVisitSummary } from './metrics';
+import type { RevenueTypeKey } from './revenueTypes';
 import { toISODate } from './format';
 
 /**
@@ -65,6 +66,14 @@ export interface RevenueAdjustment {
   toProvider: string;
   amount: number;
   note: string;
+  /**
+   * Which column of the Revenue by Type breakdown the move belongs in. Optional: adjustments
+   * predate this field, and a correction is not always about one type. Left unset, the move still
+   * lands in both providers' totals but sits in its own Adjustment column rather than being
+   * attributed to a type nobody stated. Conversion's own Revenue figure ignores this either way -
+   * it has no type split to place it in.
+   */
+  itemType?: RevenueTypeKey;
 }
 
 /**

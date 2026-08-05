@@ -17,6 +17,7 @@ import { isInRange } from './metrics';
 import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
 import { hasFlaggedNote } from './filters';
 import {
+  hasUntypedAdjustment,
   REVENUE_TYPE_LABELS,
   totalRevenueByType,
   visibleRevenueTypeKeys,
@@ -87,6 +88,10 @@ function readMeRows(p: WorkbookParams): Record<string, string>[] {
       Detail: 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.',
     },
     {
+      Item: 'Revenue Adjustments',
+      Detail: 'Master Control corrections are applied per provider. One that names an item type moves that column; one that does not sits in an Adjustment column rather than being attributed to a type nobody stated. The All Providers row is unaffected either way, since an adjustment only moves revenue between two providers.',
+    },
+    {
       Item: 'Refunds',
       Detail: 'The sales export has no refund item type. A refund is the original line reversed - same Item Type, negative quantity and amount - so the Revenue By Type sheet splits sales from refunds by the sign of the line, and refunds stay negative so the columns add up.',
     },
@@ -101,12 +106,14 @@ function readMeRows(p: WorkbookParams): Record<string, string>[] {
 function revenueByTypeRows(p: WorkbookParams): Record<string, string | number>[] {
   const total = totalRevenueByType(p.revenueByType);
   const keys = visibleRevenueTypeKeys(total);
+  const showAdjustment = hasUntypedAdjustment(p.revenueByType);
   const row = (r: ProviderRevenueByType) => ({
     Provider: r.provider,
     ...Object.fromEntries(keys.flatMap((k) => [
       [REVENUE_TYPE_LABELS[k], money(r.amounts[k])],
       [`${REVENUE_TYPE_LABELS[k]} Lines`, r.lines[k]],
     ])),
+    ...(showAdjustment ? { Adjustment: money(r.adjustment) } : {}),
     'Net Revenue': money(r.netRevenue),
     'Package Redeemed': money(r.redeemed),
     'Delivered Value': money(r.deliveredValue),

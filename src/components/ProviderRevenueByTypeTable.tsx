@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { formatCurrency, formatNumber } from '../lib/format';
 import { InfoTooltip } from './InfoTooltip';
 import {
+  hasUntypedAdjustment,
   REVENUE_TYPE_LABELS,
   totalRevenueByType,
   visibleRevenueTypeKeys,
@@ -17,6 +18,7 @@ import {
 export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByType[] }) {
   const total = useMemo(() => totalRevenueByType(data), [data]);
   const keys = useMemo(() => visibleRevenueTypeKeys(total), [total]);
+  const showAdjustment = useMemo(() => hasUntypedAdjustment(data), [data]);
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid dark:border-zinc-800 dark:bg-zinc-900">
@@ -25,10 +27,12 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
         <InfoTooltip text="The sales export has no refund item type - a refund is the original line reversed, carrying the same Item Type with a negative quantity and amount. Sales and refunds are therefore split by the sign of the line. Refund columns are shown as negatives, exactly as they arrive, so each row's columns add up to its Net Revenue." />
       </h3>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-        Net Revenue is the sum of the columns to its left and matches the Revenue figure at the top of this dashboard.
-        Package Redeemed sits outside it - those sessions were already recognized as revenue when the package was sold -
+        Net Revenue is the sum of the columns to its left, and the All Providers row matches the Revenue figure at the
+        top of this dashboard. Package Redeemed sits outside it - those sessions were already recognized as revenue when the package was sold -
         and the two together give Delivered Value, what the provider actually performed. Assisting staff fold into
-        whichever doctor they assisted, per your Provider Groups.
+        whichever doctor they assisted, per your Provider Groups. Master Control Revenue Adjustments are applied here
+        too: one that names a type moves that column, one that does not shows separately, and either way the
+        All Providers row is unchanged, since an adjustment only moves revenue between two providers.
       </p>
       {data.length === 0 ? (
         <p className="py-6 text-center text-sm text-zinc-500">No revenue recorded in this period.</p>
@@ -41,6 +45,7 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
                 {keys.map((k) => (
                   <th key={k} className="break-words py-2 pr-2 text-right align-bottom">{REVENUE_TYPE_LABELS[k]}</th>
                 ))}
+                {showAdjustment && <th className="break-words py-2 pr-2 text-right align-bottom">Adjustment</th>}
                 <th className="py-2 pr-2 text-right align-bottom">Net Revenue</th>
                 <th className="break-words py-2 pr-2 text-right align-bottom">Package Redeemed</th>
                 <th className="break-words py-2 pr-2 text-right align-bottom">Delivered Value</th>
@@ -61,6 +66,14 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
                       {row.amounts[k] === 0 && row.lines[k] === 0 ? '—' : formatCurrency(row.amounts[k])}
                     </td>
                   ))}
+                  {showAdjustment && (
+                    <td
+                      className={`py-1.5 pr-2 text-right tabular-nums ${row.adjustment < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-700 dark:text-zinc-300'}`}
+                      title="Master Control adjustments that named no item type"
+                    >
+                      {row.adjustment === 0 ? '\u2014' : formatCurrency(row.adjustment)}
+                    </td>
+                  )}
                   <td className="py-1.5 pr-2 text-right font-semibold tabular-nums">{formatCurrency(row.netRevenue)}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums text-zinc-500 dark:text-zinc-400">{formatCurrency(row.redeemed)}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(row.deliveredValue)}</td>
@@ -75,6 +88,7 @@ export function ProviderRevenueByTypeTable({ data }: { data: ProviderRevenueByTy
                     {formatCurrency(total.amounts[k])}
                   </td>
                 ))}
+                {showAdjustment && <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.adjustment)}</td>}
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.netRevenue)}</td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.redeemed)}</td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.deliveredValue)}</td>

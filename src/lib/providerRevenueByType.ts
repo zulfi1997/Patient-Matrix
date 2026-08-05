@@ -1,6 +1,7 @@
 import type { SaleRecord } from '../types';
 import { isInRange, type DateRange } from './metrics';
-import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
+import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup, type RevenueAdjustment } from './conversionMetrics';
+import { REVENUE_TYPE_KEYS, type RevenueTypeKey } from './revenueTypes';
 
 /**
  * The Zenoti sales export has no "refund" item type. A refund is the original line reversed -
@@ -8,29 +9,7 @@ import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } 
  * here by the sign of the line rather than by a column, which is also how `packageSales` in
  * kpiRegistry already reads them.
  */
-export const REVENUE_TYPE_KEYS = [
-  'service',
-  'serviceRefund',
-  'product',
-  'productRefund',
-  'package',
-  'packageRefund',
-  'other',
-  'otherRefund',
-] as const;
-
-export type RevenueTypeKey = (typeof REVENUE_TYPE_KEYS)[number];
-
-export const REVENUE_TYPE_LABELS: Record<RevenueTypeKey, string> = {
-  service: 'Service',
-  serviceRefund: 'Service Refund',
-  product: 'Product',
-  productRefund: 'Product Refund',
-  package: 'Package',
-  packageRefund: 'Package Refund',
-  other: 'Other',
-  otherRefund: 'Other Refund',
-};
+export { REVENUE_TYPE_KEYS, REVENUE_TYPE_LABELS, type RevenueTypeKey } from './revenueTypes';
 
 export interface ProviderRevenueByType {
   provider: string;
@@ -38,7 +17,16 @@ export interface ProviderRevenueByType {
   amounts: Record<RevenueTypeKey, number>;
   /** Line count per bucket, so a large figure can be told apart from a frequent one. */
   lines: Record<RevenueTypeKey, number>;
-  /** Sum of every bucket above - equals this provider's Revenue KPI for the period. */
+  /**
+   * Net effect of Master Control Revenue Adjustments that named no item type, so there was no
+   * column to move. Adjustments that did name one are already inside `amounts` instead.
+   */
+  adjustment: number;
+  /**
+   * Sum of every bucket above plus `adjustment` - the same adjusted basis the Provider Conversion
+   * tab reports. Adjustments only move revenue between providers, so the All Providers total is
+   * unaffected by them and still equals the dashboard's Revenue figure.
+   */
   netRevenue: number;
   /**
    * Value of previously-sold package sessions this provider consumed. Recognized as revenue when
@@ -77,18 +65,21 @@ export function computeProviderRevenueByType(
   range: DateRange,
   providerGroups: ProviderGroup[],
   overrides: ProviderAssignmentOverride[],
+  revenueAdjustments: RevenueAdjustment[] = [],
 ): ProviderRevenueByType[] {
   const byProvider = new Map<string, ProviderRevenueByType>();
+  const rowFor = (provider: string) => {
+    let row = byProvider.get(provider);
+    if (!row) {
+      row = { provider, amounts: zeroed(), lines: zeroed(), adjustment: 0, netRevenue: 0, redeemed: 0, deliveredValue: 0 };
+      byProvider.set(provider, row);
+    }
+    return row;
+  };
 
   for (const r of records) {
     if (!isInRange(r.date, range)) continue;
-    const provider = resolveProvider(r.staff, r.date, providerGroups, overrides) || 'Unassigned';
-
-    let row = byProvider.get(provider);
-    if (!row) {
-      row = { provider, amounts: zeroed(), lines: zeroed(), netRevenue: 0, redeemed: 0, deliveredValue: 0 };
-      byProvider.set(provider, row);
-    }
+    const row = rowFor(resolveProvider(r.staff, r.date, providerGroups, overrides));
 
     const bucket = bucketFor(r);
     row.amounts[bucket] += r.amount;
@@ -96,6 +87,22 @@ export function computeProviderRevenueByType(
     row.netRevenue += r.amount;
     row.redeemed += r.redeemedAmount;
     row.deliveredValue += r.amount + r.redeemedAmount;
+  }
+
+  // The same manual corrections the Provider Conversion tab applies, so the two tabs agree on what
+  // a provider earned. An adjustment that names an item type moves that column; one that does not
+  // lands in its own Adjustment column rather than being attributed to a type nobody stated.
+  // Either way it only moves revenue between two providers, so the clinic-wide total is unchanged.
+  for (const adj of revenueAdjustments) {
+    if (!isInRange(adj.date, range) || adj.amount === 0) continue;
+    const from = rowFor(resolveProvider(adj.fromProvider, adj.date, providerGroups, overrides));
+    const to = rowFor(resolveProvider(adj.toProvider, adj.date, providerGroups, overrides));
+    for (const [row, delta] of [[from, -adj.amount], [to, adj.amount]] as const) {
+      if (adj.itemType) row.amounts[adj.itemType] += delta;
+      else row.adjustment += delta;
+      row.netRevenue += delta;
+      row.deliveredValue += delta;
+    }
   }
 
   return [...byProvider.values()].sort((a, b) => b.netRevenue - a.netRevenue);
@@ -107,6 +114,7 @@ export function totalRevenueByType(rows: ProviderRevenueByType[]): ProviderReven
     provider: 'All Providers',
     amounts: zeroed(),
     lines: zeroed(),
+    adjustment: 0,
     netRevenue: 0,
     redeemed: 0,
     deliveredValue: 0,
@@ -116,11 +124,17 @@ export function totalRevenueByType(rows: ProviderRevenueByType[]): ProviderReven
       total.amounts[k] += row.amounts[k];
       total.lines[k] += row.lines[k];
     }
+    total.adjustment += row.adjustment;
     total.netRevenue += row.netRevenue;
     total.redeemed += row.redeemed;
     total.deliveredValue += row.deliveredValue;
   }
   return total;
+}
+
+/** True when any adjustment landed without an item type, so the extra column has something in it. */
+export function hasUntypedAdjustment(rows: ProviderRevenueByType[]): boolean {
+  return rows.some((r) => r.adjustment !== 0);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
+import { isRevenueTypeKey, REVENUE_TYPE_KEYS, REVENUE_TYPE_LABELS } from '../lib/revenueTypes';
 import { formatDate, formatNumber } from '../lib/format';
 
 function newId(): string {
@@ -276,6 +277,7 @@ function RevenueAdjustmentsEditor({
   const [fromProvider, setFromProvider] = useState('');
   const [toProvider, setToProvider] = useState('');
   const [amount, setAmount] = useState('');
+  const [itemType, setItemType] = useState('');
   const [note, setNote] = useState('');
 
   const addAdjustment = () => {
@@ -283,12 +285,16 @@ function RevenueAdjustmentsEditor({
     if (!date || !fromProvider.trim() || !toProvider.trim() || !Number.isFinite(amt) || amt <= 0) return;
     setAdjustments((prev) => [
       ...prev,
-      { id: newId(), date, fromProvider: fromProvider.trim(), toProvider: toProvider.trim(), amount: amt, note: note.trim() },
+      {
+        id: newId(), date, fromProvider: fromProvider.trim(), toProvider: toProvider.trim(), amount: amt,
+        note: note.trim(), ...(isRevenueTypeKey(itemType) ? { itemType } : {}),
+      },
     ]);
     setDate('');
     setFromProvider('');
     setToProvider('');
     setAmount('');
+    setItemType('');
     setNote('');
   };
 
@@ -297,8 +303,11 @@ function RevenueAdjustmentsEditor({
       <h4 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Revenue Adjustments</h4>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
         A manual, dated correction - e.g. "on 14/07/2026 remove OMR 500 revenue from Rini and allocate it to Meacy".
-        Only moves the Revenue figure shown on this dashboard for that date; never changes any patient's underlying
-        conversion category or visit count.
+        Only moves the Revenue figure for that date; never changes any patient's underlying conversion category or
+        visit count. Naming a type puts the move in that column of the Revenue by Type breakdown on the Dashboard and
+        Provider Analytics; leaving it unset still moves both providers' totals, but shows in a separate Adjustment
+        column rather than being attributed to a type you did not state. Either way the clinic-wide total is
+        unchanged, since the amount only moves between two providers.
       </p>
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
@@ -344,6 +353,19 @@ function RevenueAdjustmentsEditor({
           />
         </div>
         <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Type (optional)</label>
+          <select
+            value={itemType}
+            onChange={(e) => setItemType(e.target.value)}
+            className="mt-0.5 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          >
+            <option value="">Not specified</option>
+            {REVENUE_TYPE_KEYS.map((k) => (
+              <option key={k} value={k}>{REVENUE_TYPE_LABELS[k]}</option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="block text-xs text-zinc-500 dark:text-zinc-400">Note (optional)</label>
           <input
             value={note}
@@ -371,6 +393,7 @@ function RevenueAdjustmentsEditor({
               <th className="py-1.5 pr-2">From</th>
               <th className="py-1.5 pr-2">To</th>
               <th className="py-1.5 pr-2 text-right">Amount</th>
+              <th className="py-1.5 pr-2">Type</th>
               <th className="py-1.5 pr-2">Note</th>
               <th className="py-1.5 pr-2" />
             </tr>
@@ -384,6 +407,9 @@ function RevenueAdjustmentsEditor({
                   <td className="py-1.5 pr-2">{a.fromProvider}</td>
                   <td className="py-1.5 pr-2">{a.toProvider}</td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(a.amount)}</td>
+                  <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">
+                    {a.itemType ? REVENUE_TYPE_LABELS[a.itemType] : 'Not specified'}
+                  </td>
                   <td className="py-1.5 pr-2 text-zinc-500 dark:text-zinc-400">{a.note || '—'}</td>
                   <td className="py-1.5 pr-2 text-right">
                     <button

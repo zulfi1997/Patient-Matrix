@@ -234,6 +234,7 @@ function App() {
             excludeZeroValue={excludeZeroValue}
             providerGroups={providerGroups}
             providerAssignmentOverrides={providerAssignmentOverrides}
+            revenueAdjustments={revenueAdjustments}
           />
         ) : tab === 'newPatientRevenue' ? (
           <NewPatientRevenueDashboard records={analysisRecords} pnlLines={pnlLines} />
