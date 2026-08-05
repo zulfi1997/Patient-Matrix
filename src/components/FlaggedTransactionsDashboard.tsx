@@ -10,6 +10,7 @@ import {
   computeFlaggedTransactions,
   type DateRange,
 } from '../lib/metrics';
+import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from '../lib/conversionMetrics';
 import { formatCurrency, formatCurrencyCompact, formatNumber, toISODate } from '../lib/format';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -23,7 +24,15 @@ import { FlaggedDueInvoicesTable } from './FlaggedDueInvoicesTable';
 
 const TREND_MONTHS_BACK = 12;
 
-export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[] }) {
+export function FlaggedTransactionsDashboard({
+  records,
+  providerGroups,
+  providerAssignmentOverrides,
+}: {
+  records: SaleRecord[];
+  providerGroups: ProviderGroup[];
+  providerAssignmentOverrides: ProviderAssignmentOverride[];
+}) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-yb111-preset', 'ytd');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-yb111-custom-range', {
     start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
@@ -37,9 +46,16 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
 
   const range = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
 
-  const summary = useMemo(() => computeFlaggedSummary(records, range), [records, range]);
-  const transactions = useMemo(() => computeFlaggedTransactions(records, range), [records, range]);
-  const byStaff = useMemo(() => computeFlaggedByStaff(records, range), [records, range]);
+  // Same grouping every other tab uses, so an assisting nurse's flagged invoices count under the
+  // doctor she assisted rather than appearing as a provider of her own.
+  const resolveStaff = useMemo(
+    () => (r: SaleRecord) => resolveProvider(r.staff, r.date, providerGroups, providerAssignmentOverrides),
+    [providerGroups, providerAssignmentOverrides],
+  );
+
+  const summary = useMemo(() => computeFlaggedSummary(records, range, resolveStaff), [records, range, resolveStaff]);
+  const transactions = useMemo(() => computeFlaggedTransactions(records, range, resolveStaff), [records, range, resolveStaff]);
+  const byStaff = useMemo(() => computeFlaggedByStaff(records, range, resolveStaff), [records, range, resolveStaff]);
   const byService = useMemo(() => computeFlaggedByService(records, range), [records, range]);
   const trend = useMemo(
     () => computeFlaggedMonthlyTrend(records, TREND_MONTHS_BACK, asOfISO),
@@ -82,6 +98,7 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
                 ['Period', `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`],
                 ['Data as of', asOfISO],
                 ['Scope', 'Line items whose Invoice Notes contain "YB111". Shown regardless of the Exclude YB111 toggle, since that is this tab\'s purpose.'],
+                ['Staff', 'Canonical provider after Provider Groups and date-scoped overrides, so an assisting nurse counts under whichever doctor she assisted that day. The name on the line itself is kept as Raw Staff.'],
                 ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
               ]),
               ...flaggedSheets({ summary, transactions, byStaff, byService, trend, dueInvoices }),
@@ -117,7 +134,7 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
         <KpiCard
           label="Distinct Staff"
           value={formatNumber(summary.distinctStaff)}
-          help="Number of different staff members who sold at least one flagged line item in the selected period."
+          help="Number of different providers with at least one flagged line item in the selected period, counted after Provider Groups and date-scoped overrides - an assisting nurse counts under the doctor she assisted rather than as a provider of her own."
         />
         <KpiCard
           label="Due to Be Settled"
@@ -131,7 +148,12 @@ export function FlaggedTransactionsDashboard({ records }: { records: SaleRecord[
       <FlaggedTrendChart data={trend} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-1">
-        <FlaggedBreakdownTable title="By Staff" columnLabel="Staff" data={byStaff} />
+        <FlaggedBreakdownTable
+          title="By Staff"
+          columnLabel="Staff"
+          data={byStaff}
+          note="Grouped by canonical provider, so an assisting nurse's flagged invoices count under the doctor she assisted - configure this under Master Control on the Data tab."
+        />
         <FlaggedBreakdownTable title="By Service" columnLabel="Service" data={byService} />
       </div>
 

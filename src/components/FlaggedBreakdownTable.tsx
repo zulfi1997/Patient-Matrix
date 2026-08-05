@@ -5,14 +5,17 @@ export function FlaggedBreakdownTable({
   title,
   columnLabel,
   data,
+  note,
 }: {
   title: string;
   columnLabel: string;
   data: FlaggedBreakdownStat[];
+  note?: string;
 }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid print:bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">{title}</h3>
+      <h3 className={`text-sm font-semibold text-zinc-700 dark:text-zinc-200 ${note ? 'mb-1' : 'mb-3'}`}>{title}</h3>
+      {note && <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">{note}</p>}
       {data.length === 0 ? (
         <p className="py-8 text-center text-sm text-zinc-500">No flagged transactions in this period.</p>
       ) : (

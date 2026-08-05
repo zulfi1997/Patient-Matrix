@@ -109,7 +109,7 @@ export function flaggedSheets(p: {
       name: 'Transactions',
       rows: p.transactions.map((t) => ({
         Date: t.date, Month: t.date.slice(0, 7), 'Invoice No': t.invoiceNo,
-        'Patient ID': t.patientId, Patient: t.patientName, Staff: t.staff ?? '',
+        'Patient ID': t.patientId, Patient: t.patientName, Staff: t.staff, 'Raw Staff': t.rawStaff ?? '',
         'Item Type': t.itemType, Service: t.serviceName, Amount: money(t.amount), 'Invoice Notes': t.notes,
       })),
     },

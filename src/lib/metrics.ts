@@ -626,6 +626,18 @@ export function computeNewPatientTopServices(
     .sort((a, b) => b.patientCount - a.patientCount);
 }
 
+/**
+ * Maps a sale line to the name it should be counted under - normally the canonical provider, so
+ * an assisting nurse's invoices land on the doctor she assisted.
+ *
+ * Injected rather than imported: provider resolution lives in conversionMetrics, which already
+ * imports from this module, and taking it as a parameter keeps that dependency one-way. Callers
+ * that genuinely want the name on the line can leave it off.
+ */
+export type StaffResolver = (record: SaleRecord) => string;
+
+const rawStaffName: StaffResolver = (r) => r.staff ?? 'Unknown';
+
 export interface FlaggedSummary {
   count: number;
   amount: number;
@@ -634,10 +646,14 @@ export interface FlaggedSummary {
 }
 
 /** Summary of "YB111"-flagged line items within range. */
-export function computeFlaggedSummary(records: SaleRecord[], range: DateRange): FlaggedSummary {
+export function computeFlaggedSummary(
+  records: SaleRecord[],
+  range: DateRange,
+  resolveStaff: StaffResolver = rawStaffName,
+): FlaggedSummary {
   const flagged = records.filter((r) => hasFlaggedNote(r) && isInRange(r.date, range));
   const patients = new Set(flagged.map((r) => r.patientId));
-  const staff = new Set(flagged.map((r) => r.staff ?? 'Unknown'));
+  const staff = new Set(flagged.map(resolveStaff));
   return {
     count: flagged.length,
     amount: flagged.reduce((sum, r) => sum + r.amount, 0),
@@ -653,13 +669,20 @@ export interface FlaggedTransaction {
   serviceName: string;
   itemType: ItemType;
   amount: number;
-  staff: string | null;
+  /** Whoever this line counts under, after grouping. */
+  staff: string;
+  /** The name actually on the line, kept so a regrouped row can still be traced back to it. */
+  rawStaff: string | null;
   invoiceNo: string;
   notes: string;
 }
 
 /** Individual "YB111"-flagged line items within range, most recent first. */
-export function computeFlaggedTransactions(records: SaleRecord[], range: DateRange): FlaggedTransaction[] {
+export function computeFlaggedTransactions(
+  records: SaleRecord[],
+  range: DateRange,
+  resolveStaff: StaffResolver = rawStaffName,
+): FlaggedTransaction[] {
   return records
     .filter((r) => hasFlaggedNote(r) && isInRange(r.date, range))
     .map((r) => ({
@@ -669,7 +692,8 @@ export function computeFlaggedTransactions(records: SaleRecord[], range: DateRan
       serviceName: r.serviceName,
       itemType: r.itemType,
       amount: r.amount,
-      staff: r.staff,
+      staff: resolveStaff(r),
+      rawStaff: r.staff,
       invoiceNo: r.invoiceNo,
       notes: r.invoiceNotes ?? '',
     }))
@@ -702,8 +726,12 @@ function computeFlaggedBreakdown(
   return [...map.values()].sort((a, b) => b.count - a.count);
 }
 
-export function computeFlaggedByStaff(records: SaleRecord[], range: DateRange): FlaggedBreakdownStat[] {
-  return computeFlaggedBreakdown(records, range, (r) => r.staff ?? 'Unknown');
+export function computeFlaggedByStaff(
+  records: SaleRecord[],
+  range: DateRange,
+  resolveStaff: StaffResolver = rawStaffName,
+): FlaggedBreakdownStat[] {
+  return computeFlaggedBreakdown(records, range, resolveStaff);
 }
 
 export function computeFlaggedByService(records: SaleRecord[], range: DateRange): FlaggedBreakdownStat[] {

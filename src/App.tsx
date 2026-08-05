@@ -262,7 +262,11 @@ function App() {
             revenueAdjustments={revenueAdjustments}
           />
         ) : tab === 'yb111' ? (
-          <FlaggedTransactionsDashboard records={baseAnalysisRecords} />
+          <FlaggedTransactionsDashboard
+            records={baseAnalysisRecords}
+            providerGroups={providerGroups}
+            providerAssignmentOverrides={providerAssignmentOverrides}
+          />
         ) : tab === 'segmentPnl' ? (
           <SegmentPnlDashboard
             pnlLines={pnlLines}
