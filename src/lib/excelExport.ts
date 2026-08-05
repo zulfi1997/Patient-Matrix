@@ -23,7 +23,7 @@ import {
   visibleRevenueTypeKeys,
   type ProviderRevenueByType,
 } from './providerRevenueByType';
-import { COLLECTION_METHOD_LABELS, isCashCollection } from './collectionsParser';
+import { COLLECTION_METHOD_LABELS, isCashCollection, methodOf } from './collectionsParser';
 import {
   needsInvestigation,
   UNMATCHED_REASON_LABELS,
@@ -214,8 +214,8 @@ function unattributedRows(c: CollectionSummary): Record<string, string | number>
       'Patient ID': r.patientId,
       Patient: r.patientName,
       'Payment Type': r.paymentType,
-      Method: COLLECTION_METHOD_LABELS[r.method],
-      'Counts As': isCashCollection(r.method) ? 'Cash' : 'Package/card settlement',
+      Method: COLLECTION_METHOD_LABELS[methodOf(r)],
+      'Counts As': isCashCollection(methodOf(r)) ? 'Cash' : 'Package/card settlement',
       Amount: money(r.amount),
       'Tax Collected': money(r.taxCollected),
       'Invoice Status': r.invoiceStatus,

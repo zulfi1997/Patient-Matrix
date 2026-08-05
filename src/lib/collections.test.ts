@@ -9,19 +9,38 @@ import {
   needsInvestigation,
   salesDateSpan,
 } from './collections';
-import { classifyPaymentMethod, isCashCollection } from './collectionsParser';
+import { classifyPaymentMethod, isCashCollection, methodOf } from './collectionsParser';
 import { makeSale } from '../test/fixtures';
 import type { CollectionRecord } from '../types';
 import type { DateRange } from './metrics';
 
 const RANGE: DateRange = { start: '2026-07-01', end: '2026-07-31' };
 
-const payment = (over: Partial<CollectionRecord> = {}): CollectionRecord => ({
-  id: 'c1', importBatchId: 'b1', date: '2026-07-10', invoiceNo: 'TBC1',
-  patientId: 'MUS1', patientName: 'Test Patient', centerName: 'Main',
-  paymentType: 'Card', method: 'card', amount: 100, taxCollected: 0,
-  invoiceStatus: 'Closed', collectedBy: 'Cashier', comments: null, ...over,
-});
+/**
+ * A representative raw Payment Type for each bucket, so a fixture that names a method still carries
+ * the text the app actually classifies from. Setting one without the other would build a record
+ * that could never come out of a real export.
+ */
+const PAYMENT_TYPE_FOR: Record<CollectionRecord['method'], string> = {
+  card: 'Card',
+  cash: 'Cash',
+  bankTransfer: 'Custom - Bank Transfer',
+  other: 'Custom - Void Payment',
+  package: 'Package - derma-Custom Package-Someone-20260730183827',
+  giftCard: 'Gift Card(2190)',
+  prepaidCard: 'Prepaid Card(PR202606103435168179)',
+  internalTransfer: 'Custom - Refund - Internal',
+};
+
+const payment = (over: Partial<CollectionRecord> = {}): CollectionRecord => {
+  const method = over.method ?? 'card';
+  return {
+    id: 'c1', importBatchId: 'b1', date: '2026-07-10', invoiceNo: 'TBC1',
+    patientId: 'MUS1', patientName: 'Test Patient', centerName: 'Main',
+    paymentType: PAYMENT_TYPE_FOR[method], method, amount: 100, taxCollected: 0,
+    invoiceStatus: 'Closed', collectedBy: 'Cashier', comments: null, ...over,
+  };
+};
 
 const shares = (records: Parameters<typeof buildInvoiceProviderShares>[0]) =>
   buildInvoiceProviderShares(records, [], []);
@@ -155,7 +174,7 @@ describe('computeProviderCollections', () => {
   it('keeps a refund negative rather than dropping it', () => {
     const result = computeProviderCollections([
       payment({ id: 'p1', amount: 500 }),
-      payment({ id: 'p2', method: 'bankTransfer', paymentType: 'Custom - Refund - Internal', amount: -120 }),
+      payment({ id: 'p2', method: 'bankTransfer', amount: -120 }),
     ], shares(sales()), RANGE);
     expect(cashCollectedFor(result, 'Dr A')).toBe(380);
   });
@@ -566,5 +585,32 @@ describe('internal transfers are neither collection nor refund', () => {
     // other hands it back to the patient.
     expect(classifyPaymentMethod('Custom - Bank Transfer')).toBe('bankTransfer');
     expect(classifyPaymentMethod('Custom - Bank Transfer - Bank Muscat')).toBe('bankTransfer');
+  });
+});
+
+describe('classification is derived, never read back from storage', () => {
+  it('reclassifies a row imported under an older rule', () => {
+    // The regression: method is written once at import and then lives in IndexedDB. Splitting
+    // internal transfers out of refunds changed the rule but not the stored rows, so the fix
+    // reached nobody who had already imported their collections - the figures simply did not move.
+    const stale = payment({
+      invoiceNo: 'TBC26095',
+      paymentType: 'Custom - Refund - Internal',
+      method: 'other', // what the old parser wrote
+      amount: -104.85,
+    });
+    const sales = [makeSale({ invoiceNo: 'TBC26095', staff: 'Dr A', amount: 104.85 })];
+    const result = computeProviderCollections([stale], shares(sales), RANGE);
+    expect(result.totalRefunded).toBe(0);
+    expect(result.totalInternalTransferred).toBeCloseTo(52.425, 6);
+  });
+
+  it('reads the payment type over the stored method wherever they disagree', () => {
+    expect(methodOf({ paymentType: 'Custom - Refund - Internal', method: 'other' })).toBe('internalTransfer');
+    expect(methodOf({ paymentType: 'Gift Card(2190)', method: 'card' })).toBe('giftCard');
+  });
+
+  it('falls back to the stored method when there is no payment type to read', () => {
+    expect(methodOf({ paymentType: '', method: 'bankTransfer' })).toBe('bankTransfer');
   });
 });

@@ -55,6 +55,20 @@ export function isCashCollection(method: CollectionMethod): boolean {
   return method !== 'package' && method !== 'giftCard' && method !== 'prepaidCard' && method !== 'internalTransfer';
 }
 
+/**
+ * The bucket a stored payment falls into, derived from its raw Payment Type every time rather than
+ * read back from the record.
+ *
+ * CollectionRecord.method is written once at import and then sits in IndexedDB for as long as the
+ * data does. Reading it back means a change to the classification rules only reaches files imported
+ * afterwards - which is exactly what happened when internal transfers were split out of refunds:
+ * the rule changed, the stored rows did not, and nothing on screen moved. Deriving it here keeps
+ * the rules and the data in step without anyone having to re-import.
+ */
+export function methodOf(record: { paymentType: string; method: CollectionMethod }): CollectionMethod {
+  return record.paymentType ? classifyPaymentMethod(record.paymentType) : record.method;
+}
+
 export const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
   card: 'Card',
   cash: 'Cash',

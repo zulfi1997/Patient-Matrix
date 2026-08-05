@@ -1,6 +1,6 @@
 import type { CollectionAttributionOverride, CollectionMethod, CollectionRecord, SaleRecord } from '../types';
 import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
-import { isCashCollection } from './collectionsParser';
+import { isCashCollection, methodOf } from './collectionsParser';
 import { isInRange, type DateRange } from './metrics';
 
 /** What resolveProvider returns for a sale line with no staff recorded. */
@@ -311,8 +311,9 @@ export function computeProviderCollections(
 
   for (const c of collections) {
     if (!isInRange(c.date, range)) continue;
-    const internal = c.method === 'internalTransfer';
-    const cash = isCashCollection(c.method);
+    const method = methodOf(c);
+    const internal = method === 'internalTransfer';
+    const cash = isCashCollection(method);
     const refund = cash && c.amount < 0;
     // A card handed back is still a refund, but of money taken in some earlier period - broken out
     // as a subset so it can be read separately without leaving the arithmetic.
@@ -352,7 +353,7 @@ export function computeProviderCollections(
         stat.refunded += amount;
         if (isCardRefund) stat.cardRefunds += amount;
       } else stat.collected += amount;
-      stat.byMethod[c.method] += amount;
+      stat.byMethod[method] += amount;
       stat.payments += 1;
       invoicesSeen.get(provider)!.add(c.invoiceNo);
     }
@@ -411,7 +412,7 @@ export function invoiceAttributionDetail(
         date: c.date,
         patientName: c.patientName,
         paymentType: c.paymentType,
-        method: c.method,
+        method: methodOf(c),
         amount: c.amount,
         provider,
         share,
