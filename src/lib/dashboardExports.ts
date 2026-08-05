@@ -286,5 +286,37 @@ export function conversionSheets(p: {
         Revenue: money(r.revenue), Services: r.services.join('; '),
       })),
     },
+    // The same rows split by category and ordered by provider. Patient Detail above already holds
+    // all of it, but answering "who were Fatima's new patients" from it means filtering two
+    // columns first; these are usable as they land.
+    named('New Patients', p, ['newUnconverted', 'newConverted']),
+    named('Repeat Patients', p, ['repeatUnconverted', 'repeatConverted']),
+    named('Follow-ups', p, ['followUp']),
   ];
+}
+
+/** One category's patients, grouped by provider then date, with conversion stated per row. */
+function named(
+  name: string,
+  p: { patientRows: PatientConversionRow[]; followUpLabels: Record<string, string> },
+  categories: string[],
+): WorkbookSheet {
+  const wanted = new Set(categories);
+  const rows = p.patientRows
+    .filter((r) => wanted.has(r.category))
+    .sort((a, b) => a.staff.localeCompare(b.staff) || a.date.localeCompare(b.date) || a.patientName.localeCompare(b.patientName))
+    .map((r) => ({
+      Provider: r.staff,
+      Date: r.date,
+      Month: r.date.slice(0, 7),
+      'Patient ID': r.patientId,
+      Patient: r.patientName,
+      // Blank rather than "No" for a follow-up: it was never a conversion opportunity, so saying
+      // it did not convert would misread as a failure.
+      Converted: r.category === 'followUp' ? '' : r.category.endsWith('Converted') ? 'Yes' : 'No',
+      'Follow-up Reason': r.followUpReason ? (p.followUpLabels[r.followUpReason] ?? r.followUpReason) : '',
+      Revenue: money(r.revenue),
+      Services: r.services.join('; '),
+    }));
+  return { name, rows };
 }
