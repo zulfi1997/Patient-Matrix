@@ -19,4 +19,5 @@ export const ONEDRIVE_SUBFOLDERS = {
   packageBenefits: 'Package Benefit Data',
   departmentMapping: 'Department Mapping',
   collections: 'Collections',
+  masterControl: 'Master Control',
 } as const;

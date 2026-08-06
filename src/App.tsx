@@ -23,6 +23,7 @@ import { excludeFlaggedRecords, excludeZeroValueRecords, hasFlaggedNote, hasVisi
 import { summarizePatients } from './lib/metrics';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './lib/conversionMetrics';
 import type { CollectionAttributionOverride } from './types';
+import type { MasterControlSettings } from './lib/masterControlFile';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
 import { formatNumber } from './lib/format';
 
@@ -107,6 +108,30 @@ function App() {
     () => (excludeZeroValue ? excludeZeroValueRecords(flaggedFilteredRecords) : flaggedFilteredRecords),
     [flaggedFilteredRecords, excludeZeroValue],
   );
+
+  const masterControlSettings: MasterControlSettings = useMemo(
+    () => ({
+      providerGroups, providerAssignmentOverrides, revenueAdjustments, collectionAttributionOverrides,
+      allocationRules, pnlLineAdjustments, allocationMode, excludeFlagged, excludeZeroValue,
+    }),
+    [providerGroups, providerAssignmentOverrides, revenueAdjustments, collectionAttributionOverrides,
+     allocationRules, pnlLineAdjustments, allocationMode, excludeFlagged, excludeZeroValue],
+  );
+
+  // Only the sections the file actually carried are applied, so importing a partial settings file
+  // never silently wipes a section it says nothing about.
+  const applyMasterControlSettings = useCallback((incoming: Partial<MasterControlSettings>) => {
+    if (incoming.providerGroups) setProviderGroups(incoming.providerGroups);
+    if (incoming.providerAssignmentOverrides) setProviderAssignmentOverrides(incoming.providerAssignmentOverrides);
+    if (incoming.revenueAdjustments) setRevenueAdjustments(incoming.revenueAdjustments);
+    if (incoming.collectionAttributionOverrides) setCollectionAttributionOverrides(incoming.collectionAttributionOverrides);
+    if (incoming.allocationRules) setAllocationRules(incoming.allocationRules);
+    if (incoming.pnlLineAdjustments) setPnlLineAdjustments(incoming.pnlLineAdjustments);
+    if (incoming.allocationMode) setAllocationMode(incoming.allocationMode);
+    if (incoming.excludeFlagged != null) setExcludeFlagged(incoming.excludeFlagged);
+    if (incoming.excludeZeroValue != null) setExcludeZeroValue(incoming.excludeZeroValue);
+  }, [setProviderGroups, setProviderAssignmentOverrides, setRevenueAdjustments, setCollectionAttributionOverrides,
+      setAllocationRules, setPnlLineAdjustments, setAllocationMode, setExcludeFlagged, setExcludeZeroValue]);
 
   const patients = useMemo(() => summarizePatients(analysisRecords), [analysisRecords]);
 
@@ -332,6 +357,8 @@ function App() {
             setRevenueAdjustments={setRevenueAdjustments}
             collectionAttributionOverrides={collectionAttributionOverrides}
             setCollectionAttributionOverrides={setCollectionAttributionOverrides}
+            masterControlSettings={masterControlSettings}
+            applyMasterControlSettings={applyMasterControlSettings}
             providerAssignmentOverrides={providerAssignmentOverrides}
             setProviderAssignmentOverrides={setProviderAssignmentOverrides}
             serviceDepartmentRecords={serviceDepartmentRecords}

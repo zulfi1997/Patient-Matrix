@@ -17,6 +17,8 @@ import { formatDate, formatNumber } from '../lib/format';
 import { ONEDRIVE_SUBFOLDERS } from '../lib/oneDriveConfig';
 import { PackageBenefitsSection } from './PackageBenefitsSection';
 import { CollectionsSection } from './CollectionsSection';
+import { MasterControlFileSection } from './MasterControlFileSection';
+import type { MasterControlSettings } from '../lib/masterControlFile';
 import { PnlUploadSection } from './PnlUploadSection';
 import { SegmentAllocationEditor } from './SegmentAllocationEditor';
 import { PnlLineAdjustmentsEditor } from './PnlLineAdjustmentsEditor';
@@ -45,6 +47,8 @@ interface DataPageProps {
   setRevenueAdjustments: Dispatch<SetStateAction<RevenueAdjustment[]>>;
   collectionAttributionOverrides: CollectionAttributionOverride[];
   setCollectionAttributionOverrides: Dispatch<SetStateAction<CollectionAttributionOverride[]>>;
+  masterControlSettings: MasterControlSettings;
+  applyMasterControlSettings: (incoming: Partial<MasterControlSettings>) => void;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
   serviceDepartmentRecords: ServiceDepartmentRecord[];
@@ -116,6 +120,8 @@ export function DataPage({
   setRevenueAdjustments,
   collectionAttributionOverrides,
   setCollectionAttributionOverrides,
+  masterControlSettings,
+  applyMasterControlSettings,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
   serviceDepartmentRecords,
@@ -517,6 +523,14 @@ export function DataPage({
           setProviderAssignmentOverrides={setProviderAssignmentOverrides}
           knownStaff={knownStaff}
         />
+        <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Share These Settings</h3>
+          <MasterControlFileSection
+            settings={masterControlSettings}
+            applySettings={applyMasterControlSettings}
+            onPullFromOneDrive={oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.masterControl) : undefined}
+          />
+        </div>
       </div>
 
       <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
