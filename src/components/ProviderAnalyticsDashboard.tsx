@@ -25,6 +25,7 @@ import {
   computeInvoiceAging,
   computeKpis,
   computeMonthlyTrend,
+  previousPeriod,
   computeRedeemedPackages,
   computeReturnedPatients,
   computeServiceStats,
@@ -112,6 +113,9 @@ export function ProviderAnalyticsDashboard({
   }, [records]);
 
   const range = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
+  // Named on the Retention card, because "prior period" alone leaves the reader guessing which
+  // window a patient had to appear in to count as retained.
+  const previousRange = useMemo(() => previousPeriod(range), [range]);
   const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
 
   const providers = useMemo(
@@ -468,8 +472,8 @@ export function ProviderAnalyticsDashboard({
         <KpiCard label="Redeemed Revenue" value={formatCurrency(kpis.periodRedeemedRevenue)} hint="value delivered via package redemption" help="Value of previously-sold package sessions this provider delivered. Already recognized when the package was sold, so it is not counted as new revenue." />
         <KpiCard label="Active Patients" value={formatNumber(kpis.activePatients)} help="Distinct patients this provider saw in the period." />
         <KpiCard label="New To This Provider" value={formatNumber(kpis.newPatients)} hint={`${formatNumber(newToClinic)} of them also new to the clinic`} tone="good" help="First time seeing this provider. The hint counts those whose first-ever clinic visit was also in this period - a genuinely new patient rather than one who transferred internally." />
-        <KpiCard label="Returning Patients" value={formatNumber(kpis.returningPatients)} help="Patients who had already seen this provider before the period began." />
-        <KpiCard label="Retention Rate" value={formatPercent(kpis.retentionRate)} hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} prior-period patients returned`} tone={kpis.retentionRate != null && kpis.retentionRate < 50 ? 'bad' : 'good'} help="Of this provider's patients in the prior equivalent period, the share who saw them again in this one." />
+        <KpiCard label="Returning Patients" value={formatNumber(kpis.returningPatients)} help="Active patients this period who had seen this provider at least once before it began - however long ago. Retention Rate asks a narrower question over a fixed window, so its count is a subset of this one and will usually be smaller." />
+        <KpiCard label="Retention Rate" value={formatPercent(kpis.retentionRate)} hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} seen ${previousRange.start} to ${previousRange.end} returned`} tone={kpis.retentionRate != null && kpis.retentionRate < 50 ? 'bad' : 'good'} help="Of the patients this provider saw in the prior window of equal length, the share who saw them again in this period. Deliberately narrower than Returning Patients: someone who last visited a year ago and came back counts as returning but not as retained, because they were not in the prior window to be retained from." />
         <KpiCard label="Came Back At Least Once" value={formatPercent(retention.repeatRate)} hint={`${formatNumber(retention.onceThenQuiet.patients)} seen once then nothing`} tone={retention.repeatRate != null && retention.repeatRate < 40 ? 'bad' : 'good'} help="Share of patients seen in this window who returned for a second visit. A single visit followed by silence is counted separately from one who moved to a colleague." />
         <KpiCard label="Stopped Visiting" value={formatNumber(kpis.stoppedVisiting)} hint={`no visit with this provider for ${inactivityDays}+ days`} tone="bad" help="Patients of this provider with no visit to them in the threshold, as of today. Scoped to this provider, so it counts people they have lost rather than the clinic's total." />
         {conversion && (

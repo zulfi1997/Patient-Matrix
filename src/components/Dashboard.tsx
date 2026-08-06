@@ -8,6 +8,7 @@ import {
   computeInvoiceAging,
   computeKpis,
   computeMonthlyTrend,
+  previousPeriod,
   computeRedeemedPackages,
   computeReturnedPatients,
   computeServiceStats,
@@ -91,6 +92,9 @@ export function Dashboard({
   }, [records]);
 
   const range = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
+  // Named on the Retention and Turnover cards, because "prior period" alone leaves the reader
+  // guessing which window a patient had to appear in to count as retained.
+  const previousRange = useMemo(() => previousPeriod(range), [range]);
 
   const patients = useMemo(() => summarizePatients(records), [records]);
 
@@ -301,19 +305,19 @@ export function Dashboard({
         <KpiCard
           label="Returning Patients"
           value={formatNumber(kpis.returningPatients)}
-          help="Active patients this period who had already visited at least once before the period started."
+          help="Active patients this period who had seen the clinic at least once before it began - however long ago. Retention Rate asks a narrower question over a fixed window, so its count is a subset of this one and will usually be smaller."
         />
         <KpiCard
           label="Retention Rate"
           value={formatPercent(kpis.retentionRate)}
-          hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} prior-period patients returned - a fixed period-over-period comparison, not affected by the inactivity threshold below`}
-          help="Of the patients active in the prior equivalent period, the % who also visited in the selected period. A period-over-period comparison, unrelated to the inactivity threshold below."
+          hint={`${formatNumber(kpis.retainedPatients)} of ${formatNumber(kpis.prevActivePatients)} seen ${previousRange.start} to ${previousRange.end} returned - not affected by the inactivity threshold below`}
+          help="Of the patients the clinic saw in the prior window of equal length, the share who visited again in this period. Deliberately narrower than Returning Patients: someone who last visited a year ago and came back counts as returning but not as retained, because they were not in the prior window to be retained from."
           tone={kpis.retentionRate != null && kpis.retentionRate < 50 ? 'bad' : 'good'}
         />
         <KpiCard
           label="Turnover Rate"
           value={formatPercent(kpis.turnoverRate)}
-          hint="Prior-period patients who did not return - also not affected by the inactivity threshold"
+          hint={`Of those seen ${previousRange.start} to ${previousRange.end}, the share who did not return - also not affected by the inactivity threshold`}
           help="Of the patients active in the prior equivalent period, the % who did not visit again in the selected period - the inverse of Retention Rate."
           tone={kpis.turnoverRate != null && kpis.turnoverRate > 50 ? 'bad' : 'neutral'}
         />
