@@ -44,6 +44,7 @@ function App() {
     packageBenefitBatches,
     importPackageBenefitFile,
     removePackageBenefitSnapshot,
+    clearAllPackageBenefits,
     refresh: refreshPackageBenefits,
   } = usePackageBenefits();
   const { collections, collectionBatches, importCollectionFile, removeCollectionBatch } = useCollections();
@@ -348,6 +349,7 @@ function App() {
             packageBenefitBatches={packageBenefitBatches}
             importPackageBenefitFile={importPackageBenefitFile}
             removePackageBenefitSnapshot={removePackageBenefitSnapshot}
+            clearAllPackageBenefits={clearAllPackageBenefits}
             collectionBatches={collectionBatches}
             importCollectionFile={importCollectionFile}
             removeCollectionBatch={removeCollectionBatch}

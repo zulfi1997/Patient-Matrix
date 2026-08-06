@@ -46,6 +46,11 @@ export function usePackageBenefits() {
     [refresh],
   );
 
+  const clearAllPackageBenefits = useCallback(async () => {
+    await db.clearAllPackageBenefits();
+    await refresh();
+  }, [refresh]);
+
   const removePackageBenefitSnapshot = useCallback(
     async (snapshotDate: string) => {
       await db.deletePackageBenefitSnapshot(snapshotDate);
@@ -60,6 +65,7 @@ export function usePackageBenefits() {
     loading,
     importPackageBenefitFile,
     removePackageBenefitSnapshot,
+    clearAllPackageBenefits,
     refresh,
   };
 }

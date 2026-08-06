@@ -38,6 +38,7 @@ interface DataPageProps {
   packageBenefitBatches: PackageBenefitBatch[];
   importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
+  clearAllPackageBenefits: () => Promise<void>;
   collectionBatches: CollectionImportBatch[];
   importCollectionFile: (file: File) => Promise<CollectionImportResult>;
   removeCollectionBatch: (id: string) => Promise<void>;
@@ -111,6 +112,7 @@ export function DataPage({
   packageBenefitBatches,
   importPackageBenefitFile,
   removePackageBenefitSnapshot,
+  clearAllPackageBenefits,
   collectionBatches,
   importCollectionFile,
   removeCollectionBatch,
@@ -454,6 +456,7 @@ export function DataPage({
           batches={packageBenefitBatches}
           importPackageBenefitFile={importPackageBenefitFile}
           removePackageBenefitSnapshot={removePackageBenefitSnapshot}
+          clearAllPackageBenefits={clearAllPackageBenefits}
           onPullFromOneDrive={
             oneDrive.account ? () => oneDrive.pullFiles(ONEDRIVE_SUBFOLDERS.packageBenefits) : undefined
           }

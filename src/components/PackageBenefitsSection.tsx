@@ -8,6 +8,7 @@ interface PackageBenefitsSectionProps {
   batches: PackageBenefitBatch[];
   importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
+  clearAllPackageBenefits: () => Promise<void>;
   /** Present only when signed in to OneDrive - pulls every file from the configured "Package Benefit Data" subfolder. */
   onPullFromOneDrive?: () => Promise<File[]>;
 }
@@ -16,6 +17,7 @@ export function PackageBenefitsSection({
   batches,
   importPackageBenefitFile,
   removePackageBenefitSnapshot,
+  clearAllPackageBenefits,
   onPullFromOneDrive,
 }: PackageBenefitsSectionProps) {
   const [dragOver, setDragOver] = useState(false);
@@ -152,9 +154,31 @@ export function PackageBenefitsSection({
       )}
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-          Package Balance Snapshots ({formatNumber(batches.length)} date{batches.length === 1 ? '' : 's'})
-        </h3>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+            Package Balance Snapshots ({formatNumber(batches.length)} date{batches.length === 1 ? '' : 's'})
+          </h3>
+          <button
+            onClick={() => {
+              // Naming the count makes the scale of it concrete - these accumulate one file a day,
+              // so by the time anyone wants to clear them there are usually far more than expected.
+              if (
+                confirm(
+                  `This deletes ALL ${formatNumber(batches.length)} package balance snapshot(s) from this browser. ` +
+                    'The Provider Conversion dashboard will lose the "has package benefit balance" reason until ' +
+                    'snapshots are re-imported, and $0-revenue repeat visits with a real balance will show as ' +
+                    '"Repeat Unconverted" instead. This cannot be undone. Continue?',
+                )
+              ) {
+                clearAllPackageBenefits();
+              }
+            }}
+            disabled={batches.length === 0}
+            className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            Clear all snapshots
+          </button>
+        </div>
         {batches.length === 0 ? (
           <p className="py-6 text-center text-sm text-zinc-500">No snapshots yet.</p>
         ) : (
