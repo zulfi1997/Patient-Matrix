@@ -19,6 +19,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Normally under a minute. A cap means a step that hangs rather than fails - which is how the
+    # 6 Aug run burned fifteen minutes before being cancelled - gives up promptly and says so.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,7 +35,13 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: 'true'
+      # enablement turns Pages on if it is off. Without it, this step hangs against a Pages API
+      # that 404s, the build is eventually cancelled, and the site serves GitHub's own 404 page
+      # with nothing in the run to say Pages was the problem. Needs the pages: write permission
+      # granted above.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
