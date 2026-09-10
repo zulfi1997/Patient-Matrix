@@ -35,10 +35,16 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: 'true'
-      # enablement turns Pages on if it is off. Without it, this step hangs against a Pages API
-      # that 404s, the build is eventually cancelled, and the site serves GitHub's own 404 page
-      # with nothing in the run to say Pages was the problem. Needs the pages: write permission
-      # granted above.
+      # If Pages is switched off on the repo, this step without enablement retries a 404ing Pages
+      # API until the job is cancelled - fifteen minutes of silence, then a deploy that never ran
+      # and a site serving GitHub's own 404 with nothing in the run to explain it. That is what
+      # happened on 6 Aug. enablement: true turns the same situation into an immediate, named
+      # failure: "Create Pages site failed. Resource not accessible by integration".
+      #
+      # It cannot fix it unaided. Creating a Pages site needs repo admin, which GITHUB_TOKEN does
+      # not have however the pages permission is set, so switching Pages back on is a one-time
+      # manual step: Settings -> Pages -> Source: GitHub Actions. Once Pages exists, this step
+      # finds it and enablement is a no-op.
       - uses: actions/configure-pages@v5
         with:
           enablement: true
