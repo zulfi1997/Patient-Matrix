@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { conversionSheets } from './dashboardExports';
+import { conversionSheets, patientCohortSheets } from './dashboardExports';
+import { computePatientCohorts } from './patientCohorts';
+import { summarizePatients } from './metrics';
+import { makeSale } from '../test/fixtures';
 import { CONVERSION_CATEGORY_LABELS, FOLLOW_UP_REASON_LABELS, type PatientConversionRow, type ProviderConversionStat } from './conversionMetrics';
 
 const stat = (over: Partial<ProviderConversionStat> = {}): ProviderConversionStat => ({
@@ -70,5 +73,75 @@ describe('conversionSheets', () => {
     expect(named('Repeat Patients')[0].Converted).toBe('No');
     // A follow-up was never a conversion opportunity, so "No" would misread as a failure.
     expect(named('Follow-ups')[0].Converted).toBe('');
+  });
+});
+
+describe('patientCohortSheets', () => {
+  const analysis = () =>
+    computePatientCohorts(
+      [
+        makeSale({ patientId: 'P1', date: '2026-05-10', amount: 100 }),
+        makeSale({ patientId: 'P1', date: '2026-06-12', amount: 60, redeemedAmount: 20, packageName: 'X' }),
+        makeSale({ patientId: 'P2', date: '2026-06-03', amount: 70 }),
+      ],
+      summarizePatients([
+        makeSale({ patientId: 'P1', date: '2026-05-10', amount: 100 }),
+        makeSale({ patientId: 'P1', date: '2026-06-12', amount: 60, redeemedAmount: 20, packageName: 'X' }),
+        makeSale({ patientId: 'P2', date: '2026-06-03', amount: 70 }),
+      ]),
+      '2026-06-30',
+    );
+
+  const sheet = (name: string) => patientCohortSheets(analysis()).find((s) => s.name === name)!.rows;
+
+  it('exports the grid long, one row per cohort per month, so it pivots', () => {
+    const rows = sheet('Cohort by Month');
+    // May lived through two months, June through one.
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => [r['Cohort Month'], r['Calendar Month']])).toEqual([
+      ['2026-05-01', '2026-05-01'],
+      ['2026-05-01', '2026-06-01'],
+      ['2026-06-01', '2026-06-01'],
+    ]);
+  });
+
+  it('carries the running total, so "by June" needs no formula in the sheet', () => {
+    const may = sheet('Cohort by Month').filter((r) => r['Cohort Month'] === '2026-05-01');
+    expect(may.map((r) => r['Cumulative Cash Revenue'])).toEqual([100, 160]);
+    expect(may.map((r) => r['Cumulative Delivered Value'])).toEqual([100, 180]);
+  });
+
+  it('keeps the money numeric rather than formatted, so a pivot can sum it', () => {
+    for (const row of sheet('Cohort by Month')) {
+      expect(typeof row['Cash Revenue']).toBe('number');
+    }
+  });
+
+  it('states whether a cohort can be trusted and whether its month has finished', () => {
+    const rows = sheet('Cohort by Month');
+    expect(rows[0]['First Visit Verifiable']).toBe('No');
+    expect(rows[2]['First Visit Verifiable']).toBe('Yes');
+    expect(rows.every((r) => r['Month Still In Progress'] === 'No')).toBe(true);
+  });
+
+  it('summarizes what each cohort came back and spent', () => {
+    const may = sheet('Cohort Summary').find((r) => r['Cohort Month'] === '2026-05-01')!;
+    expect(may).toMatchObject({
+      'New Patients': 1,
+      'Lifetime Cash Revenue': 160,
+      'First Month Cash': 100,
+      'Cash After First Month': 60,
+      'Patients Who Returned': 1,
+    });
+    const june = sheet('Cohort Summary').find((r) => r['Cohort Month'] === '2026-06-01')!;
+    expect(june).toMatchObject({ 'Cash After First Month': 0, 'Patients Who Returned': 0 });
+  });
+
+  it('gives the age averages under both bases, labelled', () => {
+    const rows = sheet('Average by Age');
+    expect(new Set(rows.map((r) => r.Basis))).toEqual(new Set(['Cash Revenue', 'Delivered Value']));
+    // May is the censored first cohort, so only June is averaged at age 0.
+    const cash = rows.find((r) => r.Basis === 'Cash Revenue' && r['Months Since First Visit'] === 0)!;
+    expect(cash).toMatchObject({ 'Cohorts Averaged': 1, Total: 70 });
   });
 });

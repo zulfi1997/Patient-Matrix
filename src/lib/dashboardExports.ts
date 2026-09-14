@@ -32,6 +32,8 @@ import type {
   RoleRevenueTrend,
 } from './providerHandover';
 import { money, pct, type WorkbookSheet } from './workbook';
+import { averageByAge, COHORT_BASIS_LABELS, cumulativeValues, type CohortAnalysis, type CohortBasis } from './patientCohorts';
+
 
 /** Common first sheet, so a workbook opened weeks later still says what it covers. */
 export function contextSheet(rows: [string, string | number][]): WorkbookSheet {
@@ -601,4 +603,61 @@ export function handoverSheets(p: {
   }
 
   return sheets;
+}
+
+/**
+ * Cohort sheets. The grid is exported long rather than as the on-screen triangle: one row per
+ * cohort per month pivots directly in Excel, where a triangle has to be unpicked first.
+ */
+export function patientCohortSheets(analysis: CohortAnalysis): WorkbookSheet[] {
+  const grid = analysis.cohorts.flatMap((cohort) => {
+    const cumulativeRevenue = cumulativeValues(cohort, 'revenue');
+    const cumulativeDelivered = cumulativeValues(cohort, 'deliveredValue');
+    return cohort.cells.map((cell, i) => ({
+      'Cohort Month': cohort.cohortMonth,
+      'Cohort Patients': cohort.patients,
+      'Calendar Month': cell.month,
+      'Months Since First Visit': cell.monthIndex,
+      'Active Patients': cell.activePatients,
+      'Cash Revenue': money(cell.revenue),
+      'Package Redeemed': money(cell.redeemed),
+      'Delivered Value': money(cell.deliveredValue),
+      'Cumulative Cash Revenue': money(cumulativeRevenue[i]),
+      'Cumulative Delivered Value': money(cumulativeDelivered[i]),
+      'Cash Revenue Per Patient': cohort.patients > 0 ? money(cell.revenue / cohort.patients) : '',
+      'Month Still In Progress': cell.partial ? 'Yes' : 'No',
+      'First Visit Verifiable': cohort.censored ? 'No' : 'Yes',
+    }));
+  });
+
+  const summary = analysis.cohorts.map((cohort) => ({
+    'Cohort Month': cohort.cohortMonth,
+    'New Patients': cohort.patients,
+    'Months Observed': cohort.cells.length,
+    'Lifetime Cash Revenue': money(cohort.totalRevenue),
+    'Lifetime Delivered Value': money(cohort.totalDeliveredValue),
+    'Cash Per Patient': cohort.patients > 0 ? money(cohort.totalRevenue / cohort.patients) : '',
+    'First Month Cash': money(cohort.cells[0]?.revenue ?? 0),
+    'Cash After First Month': money(cohort.repeatRevenue),
+    'Delivered After First Month': money(cohort.repeatDeliveredValue),
+    'Patients Who Returned': cohort.repeatPatients,
+    'Return Rate (%)': cohort.patients > 0 ? pct((cohort.repeatPatients / cohort.patients) * 100) : '',
+    'First Visit Verifiable': cohort.censored ? 'No' : 'Yes',
+  }));
+
+  const byAge = (basis: CohortBasis) =>
+    averageByAge(analysis.cohorts, basis).map((a) => ({
+      'Months Since First Visit': a.monthIndex,
+      Basis: COHORT_BASIS_LABELS[basis],
+      'Cohorts Averaged': a.cohorts,
+      'Patients Averaged': a.patients,
+      Total: money(a.value),
+      'Per Patient': a.valuePerPatient === null ? '' : money(a.valuePerPatient),
+    }));
+
+  return [
+    { name: 'Cohort Summary', rows: summary },
+    { name: 'Cohort by Month', rows: grid },
+    { name: 'Average by Age', rows: [...byAge('revenue'), ...byAge('deliveredValue')] },
+  ];
 }

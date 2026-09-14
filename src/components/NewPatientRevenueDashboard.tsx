@@ -15,11 +15,13 @@ import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
 import { ExportExcelButton } from './ExportExcelButton';
-import { newPatientRevenueSheets, contextSheet } from '../lib/dashboardExports';
+import { newPatientRevenueSheets, patientCohortSheets, contextSheet } from '../lib/dashboardExports';
 import { NewPatientRevenueChart } from './NewPatientRevenueChart';
 import { NewPatientRevenueTable } from './NewPatientRevenueTable';
 import { NewPatientTopServicesChart } from './NewPatientTopServicesChart';
 import { NewPatientsListTable } from './NewPatientsListTable';
+import { PatientCohortAgeCurve, PatientCohortTable } from './PatientCohortTable';
+import { computePatientCohorts, type CohortBasis } from '../lib/patientCohorts';
 
 const TREND_MONTHS_BACK = 12;
 
@@ -60,6 +62,12 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
     () => computeNewPatientTopServices(records, patients, range),
     [records, patients, range],
   );
+
+  // Cohorts deliberately ignore the period selector above. A cohort is a fixed group of people
+  // followed from their first visit to the end of the data, so clipping it to a period would
+  // answer a different question - and the one the period-scoped cards above already answer.
+  const cohortAnalysis = useMemo(() => computePatientCohorts(records, patients, asOfISO), [records, patients, asOfISO]);
+  const [cohortBasis, setCohortBasis] = useLocalStorageState<CohortBasis>('pm-cohort-basis', 'revenue');
 
   // Segment P&L data is monthly-only, so Patient Acquisition Cost is aligned to the full
   // calendar month(s) the selected period touches, rather than the exact (possibly partial)
@@ -117,11 +125,13 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
                 ['Data as of', asOfISO],
                 ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
                 ['Acquisition cost', 'Marketing spend comes from Segment P&L, which only has whole months - so it is divided by new patients over the months that have P&L data, not the period above.'],
+                ['Cohort sheets', 'Cohorts follow each month\'s first-time patients forward to the end of the data, so they ignore the period above. The earliest month is marked unverifiable: with no prior data, a long-standing patient is indistinguishable from a first-timer.'],
               ]),
               ...newPatientRevenueSheets({
                 summary, details: newPatientDetails, topServices: newPatientTopServices,
                 trend, acquisition: acquisitionInputs, pacNewPatients,
               }),
+              ...patientCohortSheets(cohortAnalysis),
             ]}
           />
           <button
@@ -189,6 +199,9 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
       <NewPatientRevenueTable data={trend} />
       <NewPatientTopServicesChart data={newPatientTopServices} periodLabel={periodLabel} />
       <NewPatientsListTable data={newPatientDetails} periodLabel={periodLabel} />
+
+      <PatientCohortTable analysis={cohortAnalysis} basis={cohortBasis} onBasisChange={setCohortBasis} />
+      <PatientCohortAgeCurve analysis={cohortAnalysis} basis={cohortBasis} />
     </div>
   );
 }
