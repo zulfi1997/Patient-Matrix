@@ -53,7 +53,7 @@ import {
   salesDateSpan,
 } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
-import { ProviderTargetsTable, TargetKpiCards } from './ProviderTargetsTable';
+import { ProviderTargetsTable, TargetKpiCardItems } from './ProviderTargetsTable';
 import { computeProviderTargetProgress, TARGET_STATUS_LABELS, targetProgress, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
 import { monthKeyOf } from '../lib/months';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
@@ -515,6 +515,7 @@ export function ProviderAnalyticsDashboard({
       </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <TargetKpiCardItems progress={selectedTargetProgress} scope={selected} />
         <KpiCard
           label="Revenue"
           value={formatCurrency(periodRevenue)}
@@ -711,7 +712,6 @@ export function ProviderAnalyticsDashboard({
         </div>
       </div>
 
-      <TargetKpiCards progress={selectedTargetProgress} scope={selected} />
       <ProviderTargetsTable rows={targetRows} total={targetTotal} asOfISO={asOfISO} />
 
       <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />

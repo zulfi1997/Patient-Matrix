@@ -47,21 +47,24 @@ function ProgressBar({ row }: { row: ProviderTargetProgress }) {
  * 10th - so the comparison shown is against the pace to date, which is the one that can actually
  * be acted on. Once the month closes, pace and target are the same figure and the card says so.
  */
-export function TargetKpiCards({ progress, scope }: { progress: ProviderTargetProgress; scope: string }) {
+export function TargetKpiCardItems({ progress, scope }: { progress: ProviderTargetProgress; scope: string }) {
   const hasTarget = progress.target > 0;
   const vsPace = progress.actual - progress.paceTarget;
   const paceLabel = progress.complete ? 'vs Target' : 'vs Pace';
+  // The month is in the label because these sit beside period-scoped cards on both tabs. Two
+  // "Revenue" figures side by side covering different spans is a support question waiting to happen.
+  const month = formatMonthLabel(progress.month);
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <>
       <KpiCard
-        label="Monthly Target"
+        label={`Target (${month})`}
         value={hasTarget ? formatCurrencyCompact(progress.target) : '—'}
         hint={hasTarget ? `${formatMonthLabel(progress.month)} · ${formatCurrency(progress.target)}` : 'Set one under Master Control on the Data tab'}
         help={`Revenue target for ${scope} across the whole of ${formatMonthLabel(progress.month)}, whatever period is selected above. Targets are monthly, so a part-month slice would always read as missed.`}
       />
       <KpiCard
-        label="Achieved"
+        label={`Achieved (${month})`}
         value={formatCurrencyCompact(progress.actual)}
         hint={hasTarget ? `${formatPercent(progress.achievedPct)} of target · ${formatCurrency(progress.actual)}` : formatCurrency(progress.actual)}
         help={`Adjusted net revenue for ${scope} over the whole month - the same figure the Revenue KPI reports, so a Master Control Revenue Adjustment moves it here too.`}
@@ -97,6 +100,15 @@ export function TargetKpiCards({ progress, scope }: { progress: ProviderTargetPr
         help="What is left to earn, divided by the working days remaining. Friday and Saturday are excluded, so this is what has to be earned on a day the clinic actually opens - a calendar-day figure would be lower and unreachable."
         tone={progress.requiredPerDay !== null && progress.requiredPerDay > 0 ? 'bad' : 'neutral'}
       />
+    </>
+  );
+}
+
+/** The same four cards in their own row, for a tab with no KPI grid to slot them into. */
+export function TargetKpiCards(props: { progress: ProviderTargetProgress; scope: string }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <TargetKpiCardItems {...props} />
     </div>
   );
 }
