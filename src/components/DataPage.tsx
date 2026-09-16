@@ -5,6 +5,7 @@ import type { PackageBenefitImportResult } from '../hooks/usePackageBenefits';
 import type { CollectionImportResult } from '../hooks/useCollections';
 import type { PnlImportResult } from '../hooks/usePnl';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from '../lib/conversionMetrics';
+import type { ProviderTarget } from '../lib/providerTargets';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from '../lib/segmentAllocation';
 import type { DepartmentMappingBatch, KnownService, ServiceDepartmentRecord } from '../lib/departments';
 import { serviceMapKey } from '../lib/departments';
@@ -52,6 +53,8 @@ interface DataPageProps {
   applyMasterControlSettings: (incoming: Partial<MasterControlSettings>) => void;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
+  providerTargets: ProviderTarget[];
+  setProviderTargets: Dispatch<SetStateAction<ProviderTarget[]>>;
   serviceDepartmentRecords: ServiceDepartmentRecord[];
   departmentMappingBatch: DepartmentMappingBatch | null;
   setServiceDepartment: (serviceKey: string, serviceName: string, department: ServiceDepartmentRecord['department'] | null) => Promise<void>;
@@ -126,6 +129,8 @@ export function DataPage({
   applyMasterControlSettings,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
+  providerTargets,
+  setProviderTargets,
   serviceDepartmentRecords,
   departmentMappingBatch,
   setServiceDepartment,
@@ -523,6 +528,8 @@ export function DataPage({
           collectionAttributionOverrides={collectionAttributionOverrides}
           setCollectionAttributionOverrides={setCollectionAttributionOverrides}
           providerAssignmentOverrides={providerAssignmentOverrides}
+          providerTargets={providerTargets}
+          setProviderTargets={setProviderTargets}
           setProviderAssignmentOverrides={setProviderAssignmentOverrides}
           knownStaff={knownStaff}
         />

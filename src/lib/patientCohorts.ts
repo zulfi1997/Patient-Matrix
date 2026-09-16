@@ -1,5 +1,6 @@
 import type { SaleRecord } from '../types';
 import type { PatientVisitSummary } from './metrics';
+import { addMonths, lastDayOfMonth, monthKeyOf, monthsBetween } from './months';
 
 /**
  * Cohort analysis: group patients by the month of their first-ever visit, then follow what each
@@ -79,39 +80,9 @@ export interface CohortAnalysis {
   asOf: string;
 }
 
-/** The first of the month a date falls in, as ISO yyyy-mm-01. */
-export function monthKeyOf(iso: string): string {
-  return `${iso.slice(0, 7)}-01`;
-}
-
-/** Whole months from one month key to another. Negative if `to` precedes `from`. */
-export function monthsBetween(from: string, to: string): number {
-  const fy = Number(from.slice(0, 4));
-  const fm = Number(from.slice(5, 7));
-  const ty = Number(to.slice(0, 4));
-  const tm = Number(to.slice(5, 7));
-  return (ty - fy) * 12 + (tm - fm);
-}
-
-/** The month key `count` months after `month`. */
-export function addMonths(month: string, count: number): string {
-  const y = Number(month.slice(0, 4));
-  const m = Number(month.slice(5, 7));
-  const total = (y * 12 + (m - 1)) + count;
-  const ny = Math.floor(total / 12);
-  const nm = (total % 12) + 1;
-  return `${String(ny).padStart(4, '0')}-${String(nm).padStart(2, '0')}-01`;
-}
-
-/** Last calendar day of the given month, ISO yyyy-mm-dd. */
-export function lastDayOfMonth(month: string): string {
-  const year = Number(month.slice(0, 4));
-  const monthNumber = Number(month.slice(5, 7));
-  // Day 0 of the following month is the last day of this one, which gets February right without
-  // a leap-year rule of our own.
-  const day = new Date(year, monthNumber, 0).getDate();
-  return `${month.slice(0, 7)}-${String(day).padStart(2, '0')}`;
-}
+// Month arithmetic lives in ./months, shared with provider targets. Re-exported here because the
+// cohort grid's callers and tests reach for it alongside the cohort types themselves.
+export { addMonths, daysInMonth, lastDayOfMonth, monthKeyOf, monthsBetween } from './months';
 
 /** The value a cell contributes under the chosen basis. */
 export function cellValue(cell: CohortCell, basis: CohortBasis): number {

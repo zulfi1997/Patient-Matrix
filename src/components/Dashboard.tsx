@@ -32,6 +32,9 @@ import {
   salesDateSpan,
 } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
+import { ProviderTargetsTable } from './ProviderTargetsTable';
+import { computeProviderTargetProgress, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
+import { monthKeyOf } from '../lib/months';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -60,6 +63,7 @@ export function Dashboard({
   providerGroups,
   providerAssignmentOverrides,
   revenueAdjustments,
+  providerTargets,
   collections,
   collectionAttributionOverrides,
 }: {
@@ -72,6 +76,7 @@ export function Dashboard({
   providerGroups: ProviderGroup[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   revenueAdjustments: RevenueAdjustment[];
+  providerTargets: ProviderTarget[];
   collections: CollectionRecord[];
   collectionAttributionOverrides: CollectionAttributionOverride[];
 }) {
@@ -126,6 +131,21 @@ export function Dashboard({
   const returnedPatients = useMemo(
     () => computeReturnedPatients(records, patients, inactivityDays, asOfISO),
     [records, patients, inactivityDays, asOfISO],
+  );
+
+  // Targets are monthly, so this reads the calendar month the selected period ends in and measures
+  // against that whole month - a monthly target judged against a part-month slice would always look
+  // missed. The period selector still chooses which month; only the window inside it is widened.
+  const targetMonth = useMemo(() => monthKeyOf(range.end), [range.end]);
+  const targetRows = useMemo(
+    () => computeProviderTargetProgress(
+      records, providerTargets, targetMonth, asOfISO, providerGroups, providerAssignmentOverrides, revenueAdjustments,
+    ),
+    [records, providerTargets, targetMonth, asOfISO, providerGroups, providerAssignmentOverrides, revenueAdjustments],
+  );
+  const targetTotal = useMemo(
+    () => totalTargetProgress(targetRows, targetMonth, asOfISO),
+    [targetRows, targetMonth, asOfISO],
   );
 
   const redeemedPackages = useMemo(() => computeRedeemedPackages(records, range), [records, range]);
@@ -342,6 +362,8 @@ export function Dashboard({
           help="Total Discount divided by gross sales before any discount was applied (Price, not Sales Exc. Tax) - i.e. how much of the original sticker price was given away this period."
         />
       </div>
+
+      <ProviderTargetsTable rows={targetRows} total={targetTotal} asOfISO={asOfISO} />
 
       <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />
 

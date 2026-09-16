@@ -2,6 +2,8 @@ import type { CollectionAttributionOverride, PnlSection } from '../types';
 import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } from './conversionMetrics';
 import { isRevenueTypeKey } from './revenueTypes';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './segmentAllocation';
+import { targetId, type ProviderTarget } from './providerTargets';
+import { monthKeyOf } from './months';
 import type { WorkbookSheet } from './workbook';
 
 /**
@@ -22,6 +24,7 @@ export interface MasterControlSettings {
   collectionAttributionOverrides: CollectionAttributionOverride[];
   allocationRules: SegmentAllocationRule[];
   pnlLineAdjustments: PnlLineAdjustment[];
+  providerTargets: ProviderTarget[];
   allocationMode: AllocationMode;
   excludeFlagged: boolean;
   excludeZeroValue: boolean;
@@ -35,13 +38,14 @@ export const MASTER_CONTROL_SHEETS = {
   collection: 'Collection Attribution',
   allocation: 'Segment Allocation',
   pnlAdjustments: 'P&L Line Adjustments',
+  targets: 'Provider Targets',
   toggles: 'Toggles',
 } as const;
 
 export class MasterControlSchemaError extends Error {
   constructor() {
     super(
-      'This doesn\'t look like a Patient Matrix settings file - none of the expected sheets were found (Provider Groups, Temporary Reassignments, Revenue Adjustments, Collection Attribution, Segment Allocation, P&L Line Adjustments, Toggles).',
+      'This doesn\'t look like a Patient Matrix settings file - none of the expected sheets were found (Provider Groups, Temporary Reassignments, Revenue Adjustments, Collection Attribution, Segment Allocation, P&L Line Adjustments, Provider Targets, Toggles).',
     );
   }
 }
@@ -66,7 +70,7 @@ export function buildMasterControlSheets(s: MasterControlSettings): WorkbookShee
     {
       name: MASTER_CONTROL_SHEETS.readMe,
       rows: [
-        { Item: 'What this is', Detail: 'Every Master Control decision made by hand: provider groups, reassignments, revenue adjustments, collection attribution, segment allocation and the analysis toggles.' },
+        { Item: 'What this is', Detail: 'Every Master Control decision made by hand: provider groups, reassignments, revenue adjustments, collection attribution, segment allocation, provider revenue targets and the analysis toggles.' },
         { Item: 'Why it exists', Detail: 'These settings live in one browser on one machine. Without this file, two people looking at the same sales data see different figures and nothing on screen says why.' },
         { Item: 'How to share it', Detail: 'Put it in the shared OneDrive "Master Control" folder. Anyone can then import it on the Data tab and their dashboard will agree with yours.' },
         { Item: 'Importing', Detail: 'Each sheet replaces that section wholesale. A sheet left out of the file leaves that section untouched, so a file carrying only Provider Groups will not wipe your Revenue Adjustments.' },
@@ -116,6 +120,12 @@ export function buildMasterControlSheets(s: MasterControlSettings): WorkbookShee
       rows: s.pnlLineAdjustments.map((a) => ({
         Id: a.id, Month: a.month, Segment: a.segment, Section: a.section,
         Group: a.group ?? '', Description: a.description, Amount: a.amount, Note: a.note,
+      })),
+    },
+    {
+      name: MASTER_CONTROL_SHEETS.targets,
+      rows: s.providerTargets.map((t) => ({
+        Id: t.id, Provider: t.provider, Month: t.month, Amount: t.amount, Note: t.note ?? '',
       })),
     },
     {
@@ -203,6 +213,28 @@ export async function parseMasterControlWorkbook(buffer: ArrayBuffer): Promise<P
           amount: num(r.Amount),
           note: text(r.Note),
           ...(isRevenueTypeKey(itemType) ? { itemType } : {}),
+        };
+      });
+  }
+
+  const targets = rowsOf(MASTER_CONTROL_SHEETS.targets);
+  if (targets) {
+    matchedAnySheet = true;
+    // A zero target is the same statement as no target, and keeping it would put a row in the
+    // table claiming 0% of nothing. A blank provider or month has nothing to attach to.
+    out.providerTargets = targets
+      .filter((r) => text(r.Provider) && text(r.Month) && num(r.Amount) !== 0)
+      .map((r) => {
+        const provider = text(r.Provider);
+        const month = monthKeyOf(text(r.Month));
+        return {
+          // Derived rather than trusted, so a hand-typed row lands on the same key as the app's own
+          // and a provider cannot end up with two targets for one month.
+          id: targetId(provider, month),
+          provider,
+          month,
+          amount: num(r.Amount),
+          note: text(r.Note) || null,
         };
       });
   }

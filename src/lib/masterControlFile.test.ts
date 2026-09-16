@@ -23,6 +23,9 @@ const settings: MasterControlSettings = {
   pnlLineAdjustments: [
     { id: 'p1', month: '2026-07-01', segment: 'DERMA', section: 'expense', group: null, description: 'Rent', amount: -500, note: '' },
   ],
+  providerTargets: [
+    { id: 'Dr Fatima|2026-09-01', provider: 'Dr Fatima', month: '2026-09-01', amount: 30000, note: 'Q3 plan' },
+  ],
   allocationMode: 'revenue',
   excludeFlagged: true,
   excludeZeroValue: false,
@@ -137,5 +140,31 @@ describe('round trip', () => {
     const cleared = { ...settings, revenueAdjustments: [] };
     const parsed = await parseMasterControlWorkbook(await toBuffer(buildMasterControlSheets(cleared)));
     expect(parsed.revenueAdjustments).toEqual([]);
+  });
+});
+
+describe('provider targets round-trip', () => {
+  it('writes one row per provider per month', () => {
+    expect(sheet('Provider Targets').rows).toEqual([
+      { Id: 'Dr Fatima|2026-09-01', Provider: 'Dr Fatima', Month: '2026-09-01', Amount: 30000, Note: 'Q3 plan' },
+    ]);
+  });
+
+  it('reads a hand-typed row back, deriving the id from provider and month', async () => {
+    // The Id column is the one a person is most likely to leave blank; deriving it means two rows
+    // for the same provider and month cannot both survive as separate targets.
+    const parsed = await parseMasterControlWorkbook(await toBuffer([
+      { name: 'Provider Targets', rows: [{ Id: '', Provider: 'Dr A', Month: '2026-09-17', Amount: '25,000', Note: '' }] },
+    ]));
+    expect(parsed.providerTargets).toEqual([
+      { id: 'Dr A|2026-09-01', provider: 'Dr A', month: '2026-09-01', amount: 25000, note: null },
+    ]);
+  });
+
+  it('drops a row with no amount, which says the same thing as no target at all', async () => {
+    const parsed = await parseMasterControlWorkbook(await toBuffer([
+      { name: 'Provider Targets', rows: [{ Provider: 'Dr A', Month: '2026-09-01', Amount: 0, Note: '' }] },
+    ]));
+    expect(parsed.providerTargets).toEqual([]);
   });
 });

@@ -25,6 +25,7 @@ import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } fro
 import type { CollectionAttributionOverride } from './types';
 import type { MasterControlSettings } from './lib/masterControlFile';
 import type { AllocationMode, PnlLineAdjustment, SegmentAllocationRule } from './lib/segmentAllocation';
+import type { ProviderTarget } from './lib/providerTargets';
 import { formatNumber } from './lib/format';
 
 type Tab = 'dashboard' | 'newPatientRevenue' | 'kpi' | 'conversion' | 'providerAnalytics' | 'yb111' | 'segmentPnl' | 'staffScorecards' | 'departments' | 'data';
@@ -88,6 +89,7 @@ function App() {
   const [allocationRules, setAllocationRules] = useLocalStorageState<SegmentAllocationRule[]>('pm-segment-allocation-rules', []);
   const [allocationMode, setAllocationMode] = useLocalStorageState<AllocationMode>('pm-pnl-allocation-mode', 'percentage');
   const [pnlLineAdjustments, setPnlLineAdjustments] = useLocalStorageState<PnlLineAdjustment[]>('pm-pnl-line-adjustments', []);
+  const [providerTargets, setProviderTargets] = useLocalStorageState<ProviderTarget[]>('pm-provider-targets', []);
   const pnlSegments = useMemo(() => [...new Set(pnlBatches.flatMap((b) => b.segments))].sort(), [pnlBatches]);
 
   // Dashboard analysis excludes gift card / prepaid card transactions (not clinic visits or service sales);
@@ -113,10 +115,10 @@ function App() {
   const masterControlSettings: MasterControlSettings = useMemo(
     () => ({
       providerGroups, providerAssignmentOverrides, revenueAdjustments, collectionAttributionOverrides,
-      allocationRules, pnlLineAdjustments, allocationMode, excludeFlagged, excludeZeroValue,
+      allocationRules, pnlLineAdjustments, providerTargets, allocationMode, excludeFlagged, excludeZeroValue,
     }),
     [providerGroups, providerAssignmentOverrides, revenueAdjustments, collectionAttributionOverrides,
-     allocationRules, pnlLineAdjustments, allocationMode, excludeFlagged, excludeZeroValue],
+     allocationRules, pnlLineAdjustments, providerTargets, allocationMode, excludeFlagged, excludeZeroValue],
   );
 
   // Only the sections the file actually carried are applied, so importing a partial settings file
@@ -128,6 +130,7 @@ function App() {
     if (incoming.collectionAttributionOverrides) setCollectionAttributionOverrides(incoming.collectionAttributionOverrides);
     if (incoming.allocationRules) setAllocationRules(incoming.allocationRules);
     if (incoming.pnlLineAdjustments) setPnlLineAdjustments(incoming.pnlLineAdjustments);
+    if (incoming.providerTargets) setProviderTargets(incoming.providerTargets);
     if (incoming.allocationMode) setAllocationMode(incoming.allocationMode);
     if (incoming.excludeFlagged != null) setExcludeFlagged(incoming.excludeFlagged);
     if (incoming.excludeZeroValue != null) setExcludeZeroValue(incoming.excludeZeroValue);
@@ -268,6 +271,7 @@ function App() {
             providerGroups={providerGroups}
             providerAssignmentOverrides={providerAssignmentOverrides}
             revenueAdjustments={revenueAdjustments}
+            providerTargets={providerTargets}
             collections={collections}
             collectionAttributionOverrides={collectionAttributionOverrides}
           />
@@ -363,6 +367,8 @@ function App() {
             applyMasterControlSettings={applyMasterControlSettings}
             providerAssignmentOverrides={providerAssignmentOverrides}
             setProviderAssignmentOverrides={setProviderAssignmentOverrides}
+            providerTargets={providerTargets}
+            setProviderTargets={setProviderTargets}
             serviceDepartmentRecords={serviceDepartmentRecords}
             departmentMappingBatch={departmentMappingBatch}
             setServiceDepartment={setServiceDepartment}

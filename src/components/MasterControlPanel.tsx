@@ -3,6 +3,9 @@ import type { ProviderAssignmentOverride, ProviderGroup, RevenueAdjustment } fro
 import type { CollectionAttributionOverride } from '../types';
 import { isRevenueTypeKey, REVENUE_TYPE_KEYS, REVENUE_TYPE_LABELS } from '../lib/revenueTypes';
 import { formatDate, formatNumber } from '../lib/format';
+import { formatCurrency, formatMonthLabel } from '../lib/format';
+import { targetId, type ProviderTarget } from '../lib/providerTargets';
+import { monthKeyOf } from '../lib/months';
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -537,6 +540,120 @@ function RevenueAdjustmentsEditor({
   );
 }
 
+
+function ProviderTargetsEditor({
+  targets,
+  setTargets,
+}: {
+  targets: ProviderTarget[];
+  setTargets: Dispatch<SetStateAction<ProviderTarget[]>>;
+}) {
+  const [provider, setProvider] = useState('');
+  const [month, setMonth] = useState('');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+
+  const addTarget = () => {
+    const name = provider.trim();
+    const value = Number(amount);
+    if (!name || !month || !Number.isFinite(value) || value === 0) return;
+    const monthKey = monthKeyOf(`${month}-01`);
+    const id = targetId(name, monthKey);
+    // One target per provider per month: setting it again is a correction, not a second target.
+    setTargets((prev) => [
+      ...prev.filter((t) => t.id !== id),
+      { id, provider: name, month: monthKey, amount: value, note: note.trim() || null },
+    ]);
+    setAmount('');
+    setNote('');
+  };
+
+  const sorted = [...targets].sort((a, b) => b.month.localeCompare(a.month) || a.provider.localeCompare(b.provider));
+
+  return (
+    <div>
+      <h4 className="mb-1 text-sm font-semibold text-zinc-700 dark:text-zinc-200">Provider Revenue Targets</h4>
+      <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+        A monthly revenue target per provider, measured against the same adjusted net revenue every other tab reports -
+        so a Revenue Adjustment moves the actual here too, which is the point of making one. Setting a target for a
+        provider and month that already has one replaces it. Progress, pace and the daily rate needed to catch up show
+        on the Dashboard.
+      </p>
+
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Provider</label>
+          <input
+            list="master-control-staff-options"
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            placeholder="Dr Fatima"
+            className="mt-0.5 w-40 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Month</label>
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="mt-0.5 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Target (OMR)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.001"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="30000"
+            className="mt-0.5 w-32 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-500 dark:text-zinc-400">Note (optional)</label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Q3 plan"
+            className="mt-0.5 w-44 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <button
+          onClick={addTarget}
+          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          Set target
+        </button>
+      </div>
+
+      {sorted.length === 0 ? (
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">No targets set.</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {sorted.map((t) => (
+            <li key={t.id} className="flex items-center justify-between gap-2 text-sm">
+              <span>
+                <span className="font-medium">{t.provider}</span>
+                <span className="text-zinc-500 dark:text-zinc-400"> — {formatMonthLabel(t.month)}: {formatCurrency(t.amount)}</span>
+                {t.note && <span className="text-zinc-400 dark:text-zinc-500"> ({t.note})</span>}
+              </span>
+              <button
+                onClick={() => setTargets((prev) => prev.filter((x) => x.id !== t.id))}
+                className="shrink-0 text-xs text-rose-600 hover:underline dark:text-rose-400"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function MasterControlPanel({
   providerGroups,
   setProviderGroups,
@@ -546,6 +663,8 @@ export function MasterControlPanel({
   setCollectionAttributionOverrides,
   providerAssignmentOverrides,
   setProviderAssignmentOverrides,
+  providerTargets,
+  setProviderTargets,
   knownStaff,
 }: {
   providerGroups: ProviderGroup[];
@@ -556,6 +675,8 @@ export function MasterControlPanel({
   setCollectionAttributionOverrides: Dispatch<SetStateAction<CollectionAttributionOverride[]>>;
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   setProviderAssignmentOverrides: Dispatch<SetStateAction<ProviderAssignmentOverride[]>>;
+  providerTargets: ProviderTarget[];
+  setProviderTargets: Dispatch<SetStateAction<ProviderTarget[]>>;
   knownStaff: string[];
 }) {
   return (
@@ -569,6 +690,8 @@ export function MasterControlPanel({
         overrides={collectionAttributionOverrides}
         setOverrides={setCollectionAttributionOverrides}
       />
+      <div className="border-t border-zinc-200 dark:border-zinc-800" />
+      <ProviderTargetsEditor targets={providerTargets} setTargets={setProviderTargets} />
     </div>
   );
 }
