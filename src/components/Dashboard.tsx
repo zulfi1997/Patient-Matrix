@@ -32,7 +32,7 @@ import {
   salesDateSpan,
 } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
-import { ProviderTargetsTable } from './ProviderTargetsTable';
+import { ProviderTargetsTable, TargetKpiCards } from './ProviderTargetsTable';
 import { computeProviderTargetProgress, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
 import { monthKeyOf } from '../lib/months';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
@@ -364,6 +364,7 @@ export function Dashboard({
         />
       </div>
 
+      <TargetKpiCards progress={targetTotal} scope="the whole clinic" />
       <ProviderTargetsTable rows={targetRows} total={targetTotal} asOfISO={asOfISO} />
 
       <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />

@@ -3,7 +3,8 @@ import {
   type ProviderTargetProgress,
   type TargetStatus,
 } from '../lib/providerTargets';
-import { formatCurrency, formatMonthLabel, formatNumber, formatPercent } from '../lib/format';
+import { formatCurrency, formatCurrencyCompact, formatMonthLabel, formatNumber, formatPercent } from '../lib/format';
+import { KpiCard } from './KpiCard';
 import { InfoTooltip } from './InfoTooltip';
 
 const STATUS_STYLE: Record<TargetStatus, string> = {
@@ -32,6 +33,70 @@ function ProgressBar({ row }: { row: ProviderTargetProgress }) {
           title={`Even pace after ${row.workingDaysElapsed} working days: ${formatCurrency(row.paceTarget)}`}
         />
       )}
+    </div>
+  );
+}
+
+
+/**
+ * The month's target as four headline figures: the goal, what has been earned, whether that is
+ * ahead of where it should be by now, and what it takes per working day from here.
+ *
+ * Deliberately not the same four numbers as the table's first columns. Variance against the full
+ * month's target is a useless headline mid-month - everybody is short of a month's target on the
+ * 10th - so the comparison shown is against the pace to date, which is the one that can actually
+ * be acted on. Once the month closes, pace and target are the same figure and the card says so.
+ */
+export function TargetKpiCards({ progress, scope }: { progress: ProviderTargetProgress; scope: string }) {
+  const hasTarget = progress.target > 0;
+  const vsPace = progress.actual - progress.paceTarget;
+  const paceLabel = progress.complete ? 'vs Target' : 'vs Pace';
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <KpiCard
+        label="Monthly Target"
+        value={hasTarget ? formatCurrencyCompact(progress.target) : '—'}
+        hint={hasTarget ? `${formatMonthLabel(progress.month)} · ${formatCurrency(progress.target)}` : 'Set one under Master Control on the Data tab'}
+        help={`Revenue target for ${scope} across the whole of ${formatMonthLabel(progress.month)}, whatever period is selected above. Targets are monthly, so a part-month slice would always read as missed.`}
+      />
+      <KpiCard
+        label="Achieved"
+        value={formatCurrencyCompact(progress.actual)}
+        hint={hasTarget ? `${formatPercent(progress.achievedPct)} of target · ${formatCurrency(progress.actual)}` : formatCurrency(progress.actual)}
+        help={`Adjusted net revenue for ${scope} over the whole month - the same figure the Revenue KPI reports, so a Master Control Revenue Adjustment moves it here too.`}
+        tone={hasTarget && progress.status === 'met' ? 'good' : 'neutral'}
+      />
+      <KpiCard
+        label={paceLabel}
+        value={hasTarget ? `${vsPace >= 0 ? '+' : '−'}${formatCurrencyCompact(Math.abs(vsPace))}` : '—'}
+        hint={
+          hasTarget
+            ? progress.complete
+              ? TARGET_STATUS_LABELS[progress.status]
+              : `Even pace by now is ${formatCurrency(progress.paceTarget)}`
+            : 'No target to compare against'
+        }
+        help={
+          progress.complete
+            ? 'The month is over, so this is the final shortfall or surplus against the full target.'
+            : 'Measured against an even spread of the target across the month\'s working days, not against the full month. Being short of a whole month\'s target on the 10th is not being behind.'
+        }
+        tone={hasTarget ? (vsPace >= 0 ? 'good' : 'bad') : 'neutral'}
+      />
+      <KpiCard
+        label="Needed / Working Day"
+        value={progress.requiredPerDay === null ? '—' : formatCurrencyCompact(progress.requiredPerDay)}
+        hint={
+          progress.requiredPerDay === null
+            ? progress.complete
+              ? 'Month closed'
+              : 'No working days left'
+            : `${formatCurrency(progress.remaining)} over ${formatNumber(progress.workingDaysRemaining)} working days`
+        }
+        help="What is left to earn, divided by the working days remaining. Friday and Saturday are excluded, so this is what has to be earned on a day the clinic actually opens - a calendar-day figure would be lower and unreachable."
+        tone={progress.requiredPerDay !== null && progress.requiredPerDay > 0 ? 'bad' : 'neutral'}
+      />
     </div>
   );
 }

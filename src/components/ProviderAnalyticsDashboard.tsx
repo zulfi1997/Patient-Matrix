@@ -53,8 +53,8 @@ import {
   salesDateSpan,
 } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
-import { ProviderTargetsTable } from './ProviderTargetsTable';
-import { computeProviderTargetProgress, TARGET_STATUS_LABELS, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
+import { ProviderTargetsTable, TargetKpiCards } from './ProviderTargetsTable';
+import { computeProviderTargetProgress, TARGET_STATUS_LABELS, targetProgress, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
 import { monthKeyOf } from '../lib/months';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
@@ -231,6 +231,14 @@ export function ProviderAnalyticsDashboard({
   const targetTotal = useMemo(
     () => totalTargetProgress(allTargetRows, targetMonth, asOfISO),
     [allTargetRows, targetMonth, asOfISO],
+  );
+
+  // A provider with neither revenue nor a target for the month has no row at all, so the cards fall
+  // back to an empty progress for them rather than vanishing - "nothing yet" is the answer, and a
+  // missing card looks like a bug.
+  const selectedTargetProgress = useMemo(
+    () => targetRows[0] ?? targetProgress(selected, targetMonth, 0, 0, asOfISO),
+    [targetRows, selected, targetMonth, asOfISO],
   );
 
   const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
@@ -703,6 +711,7 @@ export function ProviderAnalyticsDashboard({
         </div>
       </div>
 
+      <TargetKpiCards progress={selectedTargetProgress} scope={selected} />
       <ProviderTargetsTable rows={targetRows} total={targetTotal} asOfISO={asOfISO} />
 
       <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />
