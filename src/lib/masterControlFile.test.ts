@@ -168,3 +168,45 @@ describe('provider targets round-trip', () => {
     expect(parsed.providerTargets).toEqual([]);
   });
 });
+
+describe('settings files written before targets existed', () => {
+  /** A workbook exported by the previous version: every sheet except Provider Targets. */
+  const legacySheets = () => buildMasterControlSheets(settings).filter((s) => s.name !== 'Provider Targets');
+
+  it('still imports every section it does carry', async () => {
+    const parsed = await parseMasterControlWorkbook(await toBuffer(legacySheets()));
+    // One, not two: Dr Fatima has no aliases and is dropped, which is long-standing behaviour
+    // covered above rather than anything the targets sheet changed.
+    expect(parsed.providerGroups).toHaveLength(1);
+    expect(parsed.revenueAdjustments).toHaveLength(1);
+    expect(parsed.collectionAttributionOverrides).toHaveLength(1);
+    expect(parsed.allocationRules).toHaveLength(1);
+    expect(parsed.pnlLineAdjustments).toHaveLength(1);
+    expect(parsed.allocationMode).toBe('revenue');
+    expect(parsed.excludeFlagged).toBe(true);
+  });
+
+  it('says nothing about targets, so importing it leaves existing ones alone', async () => {
+    // The caller applies only the keys that are present. An older file must therefore come back
+    // with providerTargets absent rather than empty, or sharing last month's settings file would
+    // silently wipe every target somebody had set.
+    const parsed = await parseMasterControlWorkbook(await toBuffer(legacySheets()));
+    expect('providerTargets' in parsed).toBe(false);
+    expect(describeImport(parsed)).not.toContain('Provider Targets: 0');
+  });
+
+  it('is not mistaken for the wrong file', async () => {
+    await expect(parseMasterControlWorkbook(await toBuffer(legacySheets()))).resolves.toBeDefined();
+  });
+
+  it('reports targets in the summary when the file does carry them', async () => {
+    const parsed = await parseMasterControlWorkbook(await toBuffer(buildMasterControlSheets(settings)));
+    expect(describeImport(parsed)).toContain('Provider Targets: 1');
+  });
+
+  it('clears targets when the sheet is present but empty, which is a statement', async () => {
+    const cleared = { ...settings, providerTargets: [] };
+    const parsed = await parseMasterControlWorkbook(await toBuffer(buildMasterControlSheets(cleared)));
+    expect(parsed.providerTargets).toEqual([]);
+  });
+});

@@ -310,6 +310,7 @@ export function describeImport(settings: Partial<MasterControlSettings>): string
   count('Collection Attribution', settings.collectionAttributionOverrides);
   count('Segment Allocation rules', settings.allocationRules);
   count('P&L Line Adjustments', settings.pnlLineAdjustments);
+  count('Provider Targets', settings.providerTargets);
   if (settings.allocationMode) lines.push(`Allocation Mode: ${settings.allocationMode}`);
   if (settings.excludeFlagged != null) lines.push(`Exclude YB111: ${settings.excludeFlagged ? 'on' : 'off'}`);
   if (settings.excludeZeroValue != null) lines.push(`Exclude zero-revenue visits: ${settings.excludeZeroValue ? 'on' : 'off'}`);
