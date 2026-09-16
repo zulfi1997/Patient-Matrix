@@ -7,7 +7,33 @@
     <title>Patient Matrix — Clinic Performance Dashboard</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;font:14px system-ui;color:#71717a;">
+        Loading Patient Matrix…
+      </div>
+    </div>
+    <script>
+      // Every deploy renames every bundle. A browser still holding a cached index.html asks for a
+      // file that no longer exists, the module never runs, and the page sits blank with nothing
+      // said - which is exactly what a broken app looks like. Reload once to pick up the current
+      // index.html; the sessionStorage flag stops that becoming a loop when the fault is real.
+      // Resource errors do not bubble, hence the capture phase.
+      window.addEventListener(
+        'error',
+        function (event) {
+          var el = event.target;
+          if (!el || (el.tagName !== 'SCRIPT' && el.tagName !== 'LINK')) return;
+          try {
+            if (sessionStorage.getItem('pm-asset-reload')) return;
+            sessionStorage.setItem('pm-asset-reload', '1');
+          } catch (e) {
+            return;
+          }
+          window.location.reload();
+        },
+        true,
+      );
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

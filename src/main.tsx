@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 /**
  * When Microsoft redirects the OneDrive sign-in popup back to this same URL, this window *is*
@@ -32,9 +33,19 @@ if (isAuthPopupResponse) {
     broadcastResponseToMainFrame().catch(() => {});
   });
 } else {
+  // The app got here, so the bundle is current: clear the one-shot flag that guards against a
+  // cached index.html pointing at bundles a deploy has since replaced.
+  try {
+    sessionStorage.removeItem('pm-asset-reload');
+  } catch {
+    // Private browsing can refuse storage entirely; the guard simply does not arm.
+  }
+
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>,
   );
 }
