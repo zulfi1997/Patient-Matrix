@@ -43,3 +43,48 @@ export function daysInMonth(month: string): number {
 export function lastDayOfMonth(month: string): string {
   return `${month.slice(0, 7)}-${String(daysInMonth(month)).padStart(2, '0')}`;
 }
+
+/**
+ * Days the clinic is closed, as JavaScript weekday numbers (0 = Sunday). Friday and Saturday is
+ * the Omani weekend.
+ *
+ * One constant rather than a setting: changing it is a change to what the clinic is, not a view
+ * preference, and a per-person toggle would have two people reading different daily rates off the
+ * same target.
+ */
+export const WEEKEND_DAYS: readonly number[] = [5, 6];
+
+function isWeekend(year: number, monthNumber: number, day: number): boolean {
+  return WEEKEND_DAYS.includes(new Date(year, monthNumber - 1, day).getDay());
+}
+
+/** Working days in the month, excluding the weekend. */
+export function workingDaysInMonth(month: string): number {
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  let count = 0;
+  for (let day = 1; day <= daysInMonth(month); day += 1) {
+    if (!isWeekend(year, monthNumber, day)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Working days from the first of the month up to and including `asOf`.
+ *
+ * Counted rather than estimated from a weekly rate, because months start on different weekdays:
+ * a 30-day month can hold 20 working days or 22 depending on where its weekends fall, and the
+ * difference is a tenth of a provider's monthly target.
+ */
+export function workingDaysElapsed(month: string, asOf: string): number {
+  if (asOf < month) return 0;
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  const total = daysInMonth(month);
+  const through = asOf >= lastDayOfMonth(month) ? total : Number(asOf.slice(8, 10));
+  let count = 0;
+  for (let day = 1; day <= through; day += 1) {
+    if (!isWeekend(year, monthNumber, day)) count += 1;
+  }
+  return count;
+}

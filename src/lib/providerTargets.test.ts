@@ -40,13 +40,22 @@ describe('elapsedDays', () => {
 });
 
 describe('targetProgress', () => {
-  it('states the gap and what it takes per day to close it', () => {
-    // 30,000 target, 12,000 done by the 15th: 18,000 left over 15 remaining days.
+  it('states the gap and what it takes per working day to close it', () => {
+    // September 2026 holds 22 working days; 11 have gone by the 15th and 11 remain. 30,000 target
+    // against 12,000 earned leaves 18,000 over those 11 open days.
     const p = targetProgress('Dr A', MONTH, 30_000, 12_000, '2026-09-15');
     expect(p).toMatchObject({ target: 30_000, actual: 12_000, variance: -18_000, remaining: 18_000 });
     expect(p.daysRemaining).toBe(15);
-    expect(p.requiredPerDay).toBe(1_200);
+    expect(p.workingDaysRemaining).toBe(11);
+    expect(p.requiredPerDay).toBeCloseTo(18_000 / 11, 6);
     expect(p.achievedPct).toBe(40);
+  });
+
+  it('asks for more per day than a calendar split would, since the clinic is shut two days a week', () => {
+    // The correction this encodes: 18,000 over 15 calendar days is 1,200 a day, but four of those
+    // days are a weekend. Asking for 1,200 on the days the clinic opens misses the target.
+    const p = targetProgress('Dr A', MONTH, 30_000, 12_000, '2026-09-15');
+    expect(p.requiredPerDay!).toBeGreaterThan(18_000 / p.daysRemaining);
   });
 
   it('calls a provider behind when they trail the even pace, not merely the full target', () => {
@@ -78,19 +87,40 @@ describe('targetProgress', () => {
     expect(p.variance).toBe(3_000);
   });
 
-  it('projects the month end from the pace so far', () => {
+  it('projects the month end from the working-day pace so far', () => {
     const p = targetProgress('Dr A', MONTH, 30_000, 12_000, '2026-09-15');
-    expect(p.actualPerDay).toBe(800);
-    expect(p.projected).toBe(24_000);
+    expect(p.workingDaysElapsed).toBe(11);
+    expect(p.actualPerDay).toBeCloseTo(12_000 / 11, 6);
+    // 11 of 22 working days gone, so the projection doubles what has been earned.
+    expect(p.projected).toBeCloseTo(24_000, 6);
+  });
+
+  it('counts the weekend out of both the pace and the elapsed count', () => {
+    // Measured on Sunday the 6th: the 4th and 5th were the weekend, so only four working days have
+    // passed. Charging the provider for the closed days would report them behind for nothing.
+    const p = targetProgress('Dr A', MONTH, 22_000, 0, '2026-09-06');
+    expect(p.daysElapsed).toBe(6);
+    expect(p.workingDaysElapsed).toBe(4);
+    expect(p.paceTarget).toBeCloseTo(22_000 * (4 / 22), 6);
   });
 
   it('holds back a rate before the month has started', () => {
     const p = targetProgress('Dr A', MONTH, 30_000, 0, '2026-08-20');
     expect(p.daysElapsed).toBe(0);
+    expect(p.workingDaysElapsed).toBe(0);
     expect(p.actualPerDay).toBeNull();
     expect(p.projected).toBeNull();
-    // The whole target still has the whole month to be earned in.
-    expect(p.requiredPerDay).toBe(1_000);
+    // The whole target still has every working day of the month to be earned in.
+    expect(p.requiredPerDay).toBeCloseTo(30_000 / 22, 6);
+  });
+
+  it('stops asking for a daily rate once only the weekend is left', () => {
+    // A target is not recoverable across days the clinic never opens, so the plan ends with the
+    // last working day rather than with the month.
+    const p = targetProgress('Dr A', '2026-10-01', 30_000, 1_000, '2026-10-30');
+    expect(p.daysRemaining).toBeGreaterThan(0);
+    expect(p.workingDaysRemaining).toBe(0);
+    expect(p.requiredPerDay).toBeNull();
   });
 
   it('says no target rather than reporting 100% against zero', () => {
@@ -115,7 +145,9 @@ describe('computeProviderTargetProgress', () => {
   ) => computeProviderTargetProgress(rows, targets, MONTH, asOf, groups, [], adjustments);
 
   it('measures actual against target for the whole calendar month', () => {
-    expect(find(run(), 'Dr A')).toMatchObject({ target: 30_000, actual: 12_000, requiredPerDay: 1_200 });
+    const row = find(run(), 'Dr A');
+    expect(row).toMatchObject({ target: 30_000, actual: 12_000 });
+    expect(row.requiredPerDay).toBeCloseTo(18_000 / 11, 6);
   });
 
   it('ignores revenue from other months', () => {
@@ -209,8 +241,8 @@ describe('totalTargetProgress', () => {
     expect(total).toMatchObject({ provider: 'All Providers', target: 40_000, actual: 16_000 });
     expect(total.target).toBe(rows.reduce((s, r) => s + r.target, 0));
     expect(total.actual).toBe(rows.reduce((s, r) => s + r.actual, 0));
-    // 24,000 left across the 15 remaining days.
-    expect(total.requiredPerDay).toBe(1_600);
+    // 24,000 left across the 11 remaining working days.
+    expect(total.requiredPerDay).toBeCloseTo(24_000 / 11, 6);
   });
 });
 

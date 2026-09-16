@@ -23,6 +23,7 @@ import {
   visibleRevenueTypeKeys,
   type ProviderRevenueByType,
 } from './providerRevenueByType';
+import { TARGET_STATUS_LABELS, type ProviderTargetProgress } from './providerTargets';
 import { COLLECTION_METHOD_LABELS, isCashCollection, methodOf } from './collectionsParser';
 import {
   needsInvestigation,
@@ -30,7 +31,7 @@ import {
   type CollectionSummary,
   type InvoiceAttributionRow,
 } from './collections';
-import { downloadWorkbook, money, type WorkbookSheet } from './workbook';
+import { downloadWorkbook, money, pct, type WorkbookSheet } from './workbook';
 
 export interface WorkbookParams {
   periodLabel: string;
@@ -50,6 +51,9 @@ export interface WorkbookParams {
   atRiskPatients: AtRiskPatient[];
   returnedPatients: ReturnedPatient[];
   revenueByType: ProviderRevenueByType[];
+  /** Target progress for the calendar month the period ends in, plus the All Providers roll-up. */
+  targetRows: ProviderTargetProgress[];
+  targetTotal: ProviderTargetProgress;
   /** Null until a Collections export has been imported. */
   collectionSummary: CollectionSummary | null;
   /** One row per payment per provider it was attributed to - the trace behind every split. */
@@ -89,6 +93,10 @@ function readMeRows(p: WorkbookParams): Record<string, string>[] {
     {
       Item: 'Provider',
       Detail: 'Canonical name after Provider Groups and date-scoped overrides, so an assisting nurse counts under whichever doctor she assisted that day.',
+    },
+    {
+      Item: 'Provider Targets',
+      Detail: 'Whole calendar month, not the period above - a monthly target judged against a part-month slice would always read as missed. Behind and Ahead compare against an even spread across working days to date, so nobody is behind on the 2nd for having earned less than a month. Every rate is per working day, with Friday and Saturday excluded as the weekend.',
     },
     {
       Item: 'Patient Type',
@@ -311,6 +319,37 @@ function transactionRows(p: WorkbookParams): Record<string, string | number>[] {
  * them pivotable - is more useful than guessing at slides, and the Read Me sheet travels with
  * them so the bases that differ between figures survive the trip into a presentation.
  */
+/**
+ * Target versus actual for the month, with the All Providers roll-up as the last row.
+ *
+ * Everything the card computes is carried rather than left as a formula, so the sheet reconciles
+ * to what was on screen even after someone sorts or filters it.
+ */
+function targetRows(p: WorkbookParams): Record<string, string | number>[] {
+  const row = (t: ProviderTargetProgress) => ({
+    Provider: t.provider,
+    Month: t.month,
+    Target: money(t.target),
+    Actual: money(t.actual),
+    Variance: money(t.variance),
+    '% of Target': t.achievedPct === null ? '' : pct(t.achievedPct),
+    'Even Pace To Date': money(t.paceTarget),
+    Remaining: money(t.remaining),
+    'Days In Month': t.daysInMonth,
+    'Days Elapsed': t.daysElapsed,
+    'Days Remaining': t.daysRemaining,
+    'Working Days In Month': t.workingDaysInMonth,
+    'Working Days Elapsed': t.workingDaysElapsed,
+    'Working Days Remaining': t.workingDaysRemaining,
+    'Needed Per Working Day': t.requiredPerDay === null ? '' : money(t.requiredPerDay),
+    'Actual Per Working Day': t.actualPerDay === null ? '' : money(t.actualPerDay),
+    'Projected Month End': t.projected === null ? '' : money(t.projected),
+    Status: TARGET_STATUS_LABELS[t.status],
+    'Month Complete': t.complete ? 'Yes' : 'No',
+  });
+  return [...p.targetRows.map(row), row(p.targetTotal)];
+}
+
 export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> {
   const sheets: WorkbookSheet[] = [
     { name: 'Read Me', rows: readMeRows(p) },
@@ -332,6 +371,7 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
       })),
     },
     { name: 'Revenue By Type', rows: revenueByTypeRows(p) },
+    { name: 'Provider Targets', rows: targetRows(p) },
     ...(p.collectionSummary
       ? [
           { name: 'Collections', rows: collectionRows(p.collectionSummary) },

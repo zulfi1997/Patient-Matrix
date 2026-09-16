@@ -29,7 +29,7 @@ function ProgressBar({ row }: { row: ProviderTargetProgress }) {
         <div
           className="absolute top-0 h-full w-0.5 bg-zinc-600 dark:bg-zinc-300"
           style={{ left: `${pace}%` }}
-          title={`Even pace by day ${row.daysElapsed}: ${formatCurrency(row.paceTarget)}`}
+          title={`Even pace after ${row.workingDaysElapsed} working days: ${formatCurrency(row.paceTarget)}`}
         />
       )}
     </div>
@@ -111,12 +111,13 @@ export function ProviderTargetsTable({
           <>The month is complete, so these are final. </>
         ) : (
           <>
-            Day {formatNumber(total.daysElapsed)} of {formatNumber(total.daysInMonth)}, with{' '}
-            {formatNumber(total.daysRemaining)} to go.{' '}
+            Day {formatNumber(total.daysElapsed)} of {formatNumber(total.daysInMonth)}, which is{' '}
+            {formatNumber(total.workingDaysElapsed)} of {formatNumber(total.workingDaysInMonth)} working days, with{' '}
+            {formatNumber(total.workingDaysRemaining)} to go.{' '}
           </>
         )}
-        Needed / Day divides what is left by the days remaining, counting every calendar day. If the clinic is closed
-        some of them, the real daily figure on an open day is higher.
+        Every rate here is per working day, Friday and Saturday excluded. Needed / Day divides what is left by the
+        working days remaining, so it is what has to be earned on a day the clinic actually opens.
       </p>
 
       {!anyTarget && (
@@ -136,8 +137,8 @@ export function ProviderTargetsTable({
               <th className="py-2 pr-3 text-right">Variance</th>
               <th className="py-2 pr-3 text-right">% of Target</th>
               <th className="py-2 pr-3">Progress</th>
-              <th className="py-2 pr-3 text-right">Needed / Day</th>
-              <th className="py-2 pr-3 text-right">Actual / Day</th>
+                    <th className="py-2 pr-3 text-right">Needed / Working Day</th>
+              <th className="py-2 pr-3 text-right">Actual / Working Day</th>
               <th className="py-2 pr-3 text-right">Projected</th>
               <th className="py-2 pr-2">Status</th>
             </tr>
@@ -158,8 +159,8 @@ export function ProviderTargetsTable({
       </div>
 
       <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-        Projected is where the month lands if the current daily pace holds. The marker on each bar is where an even
-        spread would have that provider today. A provider with revenue but no target still appears, since a missing
+        Projected is where the month lands if the current working-day pace holds. The marker on each bar is where an
+        even spread across working days would have that provider today. A provider with revenue but no target still appears, since a missing
         target is usually an oversight rather than a decision. Data as of {asOfISO}.
       </p>
     </div>

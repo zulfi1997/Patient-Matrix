@@ -303,6 +303,7 @@ function App() {
             providerGroups={providerGroups}
             providerAssignmentOverrides={providerAssignmentOverrides}
             revenueAdjustments={revenueAdjustments}
+            providerTargets={providerTargets}
             collections={collections}
             rawRecords={records}
             collectionAttributionOverrides={collectionAttributionOverrides}

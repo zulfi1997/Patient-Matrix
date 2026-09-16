@@ -53,6 +53,9 @@ import {
   salesDateSpan,
 } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
+import { ProviderTargetsTable } from './ProviderTargetsTable';
+import { computeProviderTargetProgress, TARGET_STATUS_LABELS, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
+import { monthKeyOf } from '../lib/months';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
 import { KpiCard } from './KpiCard';
 import { PeriodPresetSelect } from './PeriodPresetSelect';
@@ -74,6 +77,7 @@ export function ProviderAnalyticsDashboard({
   providerGroups,
   providerAssignmentOverrides,
   revenueAdjustments,
+  providerTargets,
   collections,
   collectionAttributionOverrides,
   rawRecords,
@@ -90,6 +94,7 @@ export function ProviderAnalyticsDashboard({
   providerGroups: ProviderGroup[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
   revenueAdjustments: RevenueAdjustment[];
+  providerTargets: ProviderTarget[];
   collections: CollectionRecord[];
   collectionAttributionOverrides: CollectionAttributionOverride[];
   /** Unfiltered stored rows - collection attribution must see gift/prepaid-card invoices, which the analysis filters drop. */
@@ -208,6 +213,26 @@ export function ProviderAnalyticsDashboard({
 
   const providerCollected = collectionSummary?.providers[0] ?? null;
 
+  // Targets are monthly, so this reads the calendar month the selected period ends in and measures
+  // against that whole month - a monthly target judged against a part-month slice would always read
+  // as missed. Computed over every record rather than this provider's, so the All Providers line
+  // gives the clinic-wide figure to read the selected provider against.
+  const targetMonth = useMemo(() => monthKeyOf(range.end), [range.end]);
+  const allTargetRows = useMemo(
+    () => computeProviderTargetProgress(
+      records, providerTargets, targetMonth, asOfISO, providerGroups, providerAssignmentOverrides, revenueAdjustments,
+    ),
+    [records, providerTargets, targetMonth, asOfISO, providerGroups, providerAssignmentOverrides, revenueAdjustments],
+  );
+  const targetRows = useMemo(
+    () => allTargetRows.filter((r) => r.provider === selected),
+    [allTargetRows, selected],
+  );
+  const targetTotal = useMemo(
+    () => totalTargetProgress(allTargetRows, targetMonth, asOfISO),
+    [allTargetRows, targetMonth, asOfISO],
+  );
+
   const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);
   const flagged = useMemo(() => computeFlaggedSummary(providerRecords, range), [providerRecords, range]);
@@ -311,8 +336,29 @@ export function ProviderAnalyticsDashboard({
       ['Conversion', 'Computed across all clinic records then filtered to this provider - classifying new vs repeat from a narrowed set would make everyone look new. Zero-revenue visits are always included here, whatever the header toggle says, because an unconverted visit is defined by having produced no revenue.'],
       ['Top Services', `Category filter: ${serviceType}. Package sales are excluded under "Service", since the package is not itself a service and its value arrives later as redemptions.`],
       ['Invoice Ageing', 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.'],
+      ['Targets', 'The whole calendar month the period ends in, not the period itself - a monthly target judged against a part-month slice would always read as missed. Rates are per working day, with Friday and Saturday excluded. The All Providers row is the clinic-wide figure, for reading this provider against.'],
       ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
     ]),
+    {
+      name: 'Targets',
+      rows: [...targetRows, targetTotal].map((t) => ({
+        Provider: t.provider,
+        Month: t.month,
+        Target: money(t.target),
+        Actual: money(t.actual),
+        Variance: money(t.variance),
+        '% of Target': t.achievedPct === null ? '' : Math.round(t.achievedPct * 10) / 10,
+        'Even Pace To Date': money(t.paceTarget),
+        Remaining: money(t.remaining),
+        'Working Days In Month': t.workingDaysInMonth,
+        'Working Days Elapsed': t.workingDaysElapsed,
+        'Working Days Remaining': t.workingDaysRemaining,
+        'Needed Per Working Day': t.requiredPerDay === null ? '' : money(t.requiredPerDay),
+        'Actual Per Working Day': t.actualPerDay === null ? '' : money(t.actualPerDay),
+        'Projected Month End': t.projected === null ? '' : money(t.projected),
+        Status: TARGET_STATUS_LABELS[t.status],
+      })),
+    },
     {
       name: 'Summary',
       rows: [
@@ -656,6 +702,8 @@ export function ProviderAnalyticsDashboard({
           )}
         </div>
       </div>
+
+      <ProviderTargetsTable rows={targetRows} total={targetTotal} asOfISO={asOfISO} />
 
       <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />
 

@@ -191,6 +191,7 @@ export function Dashboard({
         range, asOfISO, inactivityDays, serviceType,
         kpis, discountSummary, discountBreakdown, discountDetails,
         trend, services: serviceStats, redeemedPackages, revenueByType,
+        targetRows, targetTotal,
         invoiceAging, agingBucketSummary,
         atRiskPatients, returnedPatients,
         records, patients, providerGroups, providerAssignmentOverrides,
