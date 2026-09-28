@@ -101,3 +101,54 @@ describe('patient history is read from every row', () => {
     expect(summarizePatients(excludeZeroValueRecords(rows)).get('P5')!.firstVisit).toBe('2026-06-12');
   });
 });
+
+/**
+ * Why the count does not fall by the full length of the "new patients with zero first-visit
+ * revenue" list. That list reports revenue on the first visit day; the toggle filters lines by
+ * whether the visit carried any value at all, over the whole period.
+ */
+describe('a zero-revenue first visit does not always mean a zero-revenue patient', () => {
+  const run = (rows: SaleRecord[]) => ({
+    before: newPatients(rows, none),
+    after: newPatients(rows, excludeZeroValueRecords),
+  });
+
+  it('keeps a patient whose first visit was free but who paid later the same month', () => {
+    // A free consultation on the 2nd, a paid treatment on the 20th. They were acquired in June and
+    // they brought revenue in June, so dropping them would understate the month's acquisitions
+    // while still counting their money under Revenue.
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-06-02', serviceName: 'Consultation', amount: 0, redeemedAmount: 0 }),
+      makeSale({ patientId: 'P1', date: '2026-06-20', serviceName: 'Filler', amount: 250 }),
+    ];
+    expect(run(rows)).toEqual({ before: 1, after: 1 });
+  });
+
+  it('keeps a patient whose first visit was a package session rather than free', () => {
+    // Revenue is 0 because the package was paid for earlier, but value was delivered - this is not
+    // a complimentary visit and the toggle deliberately leaves redemptions alone.
+    const rows = [
+      makeSale({ patientId: 'P2', date: '2026-06-15', serviceName: 'Restylane Kysse', amount: 0, redeemedAmount: 180, packageName: 'Filler Package' }),
+    ];
+    expect(run(rows)).toEqual({ before: 1, after: 1 });
+  });
+
+  it('drops a patient who was free on the first visit and never came back', () => {
+    const rows = [
+      makeSale({ patientId: 'P3', date: '2026-06-02', serviceName: 'Consultation', amount: 0, redeemedAmount: 0 }),
+    ];
+    expect(run(rows)).toEqual({ before: 1, after: 0 });
+  });
+
+  it('explains a list of three that only removes one', () => {
+    // The shape of the June figures: three new patients with no first-visit revenue, of whom one
+    // truly brought nothing. The headline falls by one, not by three.
+    const rows = [
+      makeSale({ patientId: 'PAID_LATER', date: '2026-06-02', amount: 0, redeemedAmount: 0 }),
+      makeSale({ patientId: 'PAID_LATER', date: '2026-06-20', amount: 250 }),
+      makeSale({ patientId: 'REDEEMED', date: '2026-06-15', amount: 0, redeemedAmount: 180, packageName: 'Pkg' }),
+      makeSale({ patientId: 'NOTHING', date: '2026-06-02', amount: 0, redeemedAmount: 0 }),
+    ];
+    expect(run(rows)).toEqual({ before: 3, after: 2 });
+  });
+});
