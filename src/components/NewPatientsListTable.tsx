@@ -5,9 +5,9 @@ import { formatCurrency, formatDate, formatNumber } from '../lib/format';
 const PAGE_SIZE = 25;
 
 function downloadCsv(rows: NewPatientDetail[]) {
-  const header = ['Patient ID', 'Patient Name', 'First Visit Date', 'Services Bought', 'First Visit Revenue (OMR)'];
+  const header = ['Patient ID', 'Patient Name', 'First Visit Date', 'Services Bought', 'First Visit Revenue (OMR)', 'First Visit Package Redeemed (OMR)'];
   const lines = rows.map((r) =>
-    [r.patientId, r.patientName, r.firstVisitDate, r.services.join('; '), r.revenue.toFixed(3)]
+    [r.patientId, r.patientName, r.firstVisitDate, r.services.join('; '), r.revenue.toFixed(3), r.redeemed.toFixed(3)]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(','),
   );
@@ -88,6 +88,7 @@ export function NewPatientsListTable({ data, periodLabel }: { data: NewPatientDe
                   <th className="py-2 pr-2 text-right">First Visit</th>
                   <th className="py-2 pr-2">Services Bought</th>
                   <th className="py-2 pr-2 text-right">Revenue</th>
+                  <th className="py-2 pr-2 text-right">Package Redeemed</th>
                 </tr>
               </thead>
               <tbody>
@@ -98,6 +99,14 @@ export function NewPatientsListTable({ data, periodLabel }: { data: NewPatientDe
                     <td className="py-1.5 pr-2 text-right">{formatDate(p.firstVisitDate)}</td>
                     <td className="py-1.5 pr-2">{p.services.join(', ')}</td>
                     <td className="py-1.5 pr-2 text-right">{formatCurrency(p.revenue)}</td>
+                    <td
+                      className={`py-1.5 pr-2 text-right ${p.revenue === 0 && p.redeemed > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-zinc-500 dark:text-zinc-400'}`}
+                      title={p.revenue === 0 && p.redeemed > 0
+                        ? 'A package session on the first visit. The package was bought earlier, so this patient is probably not new - their purchase is either older than the imported data or recorded under another patient.'
+                        : undefined}
+                    >
+                      {formatCurrency(p.redeemed)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

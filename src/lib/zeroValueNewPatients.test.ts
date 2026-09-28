@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeKpis, computeNewPatientRevenueSummary, summarizePatients, type DateRange } from './metrics';
+import { computeKpis, computeNewPatientDetails, computeNewPatientRevenueSummary, summarizePatients, type DateRange } from './metrics';
 import { excludeFlaggedRecords, excludeZeroValueRecords } from './filters';
 import { makeSale } from '../test/fixtures';
 import type { SaleRecord } from '../types';
@@ -193,5 +193,44 @@ describe('a patient with several visits in the month counts once', () => {
     expect(summary.returningPatientRevenue).toBe(90);
     expect(summary.newPatients).toBe(1);
     expect(summary.totalRevenue).toBe(440);
+  });
+});
+
+/**
+ * Telling a complimentary first visit apart from a package session on the first visit. Both read
+ * as zero revenue, and until now the new-patient list showed only revenue, so they were
+ * indistinguishable - which is why "why is this person new?" could not be answered from the export.
+ */
+describe('what a zero-revenue first visit was actually made of', () => {
+  const detail = (rows: SaleRecord[], id: string) =>
+    computeNewPatientDetails(rows, summarizePatients(rows), JUNE).find((d) => d.patientId === id)!;
+
+  it('separates a free consultation from a package session', () => {
+    const rows = [
+      makeSale({ patientId: 'FREE', date: '2026-06-05', serviceName: 'Consultation', amount: 0, redeemedAmount: 0 }),
+      makeSale({ patientId: 'PKG', date: '2026-06-15', serviceName: 'Restylane Kysse', amount: 0, redeemedAmount: 180, packageName: 'Filler Package' }),
+    ];
+    expect(detail(rows, 'FREE')).toMatchObject({ revenue: 0, redeemed: 0 });
+    expect(detail(rows, 'PKG')).toMatchObject({ revenue: 0, redeemed: 180 });
+  });
+
+  it('shows nothing redeemed when the package was bought on the same first visit', () => {
+    // The one case where a package session on a first visit is genuinely a new patient: they
+    // bought it that day. The purchase carries revenue, so the row is not in the zero list at all.
+    const rows = [
+      makeSale({ patientId: 'P', date: '2026-06-10', serviceName: 'Filler Package', itemType: 'Package', amount: 900 }),
+      makeSale({ patientId: 'P', date: '2026-06-10', serviceName: 'Restylane Kysse', amount: 0, redeemedAmount: 180, packageName: 'Filler Package' }),
+    ];
+    expect(detail(rows, 'P')).toMatchObject({ revenue: 900, redeemed: 180 });
+  });
+
+  it('puts a package bought before the period outside the new-patient list entirely', () => {
+    // What should happen when the purchase is in the data: the patient is not new, because buying
+    // the package was itself a visit.
+    const rows = [
+      makeSale({ patientId: 'P', date: '2026-04-02', serviceName: 'Filler Package', itemType: 'Package', amount: 900 }),
+      makeSale({ patientId: 'P', date: '2026-06-15', serviceName: 'Restylane Kysse', amount: 0, redeemedAmount: 180, packageName: 'Filler Package' }),
+    ];
+    expect(computeNewPatientDetails(rows, summarizePatients(rows), JUNE)).toEqual([]);
   });
 });

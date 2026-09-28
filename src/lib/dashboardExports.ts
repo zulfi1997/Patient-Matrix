@@ -88,6 +88,8 @@ export function newPatientRevenueSheets(p: {
         'First Visit': d.firstVisitDate,
         'Services On First Visit': d.services.join('; '),
         'First Visit Revenue': money(d.revenue),
+        'First Visit Package Redeemed': money(d.redeemed),
+        'Looks Pre-existing': d.revenue === 0 && d.redeemed > 0 ? 'Yes' : '',
       })),
     },
     {

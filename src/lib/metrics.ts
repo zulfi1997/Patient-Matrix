@@ -572,6 +572,13 @@ export interface NewPatientDetail {
   firstVisitDate: string;
   services: string[];
   revenue: number;
+  /**
+   * Package value consumed on that first visit. A figure here with no revenue beside it means the
+   * visit was a package session rather than a complimentary one - and since the package must have
+   * been bought before, it is a sign this patient is not new at all and their purchase simply
+   * predates the imported data or sits under another patient record.
+   */
+  redeemed: number;
 }
 
 /** One row per new patient (first visit within range), with what they bought on that first visit. */
@@ -587,11 +594,12 @@ export function computeNewPatientDetails(
     let d = map.get(r.patientId);
     if (!d) {
       const s = patients.get(r.patientId)!;
-      d = { patientId: r.patientId, patientName: s.patientName, firstVisitDate: s.firstVisit, services: [], revenue: 0 };
+      d = { patientId: r.patientId, patientName: s.patientName, firstVisitDate: s.firstVisit, services: [], revenue: 0, redeemed: 0 };
       map.set(r.patientId, d);
     }
     if (!d.services.includes(r.serviceName)) d.services.push(r.serviceName);
     d.revenue += r.amount;
+    d.redeemed += r.redeemedAmount;
   }
   return [...map.values()].sort((a, b) => b.firstVisitDate.localeCompare(a.firstVisitDate));
 }
