@@ -135,9 +135,20 @@ function App() {
     if (incoming.excludeFlagged != null) setExcludeFlagged(incoming.excludeFlagged);
     if (incoming.excludeZeroValue != null) setExcludeZeroValue(incoming.excludeZeroValue);
   }, [setProviderGroups, setProviderAssignmentOverrides, setRevenueAdjustments, setCollectionAttributionOverrides,
-      setAllocationRules, setPnlLineAdjustments, setAllocationMode, setExcludeFlagged, setExcludeZeroValue]);
+      setAllocationRules, setPnlLineAdjustments, setProviderTargets, setAllocationMode, setExcludeFlagged, setExcludeZeroValue]);
 
-  const patients = useMemo(() => summarizePatients(analysisRecords), [analysisRecords]);
+  /**
+   * Patient history is built from the unfiltered records, never from whatever the Exclude toggles
+   * left behind.
+   *
+   * The toggles say which lines to count in a period. They are not a claim that the other visits
+   * never happened, and reading "first-ever visit" off the survivors turns them into exactly that:
+   * excluding complimentary visits erased a patient's earlier free consultation, so their first
+   * paid visit looked like their first visit, and a long-standing patient was reported as newly
+   * acquired. Ticking an Exclude box could then raise the New Patients count, which is the reverse
+   * of what it says it does.
+   */
+  const patients = useMemo(() => summarizePatients(baseAnalysisRecords), [baseAnalysisRecords]);
 
   const flaggedCount = useMemo(() => records.filter(hasFlaggedNote).length, [records]);
   const zeroValueCount = useMemo(() => baseAnalysisRecords.filter((r) => !hasVisitValue(r)).length, [baseAnalysisRecords]);
@@ -264,6 +275,7 @@ function App() {
         ) : tab === 'dashboard' ? (
           <Dashboard
             records={analysisRecords}
+            historyRecords={baseAnalysisRecords}
             rawRecords={records}
             batches={batches}
             excludeFlagged={excludeFlagged}
@@ -276,16 +288,18 @@ function App() {
             collectionAttributionOverrides={collectionAttributionOverrides}
           />
         ) : tab === 'newPatientRevenue' ? (
-          <NewPatientRevenueDashboard records={analysisRecords} pnlLines={pnlLines} />
+          <NewPatientRevenueDashboard records={analysisRecords} historyRecords={baseAnalysisRecords} pnlLines={pnlLines} />
         ) : tab === 'kpi' ? (
           <KpiEvaluationDashboard
             records={analysisRecords}
+            historyRecords={baseAnalysisRecords}
             providerGroups={providerGroups}
             providerAssignmentOverrides={providerAssignmentOverrides}
           />
         ) : tab === 'conversion' ? (
           <ProviderConversionDashboard
             records={flaggedFilteredRecords}
+            historyRecords={baseAnalysisRecords}
             packageBenefits={packageBenefits}
             providerGroups={providerGroups}
             revenueAdjustments={revenueAdjustments}
@@ -297,6 +311,7 @@ function App() {
         ) : tab === 'providerAnalytics' ? (
           <ProviderAnalyticsDashboard
             records={analysisRecords}
+            historyRecords={baseAnalysisRecords}
             conversionRecords={flaggedFilteredRecords}
             packageBenefits={packageBenefits}
             serviceDepartmentRecords={serviceDepartmentRecords}

@@ -25,7 +25,16 @@ import { computePatientCohorts, type CohortBasis } from '../lib/patientCohorts';
 
 const TREND_MONTHS_BACK = 12;
 
-export function NewPatientRevenueDashboard({ records, pnlLines }: { records: SaleRecord[]; pnlLines: PnlLineRecord[] }) {
+export function NewPatientRevenueDashboard({ records, historyRecords, pnlLines }: {
+  records: SaleRecord[];
+  /**
+   * Unfiltered records, used only to work out when each patient first and last came. The Exclude
+   * toggles scope what is counted in a period; they do not mean the other visits never happened,
+   * so a patient's history is read from every row rather than from the survivors.
+   */
+  historyRecords: SaleRecord[];
+  pnlLines: PnlLineRecord[];
+}) {
   const [preset, setPreset] = useLocalStorageState<PresetKey>('pm-npr-preset', 'thisMonth');
   const [customRange, setCustomRange] = useLocalStorageState<DateRange>('pm-npr-custom-range', {
     start: toISODate(new Date(Date.now() - 29 * 86_400_000)),
@@ -39,7 +48,7 @@ export function NewPatientRevenueDashboard({ records, pnlLines }: { records: Sal
 
   const range = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
 
-  const patients = useMemo(() => summarizePatients(records), [records]);
+  const patients = useMemo(() => summarizePatients(historyRecords), [historyRecords]);
 
   // The chart/table below stay on a fixed rolling 12-month view for trend context,
   // same as the main Dashboard's trend charts - only the KPIs and lists are period-scoped.

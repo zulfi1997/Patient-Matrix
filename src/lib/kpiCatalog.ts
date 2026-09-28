@@ -44,6 +44,11 @@ export interface KpiDefinition {
     asOfISO: string,
     providerGroups: ProviderGroup[],
     providerAssignmentOverrides: ProviderAssignmentOverride[],
+    /**
+     * Unfiltered records, for the few KPIs that must rebuild a point-in-time view of who had been
+     * seen and when. Last parameter so the definitions that do not care simply omit it.
+     */
+    historyRecords: SaleRecord[],
   ) => number;
 }
 
@@ -194,8 +199,10 @@ export const KPI_CATALOG: KpiDefinition[] = [
     category: 'patient',
     unit: 'count',
     description: 'As of the end of this period, patients inactive 90+ days (using only data known up to that point).',
-    computeRange: (records, _p, range) => {
-      const upToNow = records.filter((r) => r.date <= range.end);
+    computeRange: (_r, _p, range, _asOf, _g, _o, historyRecords) => {
+      // Rebuilt from unfiltered history: whether someone has stopped coming is a question about
+      // visits, and an Exclude toggle must not answer it by deleting the visits it filters.
+      const upToNow = historyRecords.filter((r) => r.date <= range.end);
       const snapshot = summarizePatients(upToNow);
       let count = 0;
       for (const s of snapshot.values()) {
@@ -315,10 +322,11 @@ export function computeKpiMonthlySeries(
   monthsBack: number,
   providerGroups: ProviderGroup[] = [],
   providerAssignmentOverrides: ProviderAssignmentOverride[] = [],
+  historyRecords: SaleRecord[] = records,
 ): KpiPoint[] {
   return buildMonthRanges(asOfISO, monthsBack).map((range) => ({
     month: range.start,
-    value: kpi.computeRange(records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides),
+    value: kpi.computeRange(records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides, historyRecords),
   }));
 }
 
@@ -337,9 +345,10 @@ export function computeKpiPeriodValue(
   asOfISO: string,
   providerGroups: ProviderGroup[] = [],
   providerAssignmentOverrides: ProviderAssignmentOverride[] = [],
+  historyRecords: SaleRecord[] = records,
 ): KpiPeriodValue {
-  const current = kpi.computeRange(records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides);
-  const previous = kpi.computeRange(records, patients, previousPeriod(range), asOfISO, providerGroups, providerAssignmentOverrides);
+  const current = kpi.computeRange(records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides, historyRecords);
+  const previous = kpi.computeRange(records, patients, previousPeriod(range), asOfISO, providerGroups, providerAssignmentOverrides, historyRecords);
   const changePct = previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : null;
   return { current, previous, changePct };
 }

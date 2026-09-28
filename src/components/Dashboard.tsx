@@ -56,6 +56,7 @@ const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Packa
 
 export function Dashboard({
   records,
+  historyRecords,
   rawRecords,
   batches,
   excludeFlagged,
@@ -68,6 +69,12 @@ export function Dashboard({
   collectionAttributionOverrides,
 }: {
   records: SaleRecord[];
+  /**
+   * Unfiltered records, used only to work out when each patient first and last came. The Exclude
+   * toggles scope what is counted in a period; they do not mean the other visits never happened,
+   * so a patient's history is read from every row rather than from the survivors.
+   */
+  historyRecords: SaleRecord[];
   /** Unfiltered stored rows, so the reconciliation panel can show what the pipeline excludes. */
   rawRecords: SaleRecord[];
   batches: ImportBatch[];
@@ -101,7 +108,7 @@ export function Dashboard({
   // guessing which window a patient had to appear in to count as retained.
   const previousRange = useMemo(() => previousPeriod(range), [range]);
 
-  const patients = useMemo(() => summarizePatients(records), [records]);
+  const patients = useMemo(() => summarizePatients(historyRecords), [historyRecords]);
 
   const kpis = useMemo(
     () => computeKpis(records, range, patients, inactivityDays, asOfISO),

@@ -71,6 +71,7 @@ const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Packa
 
 export function ProviderAnalyticsDashboard({
   records,
+  historyRecords,
   conversionRecords,
   packageBenefits,
   serviceDepartmentRecords,
@@ -83,6 +84,12 @@ export function ProviderAnalyticsDashboard({
   rawRecords,
 }: {
   records: SaleRecord[];
+  /**
+   * Unfiltered records, used only to work out when each patient first and last came. The Exclude
+   * toggles scope what is counted in a period; they do not mean the other visits never happened,
+   * so a patient's history is read from every row rather than from the survivors.
+   */
+  historyRecords: SaleRecord[];
   /**
    * Same records, but without the zero-revenue exclusion applied. Conversion is *defined* by
    * whether a visit produced revenue, so dropping zero-value lines would delete every unconverted
@@ -146,8 +153,14 @@ export function ProviderAnalyticsDashboard({
    * number, how many were also new to the clinic, is computed separately below rather than
    * conflated with it.
    */
-  const providerPatientsMap = useMemo(() => summarizePatients(providerRecords), [providerRecords]);
-  const clinicPatients = useMemo(() => summarizePatients(records), [records]);
+  // Both maps are built from unfiltered history, so an Exclude toggle cannot turn a patient this
+  // provider has seen for months into a new acquisition by deleting their earlier free visits.
+  const providerHistoryRecords = useMemo(
+    () => historyRecords.filter((r) => resolveProvider(r.staff, r.date, providerGroups, providerAssignmentOverrides) === selected),
+    [historyRecords, selected, providerGroups, providerAssignmentOverrides],
+  );
+  const providerPatientsMap = useMemo(() => summarizePatients(providerHistoryRecords), [providerHistoryRecords]);
+  const clinicPatients = useMemo(() => summarizePatients(historyRecords), [historyRecords]);
 
   const kpis = useMemo(
     () => computeKpis(providerRecords, range, providerPatientsMap, inactivityDays, asOfISO),
@@ -266,10 +279,10 @@ export function ProviderAnalyticsDashboard({
       benefitsByDate.get(b.snapshotDate)!.push(b);
     }
     return computeRangeConversion(
-      conversionRecords, summarizePatients(conversionRecords), range, invoiceToPatient, benefitsByDate,
+      conversionRecords, summarizePatients(historyRecords), range, invoiceToPatient, benefitsByDate,
       providerGroups, revenueAdjustments, providerAssignmentOverrides,
     );
-  }, [conversionRecords, range, packageBenefits, providerGroups, revenueAdjustments, providerAssignmentOverrides]);
+  }, [conversionRecords, historyRecords, range, packageBenefits, providerGroups, revenueAdjustments, providerAssignmentOverrides]);
 
   const conversion = useMemo(
     () => conversionSummary.providers.find((p) => p.staff === selected) ?? null,

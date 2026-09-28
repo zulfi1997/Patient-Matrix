@@ -27,10 +27,17 @@ const DEFAULT_SELECTED = ['revenue-total', 'patient-new', 'patient-retention-rat
 
 export function KpiEvaluationDashboard({
   records,
+  historyRecords,
   providerGroups,
   providerAssignmentOverrides,
 }: {
   records: SaleRecord[];
+  /**
+   * Unfiltered records, used only to work out when each patient first and last came. The Exclude
+   * toggles scope what is counted in a period; they do not mean the other visits never happened,
+   * so a patient's history is read from every row rather than from the survivors.
+   */
+  historyRecords: SaleRecord[];
   providerGroups: ProviderGroup[];
   providerAssignmentOverrides: ProviderAssignmentOverride[];
 }) {
@@ -55,25 +62,25 @@ export function KpiEvaluationDashboard({
   }, [records]);
 
   const range: DateRange = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
-  const patients = useMemo(() => summarizePatients(records), [records]);
+  const patients = useMemo(() => summarizePatients(historyRecords), [historyRecords]);
 
   const selectedKpis = useMemo(() => KPI_CATALOG.filter((k) => selected.has(k.id)), [selected]);
 
   const periodValueById = useMemo(() => {
     const map = new Map<string, KpiPeriodValue>();
     for (const kpi of selectedKpis) {
-      map.set(kpi.id, computeKpiPeriodValue(kpi, records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides));
+      map.set(kpi.id, computeKpiPeriodValue(kpi, records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides, historyRecords));
     }
     return map;
-  }, [selectedKpis, records, patients, range, asOfISO, providerGroups, providerAssignmentOverrides]);
+  }, [selectedKpis, records, historyRecords, patients, range, asOfISO, providerGroups, providerAssignmentOverrides]);
 
   const seriesById = useMemo(() => {
     const map = new Map<string, KpiPoint[]>();
     for (const kpi of selectedKpis) {
-      map.set(kpi.id, computeKpiMonthlySeries(kpi, records, patients, asOfISO, TREND_MONTHS_BACK, providerGroups, providerAssignmentOverrides));
+      map.set(kpi.id, computeKpiMonthlySeries(kpi, records, patients, asOfISO, TREND_MONTHS_BACK, providerGroups, providerAssignmentOverrides, historyRecords));
     }
     return map;
-  }, [selectedKpis, records, patients, asOfISO, providerGroups, providerAssignmentOverrides]);
+  }, [selectedKpis, records, historyRecords, patients, asOfISO, providerGroups, providerAssignmentOverrides]);
 
   const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
 

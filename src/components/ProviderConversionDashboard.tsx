@@ -71,6 +71,7 @@ function exportProviderSummaryCsv(providers: ProviderConversionStat[], overall: 
 
 export function ProviderConversionDashboard({
   records,
+  historyRecords,
   packageBenefits,
   providerGroups,
   revenueAdjustments,
@@ -80,6 +81,12 @@ export function ProviderConversionDashboard({
   rawRecords,
 }: {
   records: SaleRecord[];
+  /**
+   * Unfiltered records, used only to work out when each patient first and last came. The Exclude
+   * toggles scope what is counted in a period; they do not mean the other visits never happened,
+   * so a patient's history is read from every row rather than from the survivors.
+   */
+  historyRecords: SaleRecord[];
   packageBenefits: PackageBenefitRecord[];
   providerGroups: ProviderGroup[];
   revenueAdjustments: RevenueAdjustment[];
@@ -111,7 +118,7 @@ export function ProviderConversionDashboard({
   const clampedDate = date > asOfISO ? asOfISO : date < minDate ? minDate : date;
   const periodRange: DateRange = useMemo(() => resolvePreset(preset, asOfISO, customRange), [preset, asOfISO, customRange]);
 
-  const patients = useMemo(() => summarizePatients(records), [records]);
+  const patients = useMemo(() => summarizePatients(historyRecords), [historyRecords]);
   const invoiceToPatient = useMemo(() => buildInvoiceToPatientMap(records), [records]);
 
   const packageBenefitsByDate = useMemo(() => {
