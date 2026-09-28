@@ -57,6 +57,7 @@ const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Packa
 export function Dashboard({
   records,
   historyRecords,
+  discountRecords,
   rawRecords,
   batches,
   excludeFlagged,
@@ -75,6 +76,16 @@ export function Dashboard({
    * so a patient's history is read from every row rather than from the survivors.
    */
   historyRecords: SaleRecord[];
+  /**
+   * Records with the YB111 toggle applied but not the zero-revenue one, for the discount figures
+   * alone.
+   *
+   * A fully discounted invoice is zero revenue and zero redeemed, so excluding zero-revenue visits
+   * dropped it and took its discount with it - removing exactly the 100% discounts, which are the
+   * ones worth watching. Discounts therefore measure the full set while patient and revenue figures
+   * stay on the filtered one.
+   */
+  discountRecords: SaleRecord[];
   /** Unfiltered stored rows, so the reconciliation panel can show what the pipeline excludes. */
   rawRecords: SaleRecord[];
   batches: ImportBatch[];
@@ -182,9 +193,9 @@ export function Dashboard({
     [collections, invoiceShares, range, rawRecords],
   );
 
-  const discountSummary = useMemo(() => computeDiscountSummary(records, range), [records, range]);
-  const discountBreakdown = useMemo(() => computeDiscountBreakdown(records, range), [records, range]);
-  const discountDetails = useMemo(() => computeDiscountDetails(records, range), [records, range]);
+  const discountSummary = useMemo(() => computeDiscountSummary(discountRecords, range), [discountRecords, range]);
+  const discountBreakdown = useMemo(() => computeDiscountBreakdown(discountRecords, range), [discountRecords, range]);
+  const discountDetails = useMemo(() => computeDiscountDetails(discountRecords, range), [discountRecords, range]);
 
   const invoiceAging = useMemo(() => computeInvoiceAging(records, asOfISO), [records, asOfISO]);
   const agingBucketSummary = useMemo(() => computeAgingBucketSummary(invoiceAging), [invoiceAging]);
@@ -360,14 +371,14 @@ export function Dashboard({
           label="Total Discount"
           value={formatCurrencyCompact(discountSummary.totalDiscount)}
           hint={`${formatCurrency(discountSummary.totalDiscount)} · every discount except package redemption`}
-          help="Every discount given this period - manual, campaign (e.g. Buy 1 Get 1 Free), price adjustments, and any other named or unnamed discount. Package redemption is the one exclusion: it isn't a discount, just the value of a previously-sold package session being consumed, which is reported separately as Redeemed Revenue."
+          help="Every discount given this period - manual, campaign (e.g. Buy 1 Get 1 Free), price adjustments, and any other named or unnamed discount. Package redemption is the one exclusion: it isn't a discount, just the value of a previously-sold package session being consumed, which is reported separately as Redeemed Revenue. Always measured across every visit, even when 'Exclude zero-revenue visits' is ticked: a fully discounted invoice is zero revenue, so excluding it would hide the 100% discounts - the very ones this figure exists to show."
           tone="bad"
         />
         <KpiCard
           label="Discount %"
           value={formatPercent(discountSummary.discountPct)}
           hint="Total discount as a share of gross (pre-discount) sales this period"
-          help="Total Discount divided by gross sales before any discount was applied (Price, not Sales Exc. Tax) - i.e. how much of the original sticker price was given away this period."
+          help="Total Discount divided by gross sales before any discount was applied (Price, not Sales Exc. Tax) - i.e. how much of the original sticker price was given away this period. Always measured across every visit, even when 'Exclude zero-revenue visits' is ticked: a fully discounted invoice is zero revenue, so excluding it would hide the 100% discounts - the very ones this figure exists to show."
         />
       </div>
 

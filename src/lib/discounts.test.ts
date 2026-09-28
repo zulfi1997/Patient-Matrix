@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { classifyDiscount, computeDiscountBreakdown, computeDiscountDetails, computeDiscountSummary } from './discounts';
 import { makeSale } from '../test/fixtures';
 import type { DateRange } from './metrics';
+import { excludeZeroValueRecords } from './filters';
 
 const RANGE: DateRange = { start: '2026-07-01', end: '2026-07-31' };
 
@@ -114,5 +115,27 @@ describe('computeDiscountBreakdown', () => {
     const breakdown = computeDiscountBreakdown(rows, RANGE);
     expect(breakdown.map((b) => b.label).sort()).toEqual(['BOGO', 'Manual Discount', 'Summer']);
     expect(breakdown.find((b) => b.label === 'Manual Discount')).toMatchObject({ count: 2, amount: 70 });
+  });
+});
+
+describe('fully discounted visits and the zero-revenue toggle', () => {
+  const JUNE_RANGE: DateRange = { start: '2026-06-01', end: '2026-06-30' };
+
+  const rows = () => [
+    // Given away entirely: no revenue, no package behind it, and the largest discount of the two.
+    makeSale({ date: '2026-06-05', amount: 0, redeemedAmount: 0, discountName: 'Manual', discountAmount: 300 }),
+    makeSale({ date: '2026-06-06', amount: 700, discountName: 'Manual', discountAmount: 100 }),
+  ];
+
+  it('counts the discount on a visit that was given away entirely', () => {
+    expect(computeDiscountSummary(rows(), JUNE_RANGE).totalDiscount).toBe(400);
+  });
+
+  it('loses exactly the 100% discounts if the zero-revenue filter is applied first', () => {
+    // Why the Dashboard hands these figures the unfiltered set. Excluding zero-revenue visits
+    // removes a fully discounted invoice along with its discount, so the total drops by the
+    // biggest discount in the period and Discount % understates with it.
+    const filtered = excludeZeroValueRecords(rows());
+    expect(computeDiscountSummary(filtered, JUNE_RANGE).totalDiscount).toBe(100);
   });
 });

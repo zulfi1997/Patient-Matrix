@@ -276,6 +276,7 @@ function App() {
           <Dashboard
             records={analysisRecords}
             historyRecords={baseAnalysisRecords}
+            discountRecords={flaggedFilteredRecords}
             rawRecords={records}
             batches={batches}
             excludeFlagged={excludeFlagged}
@@ -312,6 +313,7 @@ function App() {
           <ProviderAnalyticsDashboard
             records={analysisRecords}
             historyRecords={baseAnalysisRecords}
+            discountRecords={flaggedFilteredRecords}
             conversionRecords={flaggedFilteredRecords}
             packageBenefits={packageBenefits}
             serviceDepartmentRecords={serviceDepartmentRecords}

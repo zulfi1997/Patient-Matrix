@@ -72,6 +72,7 @@ const SERVICE_TYPE_OPTIONS: (ItemType | 'All')[] = ['Service', 'Product', 'Packa
 export function ProviderAnalyticsDashboard({
   records,
   historyRecords,
+  discountRecords,
   conversionRecords,
   packageBenefits,
   serviceDepartmentRecords,
@@ -90,6 +91,16 @@ export function ProviderAnalyticsDashboard({
    * so a patient's history is read from every row rather than from the survivors.
    */
   historyRecords: SaleRecord[];
+  /**
+   * Records with the YB111 toggle applied but not the zero-revenue one, for the discount figures
+   * alone.
+   *
+   * A fully discounted invoice is zero revenue and zero redeemed, so excluding zero-revenue visits
+   * dropped it and took its discount with it - removing exactly the 100% discounts, which are the
+   * ones worth watching. Discounts therefore measure the full set while patient and revenue figures
+   * stay on the filtered one.
+   */
+  discountRecords: SaleRecord[];
   /**
    * Same records, but without the zero-revenue exclusion applied. Conversion is *defined* by
    * whether a visit produced revenue, so dropping zero-value lines would delete every unconverted
@@ -254,8 +265,12 @@ export function ProviderAnalyticsDashboard({
     [targetRows, selected, targetMonth, asOfISO],
   );
 
-  const discountSummary = useMemo(() => computeDiscountSummary(providerRecords, range), [providerRecords, range]);
-  const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerRecords, range), [providerRecords, range]);
+  const providerDiscountRecords = useMemo(
+    () => discountRecords.filter((r) => resolveProvider(r.staff, r.date, providerGroups, providerAssignmentOverrides) === selected),
+    [discountRecords, selected, providerGroups, providerAssignmentOverrides],
+  );
+  const discountSummary = useMemo(() => computeDiscountSummary(providerDiscountRecords, range), [providerDiscountRecords, range]);
+  const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerDiscountRecords, range), [providerDiscountRecords, range]);
   const flagged = useMemo(() => computeFlaggedSummary(providerRecords, range), [providerRecords, range]);
   const invoiceAging = useMemo(() => computeInvoiceAging(providerRecords, asOfISO), [providerRecords, asOfISO]);
   const agingBuckets = useMemo(() => computeAgingBucketSummary(invoiceAging), [invoiceAging]);
