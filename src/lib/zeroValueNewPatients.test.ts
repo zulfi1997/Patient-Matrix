@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeKpis, summarizePatients, type DateRange } from './metrics';
+import { computeKpis, computeNewPatientRevenueSummary, summarizePatients, type DateRange } from './metrics';
 import { excludeFlaggedRecords, excludeZeroValueRecords } from './filters';
 import { makeSale } from '../test/fixtures';
 import type { SaleRecord } from '../types';
@@ -150,5 +150,48 @@ describe('a zero-revenue first visit does not always mean a zero-revenue patient
       makeSale({ patientId: 'NOTHING', date: '2026-06-02', amount: 0, redeemedAmount: 0 }),
     ];
     expect(run(rows)).toEqual({ before: 3, after: 2 });
+  });
+});
+
+/**
+ * The counting question that follows: if a patient is kept because they came free on the 2nd and
+ * paid on the 20th, are they counted twice?
+ */
+describe('a patient with several visits in the month counts once', () => {
+  const rows = () => [
+    makeSale({ patientId: 'P1', date: '2026-06-02', amount: 0, redeemedAmount: 0 }),
+    makeSale({ patientId: 'P1', date: '2026-06-20', amount: 250 }),
+    makeSale({ patientId: 'P1', date: '2026-06-28', amount: 100 }),
+    makeSale({ patientId: 'OLD', date: '2026-01-10', amount: 90 }),
+    makeSale({ patientId: 'OLD', date: '2026-06-09', amount: 90 }),
+  ];
+
+  const kpis = (filter: (r: SaleRecord[]) => SaleRecord[]) =>
+    computeKpis(filter(rows()), JUNE, summarizePatients(rows()), 60, '2026-06-30');
+
+  it('counts three visits by one new patient as one new patient', () => {
+    for (const filter of [none, excludeZeroValueRecords]) {
+      expect(kpis(filter).newPatients).toBe(1);
+    }
+  });
+
+  it('never counts the same person as both new and returning', () => {
+    for (const filter of [none, excludeZeroValueRecords]) {
+      const k = kpis(filter);
+      expect(k.newPatients + k.returningPatients).toBe(k.activePatients);
+      expect(k.returningPatients).toBe(1);
+    }
+  });
+
+  it('counts each line of revenue once, and only under the patient who earned it', () => {
+    const summary = computeNewPatientRevenueSummary(
+      excludeZeroValueRecords(rows()), summarizePatients(rows()), JUNE,
+    );
+    // 250 + 100 from the new patient, 90 from the returning one. The free line adds nothing and is
+    // filtered out anyway; nothing is counted twice because a visit was free.
+    expect(summary.newPatientRevenue).toBe(350);
+    expect(summary.returningPatientRevenue).toBe(90);
+    expect(summary.newPatients).toBe(1);
+    expect(summary.totalRevenue).toBe(440);
   });
 });
