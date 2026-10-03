@@ -25,6 +25,15 @@ export function RevenueReconciliationPanel({
 
   const multipleImports = rec.contributions.length > 1;
 
+  // What the waterfall took out, and the step that took out the most of it.
+  const excluded = rec.sourceGross - rec.finalGross;
+  const biggest = rec.stages
+    .filter((stage) => stage.grossRemoved > 0)
+    .reduce<(typeof rec.stages)[number] | null>(
+      (best, stage) => (best === null || stage.grossRemoved > best.grossRemoved ? stage : best),
+      null,
+    );
+
   return (
     <div className="rounded-xl border border-zinc-200 bg-white shadow-sm print:hidden dark:border-zinc-800 dark:bg-zinc-900">
       <button
@@ -37,6 +46,16 @@ export function RevenueReconciliationPanel({
             {formatCurrency(rec.sourceGross)} gross across {formatNumber(rec.sourceRows)} row(s) →{' '}
             {formatCurrency(rec.revenue)} revenue + {formatCurrency(rec.redeemed)} redeemed
           </span>
+          {/*
+            The gap between the two is the whole reason anyone opens this panel - "revenue is lower
+            than I expect" is answered by how much was excluded and by which rule. Naming the
+            largest exclusion here means the common case needs no expanding at all.
+          */}
+          {excluded > 0.0005 && (
+            <span className="ml-2 font-normal text-amber-700 dark:text-amber-500">
+              · {formatCurrency(excluded)} excluded{biggest && ` (mostly ${biggest.label.replace(/^Less /, '')})`}
+            </span>
+          )}
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {rec.supersededRows > 0 && (

@@ -121,3 +121,39 @@ describe('computeRevenueReconciliation', () => {
     expect(rec.contributions).toEqual([]);
   });
 });
+
+describe('the gap between gross and what the KPIs show', () => {
+  const RANGE: DateRange = { start: '2026-05-01', end: '2026-05-31' };
+
+  const rows = () => [
+    makeSale({ date: '2026-05-05', amount: 1000 }),
+    makeSale({ date: '2026-05-06', itemType: 'Pre-paid card', amount: 500 }),
+    makeSale({ date: '2026-05-07', amount: 2000, invoiceNotes: 'YB111 correction' }),
+    makeSale({ date: '2026-05-08', amount: 0, redeemedAmount: 0 }),
+  ];
+
+  it('accounts for every omani rial between the opening gross and the closing figure', () => {
+    // The panel's promise: the difference is never unexplained, it is the sum of the named steps.
+    const rec = computeRevenueReconciliation(rows(), [], RANGE, { excludeFlagged: true, excludeZeroValue: true });
+    const removed = rec.stages.reduce((sum, stage) => sum + stage.grossRemoved, 0);
+    expect(rec.sourceGross - rec.finalGross).toBeCloseTo(removed, 6);
+    expect(rec.revenue + rec.redeemed).toBeCloseTo(rec.finalGross, 6);
+  });
+
+  it('puts the flagged rows at the top of the exclusions when that toggle is on', () => {
+    // 2,000 of YB111 against 500 of cards: the header names the larger one, which is the answer to
+    // "why is this month low" without expanding anything.
+    const rec = computeRevenueReconciliation(rows(), [], RANGE, { excludeFlagged: true, excludeZeroValue: true });
+    const biggest = [...rec.stages].sort((a, b) => b.grossRemoved - a.grossRemoved)[0];
+    expect(biggest.label).toBe('Less YB111-flagged rows');
+    expect(rec.sourceGross - rec.finalGross).toBeCloseTo(2500, 6);
+    expect(rec.revenue).toBeCloseTo(1000, 6);
+  });
+
+  it('leaves the flagged revenue in when the toggle is off', () => {
+    // The single click that most often explains a month looking small.
+    const rec = computeRevenueReconciliation(rows(), [], RANGE, { excludeFlagged: false, excludeZeroValue: true });
+    expect(rec.revenue).toBeCloseTo(3000, 6);
+    expect(rec.sourceGross - rec.finalGross).toBeCloseTo(500, 6);
+  });
+});
