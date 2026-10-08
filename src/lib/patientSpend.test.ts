@@ -377,3 +377,34 @@ describe('money refunded back out of the clinic', () => {
     expect(row).toMatchObject({ collected: 0, refunded: 0, netCollected: 0 });
   });
 });
+
+describe('why collected reads higher than revenue', () => {
+  const sales = () => [makeSale({ patientId: 'P1', date: '2026-06-02', amount: 1000 })];
+  const withPayments = (payments: CollectionRecord[], rows = sales()) =>
+    computePatientSpend(rows, JUNE, summarizePatients(rows), [], [], payments).patients.find((p) => p.patientId === 'P1')!;
+
+  it('carries the tax inside the collected figure, so the two can be compared', () => {
+    // Revenue is Sales (Exc. Tax); a payment is what the patient handed over. On its own that gap
+    // makes Collected larger on every taxed patient, and it is arithmetic rather than a discrepancy.
+    const row = withPayments([payment({ amount: 1050, taxCollected: 50 })]);
+    expect(row).toMatchObject({ revenue: 1000, collected: 1050, collectedTax: 50 });
+    expect((row.netCollected ?? 0) - (row.collectedTax ?? 0)).toBe(1000);
+  });
+
+  it('nets tax across several payments', () => {
+    const row = withPayments([payment({ amount: 525, taxCollected: 25 }), payment({ amount: 525, taxCollected: 25 })]);
+    expect(row).toMatchObject({ collected: 1050, collectedTax: 50 });
+  });
+
+  it('collects money for a prepaid card that is never revenue', () => {
+    // The other structural reason: buying a card is cash in, and deliberately never a sale. The
+    // patient has paid 500 more than anything booked against them.
+    const row = withPayments([payment({ amount: 1500 })]);
+    expect(row).toMatchObject({ revenue: 1000, collected: 1500 });
+  });
+
+  it('counts an instalment that settles an invoice billed before the period', () => {
+    const row = withPayments([payment({ amount: 2000, invoiceNo: 'OLD' })]);
+    expect(row).toMatchObject({ revenue: 1000, collected: 2000 });
+  });
+});

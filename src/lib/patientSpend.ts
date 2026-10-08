@@ -81,6 +81,14 @@ export interface PatientSpend {
   refunded: number | null;
   /** collected + refunded. Null when no Collections data is loaded. */
   netCollected: number | null;
+  /**
+   * Tax inside the collected figure, netted for refunds.
+   *
+   * Collections are what the patient handed over, which includes VAT; Revenue is Sales (Exc. Tax).
+   * That alone makes Collected read higher than Revenue on every patient who pays tax, so the
+   * amount is carried here to make the two comparable rather than leaving the gap unexplained.
+   */
+  collectedTax: number | null;
 }
 
 export interface PatientSpendSummary {
@@ -150,6 +158,7 @@ export function computePatientSpend(
           collected: null,
           refunded: null,
           netCollected: null,
+          collectedTax: null,
         },
         days: new Set(),
         invoiceNos: new Set(),
@@ -215,6 +224,7 @@ export function computePatientSpend(
       p.collected = 0;
       p.refunded = 0;
       p.netCollected = 0;
+      p.collectedTax = 0;
     }
     const byId = new Map(patients.map((p) => [p.patientId, p]));
     for (const c of collections) {
@@ -227,6 +237,7 @@ export function computePatientSpend(
       if (c.amount < 0) row.refunded = (row.refunded ?? 0) + c.amount;
       else row.collected = (row.collected ?? 0) + c.amount;
       row.netCollected = (row.netCollected ?? 0) + c.amount;
+      row.collectedTax = (row.collectedTax ?? 0) + c.taxCollected;
     }
   }
 

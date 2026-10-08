@@ -34,14 +34,14 @@ export function TopSpendersTable({
   const copyRows = () => {
     const header = [
       'Patient ID', 'Patient', 'Revenue (OMR)', 'Package Delivered (OMR)', 'Package Sold (OMR)', 'Value Delivered (OMR)',
-      'Visits', 'Invoices', 'Last Visit', ...(hasCollections ? ['Collected (OMR)', 'Refunded (OMR)', 'Net Collected (OMR)'] : []),
+      'Visits', 'Invoices', 'Last Visit', ...(hasCollections ? ['Collected (OMR)', 'Refunded (OMR)', 'Net Collected (OMR)', 'Tax In Collected (OMR)'] : []),
       ...(scopedProvider ? [] : ['Top Provider', 'Share of Patient %', 'Providers Seen']),
       'First Visit', 'Lifetime Revenue (OMR)',
     ];
     const body = rows.map((p) => [
       p.patientId, p.patientName, p.revenue.toFixed(3), p.redeemed.toFixed(3), p.packageSales.toFixed(3), p.deliveredValue.toFixed(3),
       p.visits, p.invoices, p.lastVisit,
-      ...(hasCollections ? [(p.collected ?? 0).toFixed(3), (p.refunded ?? 0).toFixed(3), (p.netCollected ?? 0).toFixed(3)] : []),
+      ...(hasCollections ? [(p.collected ?? 0).toFixed(3), (p.refunded ?? 0).toFixed(3), (p.netCollected ?? 0).toFixed(3), (p.collectedTax ?? 0).toFixed(3)] : []),
       ...(scopedProvider ? [] : [p.topProvider, p.topProviderShare.toFixed(1), p.providerCount]),
       p.firstVisit ?? '', p.lifetimeRevenue.toFixed(3),
     ]);
@@ -133,7 +133,7 @@ export function TopSpendersTable({
                 {hasCollections && (
                   <th
                     className="py-2 pr-2 text-right"
-                    title="Money actually received from this patient in the period, from the Collections import, by payment date rather than sale date. Package, gift-card and prepaid settlements are excluded - that money came in when the package or card was bought - as are internal transfers. Refunds are netted off."
+                    title="Money actually received from this patient in the period, from the Collections import, by payment date rather than sale date, including tax. Package, gift-card and prepaid settlements are excluded - that money came in when the package or card was bought - as are internal transfers. Refunds are netted off."
                   >
                     Collected
                   </th>
@@ -170,7 +170,11 @@ export function TopSpendersTable({
                   {hasCollections && (
                     <td
                       className="py-1.5 pr-2 text-right"
-                      title={p.refunded ? `${formatCurrency(p.collected ?? 0)} received, ${formatCurrency(p.refunded)} refunded` : undefined}
+                      title={[
+                        `${formatCurrency(p.collected ?? 0)} received`,
+                        ...(p.refunded ? [`${formatCurrency(p.refunded)} refunded`] : []),
+                        ...(p.collectedTax ? [`includes ${formatCurrency(p.collectedTax)} tax, so ${formatCurrency((p.netCollected ?? 0) - p.collectedTax)} excluding tax - which is the figure comparable with Revenue`] : []),
+                      ].join(' · ')}
                     >
                       {formatCurrency(p.netCollected ?? 0)}
                       {!!p.refunded && (
@@ -217,7 +221,7 @@ export function TopSpendersTable({
         even though the cash was taken when it was sold.
         {!scopedProvider && ' The marker beside a provider name means the patient also saw others that period.'}
         {' '}Lifetime Revenue spans all imported data, not the period.
-        {hasCollections && ' Collected is money received in the period by payment date, so it will not tie to Revenue: an instalment paid now may settle an older invoice, and a package bought earlier pays for sessions delivered now.'}
+        {hasCollections && ' Collected is money received in the period by payment date and includes tax, while Revenue is Sales (Exc. Tax) - so Collected reads higher on anyone paying VAT. The two also cover different things in time: an instalment paid now may settle an older invoice, and buying a gift or prepaid card is money in that is never revenue. Hover a figure for its tax and refund split.'}
       </p>
     </div>
   );

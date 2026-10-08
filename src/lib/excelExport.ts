@@ -375,6 +375,8 @@ function patientSpendRows(p: WorkbookParams): Record<string, string | number>[] 
       Collected: s.collected === null ? '' : money(s.collected),
       Refunded: s.refunded === null ? '' : money(s.refunded),
       'Net Collected': s.netCollected === null ? '' : money(s.netCollected),
+      'Tax In Collected': s.collectedTax === null ? '' : money(s.collectedTax),
+      'Net Collected Ex Tax': s.netCollected === null ? '' : money(s.netCollected - (s.collectedTax ?? 0)),
       'Top Provider': s.topProvider,
       'Share Of Patient (%)': pct(s.topProviderShare),
       'Providers Seen': s.providerCount,
