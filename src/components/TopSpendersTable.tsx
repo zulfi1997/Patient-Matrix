@@ -31,9 +31,9 @@ export function TopSpendersTable({
 
   const copyRows = () => {
     const header = [
-      'Patient ID', 'Patient', 'Cash Spent (OMR)', 'Package Delivered (OMR)', 'Total Value (OMR)',
+      'Patient ID', 'Patient', 'Revenue (OMR)', 'Package Delivered (OMR)', 'Total Value (OMR)',
       'Visits', 'Invoices', 'Last Visit', ...(scopedProvider ? [] : ['Top Provider', 'Share of Patient %', 'Providers Seen']),
-      'First Visit', 'Lifetime Cash (OMR)',
+      'First Visit', 'Lifetime Revenue (OMR)',
     ];
     const body = rows.map((p) => [
       p.patientId, p.patientName, p.revenue.toFixed(3), p.redeemed.toFixed(3), p.deliveredValue.toFixed(3),
@@ -51,7 +51,7 @@ export function TopSpendersTable({
           <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
             {scopedProvider ? `Highest Spenders — ${scopedProvider}` : 'Highest Spenders'}
           </h3>
-          <InfoTooltip text="Patients ranked by what they spent in the selected period. Cash Spent is new money that reached the Revenue KPI. Value Delivered adds sessions consumed from packages bought earlier - work done rather than money taken, since that cash was booked when the package was sold. A patient can be large on one and small on the other, and the two say different things about what to do next." />
+          <InfoTooltip text="Patients ranked by what they generated in the selected period. Revenue is Sales (Exc. Tax) less package redemption - the same basis as the Revenue KPI, and not money received: a gift-card settlement counts in full and an unpaid invoice counts too. Value Delivered adds sessions consumed from packages bought earlier - work done rather than money taken, since that cash was booked when the package was sold. A patient can be large on one and small on the other, and the two say different things about what to do next." />
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
@@ -103,9 +103,9 @@ export function TopSpendersTable({
                 <th className="py-2 pr-2">ID</th>
                 <th
                   className="py-2 pr-2 text-right"
-                  title="New money this patient paid in the period: Sales (Exc. Tax) less anything drawn from a package they already owned. This is the figure that reaches the Revenue KPI."
+                  title="Revenue recognized against this patient: Sales (Exc. Tax) less anything drawn from a package they already held. This is the figure that reaches the Revenue KPI. It is not money received - a treatment settled by a gift or prepaid card counts here in full, and so does an invoice still unpaid."
                 >
-                  Cash
+                  Revenue
                 </th>
                 <th
                   className="py-2 pr-2 text-right"
@@ -115,7 +115,7 @@ export function TopSpendersTable({
                 </th>
                 <th
                   className="py-2 pr-2 text-right"
-                  title="Cash plus Package Delivered, which is Sales (Exc. Tax) - everything the clinic did for this patient in the period. Not what they paid: a package bought and used in the same window shows its cash once and its sessions again as they are delivered."
+                  title="Revenue plus Package Delivered, which is Sales (Exc. Tax) - everything the clinic did for this patient in the period. Not what they paid: a package bought and used in the same window shows its cash once and its sessions again as they are delivered."
                 >
                   Total Value
                 </th>
@@ -124,9 +124,9 @@ export function TopSpendersTable({
                 <th className="py-2 pr-2 text-right">Last Visit</th>
                 <th
                   className="py-2 pr-2 text-right"
-                  title="Cash across all imported data, not the selected period, with the month of their first visit beneath it."
+                  title="Revenue across all imported data, not the selected period, with the month of their first visit beneath it."
                 >
-                  Lifetime Cash
+                  Lifetime Revenue
                 </th>
               </tr>
             </thead>
@@ -176,12 +176,14 @@ export function TopSpendersTable({
       )}
 
       <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-        Cash is new money. Package Delivered is value drawn from a package bought earlier, so it is
-        work done rather than money taken, and Total Value adds the two. A provider is credited on
+        Revenue is recognized value, not money received: a treatment settled by a gift or prepaid card
+        counts in full, and so does an invoice still unpaid. For money actually collected, use the
+        Collections import. Package Delivered is value drawn from a package bought earlier, so it is
+        work done against money banked then, and Total Value adds the two. A provider is credited on
         value delivered, so whoever worked through a package counts as having treated the patient
         even though the cash was taken when it was sold.
         {!scopedProvider && ' The marker beside a provider name means the patient also saw others that period.'}
-        {' '}Lifetime Cash spans all imported data, not the period.
+        {' '}Lifetime Revenue spans all imported data, not the period.
       </p>
     </div>
   );

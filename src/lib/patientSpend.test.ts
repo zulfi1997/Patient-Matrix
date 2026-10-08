@@ -203,3 +203,28 @@ describe('which purchases count towards a patient’s spend', () => {
     expect(find(kept, 'P1').revenue).toBe(400);
   });
 });
+
+/**
+ * What the Revenue column is, and what it is not. It was briefly labelled "Cash", which invited
+ * exactly the wrong reading: it is recognized value, and money received is a separate question the
+ * Collections import answers.
+ */
+describe('revenue is recognized value, not money received', () => {
+  it('counts a treatment settled by a gift or prepaid card in full', () => {
+    // The card purchase was never revenue, so this invoice is the sale - even though the money
+    // reached the clinic whenever the card was bought.
+    const rows = [makeSale({ patientId: 'P1', date: '2026-06-02', amount: 700, paymentType: 'Prepaid Card(PR2026)' })];
+    expect(find(rows, 'P1').revenue).toBe(700);
+  });
+
+  it('counts an invoice that has not been paid at all', () => {
+    const rows = [makeSale({ patientId: 'P1', date: '2026-06-02', amount: 500, dueAmount: 500 })];
+    expect(find(rows, 'P1').revenue).toBe(500);
+  });
+
+  it('counts nothing for a package session, however much work it was', () => {
+    // The mirror image: real money, banked earlier, and none of it lands in Revenue now.
+    const rows = [makeSale({ patientId: 'P1', date: '2026-06-02', amount: 0, redeemedAmount: 800, packageName: 'Pkg' })];
+    expect(find(rows, 'P1')).toMatchObject({ revenue: 0, redeemed: 800, deliveredValue: 800 });
+  });
+});

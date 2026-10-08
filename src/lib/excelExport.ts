@@ -365,7 +365,7 @@ function patientSpendRows(p: WorkbookParams): Record<string, string | number>[] 
     .map((s) => ({
       'Patient ID': s.patientId,
       Patient: s.patientName,
-      'Cash Spent': money(s.revenue),
+      Revenue: money(s.revenue),
       'Package Delivered': money(s.redeemed),
       'Total Value': money(s.deliveredValue),
       Visits: s.visits,
@@ -375,7 +375,7 @@ function patientSpendRows(p: WorkbookParams): Record<string, string | number>[] 
       'Share Of Patient (%)': pct(s.topProviderShare),
       'Providers Seen': s.providerCount,
       'First Visit': s.firstVisit ?? '',
-      'Lifetime Cash': money(s.lifetimeRevenue),
+      'Lifetime Revenue': money(s.lifetimeRevenue),
     }));
 }
 

@@ -15,14 +15,22 @@ import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } 
 export type SpendBasis = 'revenue' | 'deliveredValue';
 
 export const SPEND_BASIS_LABELS: Record<SpendBasis, string> = {
-  revenue: 'Cash Spent',
+  revenue: 'Revenue',
   deliveredValue: 'Value Delivered',
 };
 
 export interface PatientSpend {
   patientId: string;
   patientName: string;
-  /** New cash in the period. Negative where refunds outweighed sales. */
+  /**
+   * Revenue recognized against this patient in the period: Sales (Exc. Tax) less anything drawn
+   * from a package they already held. Negative where refunds outweighed sales.
+   *
+   * Deliberately not money received. A treatment settled by a gift or prepaid card bought months
+   * ago counts here in full, because the card purchase was never revenue and this invoice is the
+   * sale. An invoice still unpaid counts too. What was actually collected, and when, is the
+   * Collections import's question, not this one.
+   */
   revenue: number;
   /** Value of previously-bought package sessions consumed in the period. */
   redeemed: number;
@@ -39,7 +47,7 @@ export interface PatientSpend {
   topProviderShare: number;
   /** First-ever visit, from full history - so a long-standing patient is not mistaken for a new one. */
   firstVisit: string | null;
-  /** Lifetime cash across all data, for context beside the period figure. */
+  /** Lifetime revenue across all data, for context beside the period figure. */
   lifetimeRevenue: number;
 }
 
