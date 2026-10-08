@@ -27,17 +27,21 @@ export function TopSpendersTable({
   const [limit, setLimit] = useLocalStorageState<number>(`${keyPrefix}-limit`, 25);
 
   const rows = useMemo(() => topSpenders(summary, basis, limit), [summary, basis, limit]);
+  // A blank column is worse than no column: it reads as "nobody paid" rather than "no report".
+  const hasCollections = summary.patients.some((p) => p.collected !== null);
   const share = useMemo(() => spendConcentration(summary, rows, basis), [summary, rows, basis]);
 
   const copyRows = () => {
     const header = [
       'Patient ID', 'Patient', 'Revenue (OMR)', 'Package Delivered (OMR)', 'Total Value (OMR)',
-      'Visits', 'Invoices', 'Last Visit', ...(scopedProvider ? [] : ['Top Provider', 'Share of Patient %', 'Providers Seen']),
+      'Visits', 'Invoices', 'Last Visit', ...(hasCollections ? ['Collected (OMR)', 'Refunded (OMR)', 'Net Collected (OMR)'] : []),
+      ...(scopedProvider ? [] : ['Top Provider', 'Share of Patient %', 'Providers Seen']),
       'First Visit', 'Lifetime Revenue (OMR)',
     ];
     const body = rows.map((p) => [
       p.patientId, p.patientName, p.revenue.toFixed(3), p.redeemed.toFixed(3), p.deliveredValue.toFixed(3),
       p.visits, p.invoices, p.lastVisit,
+      ...(hasCollections ? [(p.collected ?? 0).toFixed(3), (p.refunded ?? 0).toFixed(3), (p.netCollected ?? 0).toFixed(3)] : []),
       ...(scopedProvider ? [] : [p.topProvider, p.topProviderShare.toFixed(1), p.providerCount]),
       p.firstVisit ?? '', p.lifetimeRevenue.toFixed(3),
     ]);
@@ -120,6 +124,14 @@ export function TopSpendersTable({
                   Total Value
                 </th>
                 <th className="py-2 pr-2 text-right">Visits</th>
+                {hasCollections && (
+                  <th
+                    className="py-2 pr-2 text-right"
+                    title="Money actually received from this patient in the period, from the Collections import, by payment date rather than sale date. Package, gift-card and prepaid settlements are excluded - that money came in when the package or card was bought - as are internal transfers. Refunds are netted off."
+                  >
+                    Collected
+                  </th>
+                )}
                 {!scopedProvider && <th className="py-2 pr-2">Top Provider</th>}
                 <th className="py-2 pr-2 text-right">Last Visit</th>
                 <th
@@ -146,6 +158,17 @@ export function TopSpendersTable({
                     {formatCurrency(p.deliveredValue)}
                   </td>
                   <td className="py-1.5 pr-2 text-right">{formatNumber(p.visits)}</td>
+                  {hasCollections && (
+                    <td
+                      className="py-1.5 pr-2 text-right"
+                      title={p.refunded ? `${formatCurrency(p.collected ?? 0)} received, ${formatCurrency(p.refunded)} refunded` : undefined}
+                    >
+                      {formatCurrency(p.netCollected ?? 0)}
+                      {!!p.refunded && (
+                        <span className="ml-1 text-xs text-rose-600 dark:text-rose-400">net</span>
+                      )}
+                    </td>
+                  )}
                   {!scopedProvider && (
                     <td className="py-1.5 pr-2">
                       <span className="whitespace-nowrap">{p.topProvider}</span>
@@ -184,6 +207,7 @@ export function TopSpendersTable({
         even though the cash was taken when it was sold.
         {!scopedProvider && ' The marker beside a provider name means the patient also saw others that period.'}
         {' '}Lifetime Revenue spans all imported data, not the period.
+        {hasCollections && ' Collected is money received in the period by payment date, so it will not tie to Revenue: an instalment paid now may settle an older invoice, and a package bought earlier pays for sessions delivered now.'}
       </p>
     </div>
   );

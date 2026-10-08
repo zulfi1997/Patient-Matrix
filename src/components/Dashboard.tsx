@@ -171,8 +171,8 @@ export function Dashboard({
   const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
 
   const patientSpend = useMemo(
-    () => computePatientSpend(records, range, patients, providerGroups, providerAssignmentOverrides),
-    [records, range, patients, providerGroups, providerAssignmentOverrides],
+    () => computePatientSpend(records, range, patients, providerGroups, providerAssignmentOverrides, collections.length > 0 ? collections : undefined),
+    [records, range, patients, providerGroups, providerAssignmentOverrides, collections],
   );
 
   const redeemedPackages = useMemo(() => computeRedeemedPackages(records, range), [records, range]);

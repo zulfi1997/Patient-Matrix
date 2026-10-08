@@ -1,6 +1,8 @@
 import type { SaleRecord } from '../types';
 import { isInRange, type DateRange, type PatientVisitSummary } from './metrics';
 import { resolveProvider, type ProviderAssignmentOverride, type ProviderGroup } from './conversionMetrics';
+import type { CollectionRecord } from '../types';
+import { isCashCollection, methodOf } from './collectionsParser';
 
 /**
  * Who spends the most, and with whom.
@@ -49,6 +51,20 @@ export interface PatientSpend {
   firstVisit: string | null;
   /** Lifetime revenue across all data, for context beside the period figure. */
   lifetimeRevenue: number;
+
+  /**
+   * Money actually received from this patient in the period, from the Collections import.
+   *
+   * By payment date, not sale date, so it answers "what came in" rather than "what was billed".
+   * The two deliberately will not tie to Revenue: an instalment paid in June may settle a March
+   * invoice, and a package bought in March pays for June's sessions. Null where no Collections
+   * export has been imported, which is different from a patient who paid nothing.
+   */
+  collected: number | null;
+  /** Refunds handed back in the period, as a negative. Null when no Collections data is loaded. */
+  refunded: number | null;
+  /** collected + refunded. Null when no Collections data is loaded. */
+  netCollected: number | null;
 }
 
 export interface PatientSpendSummary {
@@ -76,6 +92,11 @@ export function computePatientSpend(
   history: Map<string, PatientVisitSummary>,
   providerGroups: ProviderGroup[],
   overrides: ProviderAssignmentOverride[],
+  /**
+   * Collections rows, when a Collections export has been imported. Omitted rather than empty when
+   * there are none, so "nothing collected" and "nothing to go on" stay distinguishable on screen.
+   */
+  collections?: CollectionRecord[],
 ): PatientSpendSummary {
   interface Acc {
     spend: PatientSpend;
@@ -109,6 +130,9 @@ export function computePatientSpend(
           topProviderShare: 0,
           firstVisit: h?.firstVisit ?? null,
           lifetimeRevenue: h?.lifetimeRevenue ?? 0,
+          collected: null,
+          refunded: null,
+          netCollected: null,
         },
         days: new Set(),
         invoiceNos: new Set(),
@@ -156,6 +180,30 @@ export function computePatientSpend(
     s.topProviderShare = s.deliveredValue > 0 ? (Math.max(topValue, 0) / s.deliveredValue) * 100 : 0;
 
     patients.push(s);
+  }
+
+  // Collections are keyed by patient in the export itself, so no invoice lookup is needed. Only
+  // patients who already appear above are filled in: someone who paid in the period but was billed
+  // outside it belongs to whichever period billed them, and inventing a row for them here would put
+  // a patient with no spend at the top of a spend ranking.
+  if (collections) {
+    for (const p of patients) {
+      p.collected = 0;
+      p.refunded = 0;
+      p.netCollected = 0;
+    }
+    const byId = new Map(patients.map((p) => [p.patientId, p]));
+    for (const c of collections) {
+      if (!isInRange(c.date, range)) continue;
+      // Package, gift-card and prepaid-card settlements are a redemption of money banked earlier,
+      // and an internal transfer never leaves the clinic - none of it is cash collected now.
+      if (!isCashCollection(methodOf(c))) continue;
+      const row = byId.get(c.patientId);
+      if (!row) continue;
+      if (c.amount < 0) row.refunded = (row.refunded ?? 0) + c.amount;
+      else row.collected = (row.collected ?? 0) + c.amount;
+      row.netCollected = (row.netCollected ?? 0) + c.amount;
+    }
   }
 
   return {

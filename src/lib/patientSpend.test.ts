@@ -8,7 +8,7 @@ import {
 } from './patientSpend';
 import { summarizePatients, type DateRange } from './metrics';
 import { makeSale } from '../test/fixtures';
-import type { SaleRecord } from '../types';
+import type { CollectionRecord, SaleRecord } from '../types';
 
 const JUNE: DateRange = { start: '2026-06-01', end: '2026-06-30' };
 
@@ -226,5 +226,66 @@ describe('revenue is recognized value, not money received', () => {
     // The mirror image: real money, banked earlier, and none of it lands in Revenue now.
     const rows = [makeSale({ patientId: 'P1', date: '2026-06-02', amount: 0, redeemedAmount: 800, packageName: 'Pkg' })];
     expect(find(rows, 'P1')).toMatchObject({ revenue: 0, redeemed: 800, deliveredValue: 800 });
+  });
+});
+
+const payment = (over: Partial<CollectionRecord> = {}): CollectionRecord => ({
+  id: `c${Math.random()}`, importBatchId: 'b1', date: '2026-06-10', invoiceNo: 'INV-1',
+  patientId: 'P1', patientName: 'Test Patient', centerName: 'Main',
+  paymentType: 'Cash', method: 'cash', amount: 100, taxCollected: 0,
+  invoiceStatus: 'Closed', collectedBy: 'Reception', comments: null, ...over,
+});
+
+describe('money actually collected from each patient', () => {
+  const sales = () => [makeSale({ patientId: 'P1', date: '2026-06-02', amount: 1000 })];
+  const withPayments = (payments: CollectionRecord[], rows = sales()) =>
+    computePatientSpend(rows, JUNE, summarizePatients(rows), [], [], payments).patients.find((p) => p.patientId === 'P1')!;
+
+  it('adds up what the patient actually paid in the period', () => {
+    const row = withPayments([payment({ amount: 400 }), payment({ amount: 250, paymentType: 'Credit Card', method: 'card' })]);
+    expect(row).toMatchObject({ collected: 650, refunded: 0, netCollected: 650, revenue: 1000 });
+  });
+
+  it('nets a refund off without hiding that it happened', () => {
+    const row = withPayments([payment({ amount: 400 }), payment({ amount: -150, paymentType: 'Custom - Bank Transfer', method: 'bankTransfer' })]);
+    expect(row).toMatchObject({ collected: 400, refunded: -150, netCollected: 250 });
+  });
+
+  it('leaves package, gift-card and prepaid settlements out, since that money came in earlier', () => {
+    const row = withPayments([
+      payment({ amount: 400 }),
+      payment({ amount: 300, paymentType: 'Package - Derma', method: 'package' }),
+      payment({ amount: 200, paymentType: 'Gift Card(2190)', method: 'giftCard' }),
+      payment({ amount: 100, paymentType: 'Prepaid Card(PR2026)', method: 'prepaidCard' }),
+    ]);
+    expect(row.collected).toBe(400);
+  });
+
+  it('leaves an internal transfer out, having never left the clinic', () => {
+    const row = withPayments([payment({ amount: 400 }), payment({ amount: -50, paymentType: 'Custom - Refund - Internal', method: 'internalTransfer' })]);
+    expect(row).toMatchObject({ collected: 400, refunded: 0 });
+  });
+
+  it('ignores a payment made outside the period', () => {
+    expect(withPayments([payment({ amount: 400 }), payment({ amount: 900, date: '2026-07-02' })]).collected).toBe(400);
+  });
+
+  it('counts a payment in the period against an invoice billed earlier', () => {
+    // Instalments: the money arrived in June, so June is where it is reported, whatever month the
+    // treatment was sold in. This is why collected will not tie to revenue.
+    const row = withPayments([payment({ amount: 400, invoiceNo: 'OLD-INVOICE' })]);
+    expect(row).toMatchObject({ collected: 400, revenue: 1000 });
+  });
+
+  it('reports zero, not nothing, for a patient who paid nothing while a report was loaded', () => {
+    expect(withPayments([payment({ patientId: 'SOMEONE-ELSE' })])).toMatchObject({ collected: 0, netCollected: 0 });
+  });
+
+  it('withholds the figure entirely when no Collections export has been imported', () => {
+    // A blank cell and a zero say different things, and conflating them would have someone chasing
+    // a patient who has in fact paid.
+    const rows = sales();
+    const row = computePatientSpend(rows, JUNE, summarizePatients(rows), [], []).patients[0];
+    expect(row).toMatchObject({ collected: null, refunded: null, netCollected: null });
   });
 });
