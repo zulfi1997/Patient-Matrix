@@ -33,13 +33,13 @@ export function TopSpendersTable({
 
   const copyRows = () => {
     const header = [
-      'Patient ID', 'Patient', 'Revenue (OMR)', 'Package Delivered (OMR)', 'Total Value (OMR)',
+      'Patient ID', 'Patient', 'Revenue (OMR)', 'Package Delivered (OMR)', 'Package Sold (OMR)', 'Value Delivered (OMR)',
       'Visits', 'Invoices', 'Last Visit', ...(hasCollections ? ['Collected (OMR)', 'Refunded (OMR)', 'Net Collected (OMR)'] : []),
       ...(scopedProvider ? [] : ['Top Provider', 'Share of Patient %', 'Providers Seen']),
       'First Visit', 'Lifetime Revenue (OMR)',
     ];
     const body = rows.map((p) => [
-      p.patientId, p.patientName, p.revenue.toFixed(3), p.redeemed.toFixed(3), p.deliveredValue.toFixed(3),
+      p.patientId, p.patientName, p.revenue.toFixed(3), p.redeemed.toFixed(3), p.packageSales.toFixed(3), p.deliveredValue.toFixed(3),
       p.visits, p.invoices, p.lastVisit,
       ...(hasCollections ? [(p.collected ?? 0).toFixed(3), (p.refunded ?? 0).toFixed(3), (p.netCollected ?? 0).toFixed(3)] : []),
       ...(scopedProvider ? [] : [p.topProvider, p.topProviderShare.toFixed(1), p.providerCount]),
@@ -55,7 +55,7 @@ export function TopSpendersTable({
           <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
             {scopedProvider ? `Highest Spenders — ${scopedProvider}` : 'Highest Spenders'}
           </h3>
-          <InfoTooltip text="Patients ranked by what they generated in the selected period. Revenue is Sales (Exc. Tax) less package redemption - the same basis as the Revenue KPI, and not money received: a gift-card settlement counts in full and an unpaid invoice counts too. Value Delivered adds sessions consumed from packages bought earlier - work done rather than money taken, since that cash was booked when the package was sold. A patient can be large on one and small on the other, and the two say different things about what to do next." />
+          <InfoTooltip text="Patients ranked by what they generated in the selected period. Revenue is Sales (Exc. Tax) less package redemption - the same basis as the Revenue KPI, and not money received: a gift-card settlement counts in full and an unpaid invoice counts too. Value Delivered is the treatment itself: services and products given, plus package sessions consumed. The price of a package sold is left out, since counting it as well as the sessions it pays for would book the same treatment twice. A patient can be large on one and small on the other, and the two say different things about what to do next." />
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <div className="flex overflow-hidden rounded-lg border border-zinc-300 text-xs dark:border-zinc-700">
@@ -119,9 +119,15 @@ export function TopSpendersTable({
                 </th>
                 <th
                   className="py-2 pr-2 text-right"
-                  title="Revenue plus Package Delivered, which is Sales (Exc. Tax) - everything the clinic did for this patient in the period. Not what they paid: a package bought and used in the same window shows its cash once and its sessions again as they are delivered."
+                  title="Of the Revenue beside it, how much was packages sold rather than treatment given. This is money taken now for work owed later, so it is excluded from Value Delivered."
                 >
-                  Total Value
+                  Package Sold
+                </th>
+                <th
+                  className="py-2 pr-2 text-right"
+                  title="Treatment actually performed: services and products delivered, plus package sessions consumed. The price of a package is deliberately left out - a package is a prepayment for work, not the work, and counting its price as well as the sessions it pays for would book the same treatment twice."
+                >
+                  Value Delivered
                 </th>
                 <th className="py-2 pr-2 text-right">Visits</th>
                 {hasCollections && (
@@ -153,6 +159,9 @@ export function TopSpendersTable({
                   </td>
                   <td className="py-1.5 pr-2 text-right text-zinc-500 dark:text-zinc-400">
                     {formatCurrency(p.redeemed)}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right text-zinc-500 dark:text-zinc-400">
+                    {formatCurrency(p.packageSales)}
                   </td>
                   <td className={`py-1.5 pr-2 text-right ${basis === 'deliveredValue' ? 'font-semibold' : ''}`}>
                     {formatCurrency(p.deliveredValue)}
@@ -201,8 +210,9 @@ export function TopSpendersTable({
       <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
         Revenue is recognized value, not money received: a treatment settled by a gift or prepaid card
         counts in full, and so does an invoice still unpaid. For money actually collected, use the
-        Collections import. Package Delivered is value drawn from a package bought earlier, so it is
-        work done against money banked then, and Total Value adds the two. A provider is credited on
+        Collections import. Value Delivered is the work itself - services and products given, plus
+        package sessions consumed - and leaves out the price of packages sold, since counting a
+        package and then the sessions it pays for would book the same treatment twice. A provider is credited on
         value delivered, so whoever worked through a package counts as having treated the patient
         even though the cash was taken when it was sold.
         {!scopedProvider && ' The marker beside a provider name means the patient also saw others that period.'}

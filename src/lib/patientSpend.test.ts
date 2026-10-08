@@ -36,7 +36,8 @@ describe('computePatientSpend', () => {
       makeSale({ patientId: 'BUYER', date: '2026-06-02', itemType: 'Package', amount: 5000 }),
       makeSale({ patientId: 'USER', date: '2026-06-03', amount: 0, redeemedAmount: 900, packageName: 'Pkg' }),
     ];
-    expect(find(rows, 'BUYER')).toMatchObject({ revenue: 5000, redeemed: 0, deliveredValue: 5000 });
+    // The buyer has paid for 5,000 of future work and had none of it yet, so nothing is delivered.
+    expect(find(rows, 'BUYER')).toMatchObject({ revenue: 5000, redeemed: 0, packageSales: 5000, deliveredValue: 0 });
     expect(find(rows, 'USER')).toMatchObject({ revenue: 0, redeemed: 900, deliveredValue: 900 });
   });
 
@@ -287,5 +288,54 @@ describe('money actually collected from each patient', () => {
     const rows = sales();
     const row = computePatientSpend(rows, JUNE, summarizePatients(rows), [], []).patients[0];
     expect(row).toMatchObject({ collected: null, refunded: null, netCollected: null });
+  });
+});
+
+describe('a package is not counted twice', () => {
+  it('leaves the package price out of delivered value, counting only the sessions', () => {
+    // 900 package, used up over three 300 sessions in the same window. Adding price to sessions
+    // would report 1,800 of treatment against 900 of work.
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-06-01', itemType: 'Package', serviceName: 'Filler Pkg', amount: 900 }),
+      ...Array.from({ length: 3 }, (_, i) =>
+        makeSale({ patientId: 'P1', date: `2026-06-1${i}`, itemType: 'Service', amount: 0, redeemedAmount: 300, packageName: 'Filler Pkg' })),
+    ];
+    expect(find(rows, 'P1')).toMatchObject({
+      revenue: 900, packageSales: 900, redeemed: 900, deliveredValue: 900,
+    });
+  });
+
+  it('counts a package bought and not yet used as revenue but as nothing delivered', () => {
+    const rows = [makeSale({ patientId: 'P1', date: '2026-06-01', itemType: 'Package', amount: 900 })];
+    expect(find(rows, 'P1')).toMatchObject({ revenue: 900, packageSales: 900, deliveredValue: 0 });
+  });
+
+  it('still counts services and products delivered for cash', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-06-01', itemType: 'Service', amount: 200 }),
+      makeSale({ patientId: 'P1', date: '2026-06-02', itemType: 'Product', amount: 50 }),
+    ];
+    expect(find(rows, 'P1')).toMatchObject({ revenue: 250, packageSales: 0, deliveredValue: 250 });
+  });
+
+  it('keeps the clinic total free of the same double count', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-06-01', itemType: 'Package', amount: 900 }),
+      makeSale({ patientId: 'P1', date: '2026-06-10', amount: 0, redeemedAmount: 900, packageName: 'Pkg' }),
+      makeSale({ patientId: 'P2', date: '2026-06-11', itemType: 'Service', amount: 400 }),
+    ];
+    const summary = build(rows);
+    expect(summary.totalRevenue).toBe(1300);
+    expect(summary.totalDeliveredValue).toBe(1300);
+  });
+
+  it('never lets a provider hold more than all of a patient', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', staff: 'Dr A', date: '2026-06-01', itemType: 'Package', amount: 900 }),
+      makeSale({ patientId: 'P1', staff: 'Dr B', date: '2026-06-10', amount: 0, redeemedAmount: 900, packageName: 'Pkg' }),
+    ];
+    const row = find(rows, 'P1');
+    expect(row.topProviderShare).toBeLessThanOrEqual(100);
+    expect(row.topProviderShare).toBeCloseTo(50, 6);
   });
 });

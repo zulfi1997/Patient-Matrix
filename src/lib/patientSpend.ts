@@ -36,6 +36,22 @@ export interface PatientSpend {
   revenue: number;
   /** Value of previously-bought package sessions consumed in the period. */
   redeemed: number;
+  /**
+   * Revenue from selling packages themselves, already included in `revenue`.
+   *
+   * Held separately because a package is a prepayment for work, not the work: counting its price
+   * and then counting the sessions it pays for would book the same treatment twice over any window
+   * holding both.
+   */
+  packageSales: number;
+  /**
+   * Treatment actually performed: services and products delivered, plus package sessions consumed.
+   *
+   * Deliberately not revenue + redeemed. A package bought for 900 and used up in the same window
+   * would read as 1,800 that way - its price once, then its sessions again as they are delivered.
+   * Here the sale is left out and only the delivery counts, so a package bought and not yet touched
+   * contributes nothing, which is what "delivered" means.
+   */
   deliveredValue: number;
   /** Distinct days they attended in the period. */
   visits: number;
@@ -121,6 +137,7 @@ export function computePatientSpend(
           patientName: r.patientName,
           revenue: 0,
           redeemed: 0,
+          packageSales: 0,
           deliveredValue: 0,
           visits: 0,
           invoices: 0,
@@ -142,9 +159,12 @@ export function computePatientSpend(
     }
 
     const s = acc.spend;
+    const isPackageSale = r.itemType === 'Package';
     s.revenue += r.amount;
     s.redeemed += r.redeemedAmount;
-    s.deliveredValue += r.amount + r.redeemedAmount;
+    if (isPackageSale) s.packageSales += r.amount;
+    else s.deliveredValue += r.amount;
+    s.deliveredValue += r.redeemedAmount;
     if (r.patientName) s.patientName = r.patientName;
     if (r.date > s.lastVisit) s.lastVisit = r.date;
     acc.days.add(r.date);
@@ -156,7 +176,8 @@ export function computePatientSpend(
     acc.byProvider.set(provider, (acc.byProvider.get(provider) ?? 0) + r.amount + r.redeemedAmount);
 
     totalRevenue += r.amount;
-    totalDeliveredValue += r.amount + r.redeemedAmount;
+    if (!isPackageSale) totalDeliveredValue += r.amount;
+    totalDeliveredValue += r.redeemedAmount;
   }
 
   const patients: PatientSpend[] = [];
@@ -175,9 +196,12 @@ export function computePatientSpend(
       }
     }
     s.topProvider = top;
-    // Against the patient's own delivered value, so the share reads as "how much of this patient
-    // belongs to that provider" rather than being distorted by a refund elsewhere in the period.
-    s.topProviderShare = s.deliveredValue > 0 ? (Math.max(topValue, 0) / s.deliveredValue) * 100 : 0;
+    // Against the sum of what every provider was credited, not against delivered value: a provider
+    // is credited for selling a package as well as for working through one, so the two totals
+    // differ and dividing by the wrong one would let a share exceed 100%.
+    let credited = 0;
+    for (const value of acc.byProvider.values()) credited += Math.max(value, 0);
+    s.topProviderShare = credited > 0 ? (Math.max(topValue, 0) / credited) * 100 : 0;
 
     patients.push(s);
   }
