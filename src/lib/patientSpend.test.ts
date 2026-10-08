@@ -339,3 +339,41 @@ describe('a package is not counted twice', () => {
     expect(row.topProviderShare).toBeCloseTo(50, 6);
   });
 });
+
+describe('money refunded back out of the clinic', () => {
+  const sales = () => [makeSale({ patientId: 'P1', date: '2026-06-02', amount: 1000 })];
+  const withPayments = (payments: CollectionRecord[]) =>
+    computePatientSpend(sales(), JUNE, summarizePatients(sales()), [], [], payments).patients.find((p) => p.patientId === 'P1')!;
+
+  it('counts a refund paid out in cash, by card or by bank transfer', () => {
+    // Real money leaving the clinic, by whichever route. It belongs in the figure or the month
+    // overstates what was taken.
+    for (const [paymentType, method] of [['Cash', 'cash'], ['Credit Card', 'card'], ['Custom - Bank Transfer', 'bankTransfer']] as const) {
+      const row = withPayments([payment({ amount: 600 }), payment({ amount: -250, paymentType, method })]);
+      expect(row).toMatchObject({ collected: 600, refunded: -250, netCollected: 350 });
+    }
+  });
+
+  it('goes negative when more went out than came in', () => {
+    // A refund of an earlier month's invoice with nothing new taken. Clamping it at zero would
+    // quietly lose money that genuinely left.
+    const row = withPayments([payment({ amount: -400 })]);
+    expect(row).toMatchObject({ collected: 0, refunded: -400, netCollected: -400 });
+  });
+
+  it('does not count a refund put back onto a package or card as cash out', () => {
+    // Nothing left the clinic: the balance was restored to the package or card it came from.
+    for (const [paymentType, method] of [['Package - Derma', 'package'], ['Prepaid Card(PR2026)', 'prepaidCard'], ['Gift Card(2190)', 'giftCard']] as const) {
+      const row = withPayments([payment({ amount: 600 }), payment({ amount: -250, paymentType, method })]);
+      expect(row).toMatchObject({ collected: 600, refunded: 0, netCollected: 600 });
+    }
+  });
+
+  it('keeps the two legs of an internal transfer out of both sides', () => {
+    const row = withPayments([
+      payment({ amount: -104.85, paymentType: 'Custom - Refund - Internal', method: 'internalTransfer' }),
+      payment({ amount: 104.85, paymentType: 'Custom - Refund - Internal', method: 'internalTransfer' }),
+    ]);
+    expect(row).toMatchObject({ collected: 0, refunded: 0, netCollected: 0 });
+  });
+});
