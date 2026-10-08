@@ -54,6 +54,8 @@ import {
 } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { ProviderTargetsTable, TargetKpiCardItems } from './ProviderTargetsTable';
+import { TopSpendersTable } from './TopSpendersTable';
+import { computePatientSpend } from '../lib/patientSpend';
 import { computeProviderTargetProgress, TARGET_STATUS_LABELS, targetProgress, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
 import { monthKeyOf } from '../lib/months';
 import { useLocalStorageState } from '../hooks/useLocalStorageState';
@@ -269,6 +271,13 @@ export function ProviderAnalyticsDashboard({
     () => discountRecords.filter((r) => resolveProvider(r.staff, r.date, providerGroups, providerAssignmentOverrides) === selected),
     [discountRecords, selected, providerGroups, providerAssignmentOverrides],
   );
+  // Scoped to this provider's own lines, so the ranking answers "who are my biggest patients"
+  // rather than repeating the clinic-wide list. History still comes from every row.
+  const patientSpend = useMemo(
+    () => computePatientSpend(providerRecords, range, clinicPatients, providerGroups, providerAssignmentOverrides),
+    [providerRecords, range, clinicPatients, providerGroups, providerAssignmentOverrides],
+  );
+
   const discountSummary = useMemo(() => computeDiscountSummary(providerDiscountRecords, range), [providerDiscountRecords, range]);
   const discountBreakdown = useMemo(() => computeDiscountBreakdown(providerDiscountRecords, range), [providerDiscountRecords, range]);
   const flagged = useMemo(() => computeFlaggedSummary(providerRecords, range), [providerRecords, range]);
@@ -372,9 +381,27 @@ export function ProviderAnalyticsDashboard({
       ['Conversion', 'Computed across all clinic records then filtered to this provider - classifying new vs repeat from a narrowed set would make everyone look new. Zero-revenue visits are always included here, whatever the header toggle says, because an unconverted visit is defined by having produced no revenue.'],
       ['Top Services', `Category filter: ${serviceType}. Package sales are excluded under "Service", since the package is not itself a service and its value arrives later as redemptions.`],
       ['Invoice Ageing', 'Spans all sales data, not the selected period - a balance does not stop being owed because its sale date falls outside the window.'],
+      ['Patient Spend', 'Every patient this provider billed in the period, biggest first, not only the ones the screen lists. Cash Spent is new money; Package Delivered is the value of sessions consumed from packages bought earlier. Lifetime Cash and First Visit span all imported data.'],
       ['Targets', 'The whole calendar month the period ends in, not the period itself - a monthly target judged against a part-month slice would always read as missed. Rates are per working day, with Friday and Saturday excluded. The All Providers row is the clinic-wide figure, for reading this provider against.'],
       ['Currency', 'OMR. Amounts are numbers, not text, so they pivot and sum directly.'],
     ]),
+    {
+      name: 'Patient Spend',
+      rows: [...patientSpend.patients]
+        .sort((a, b) => b.deliveredValue - a.deliveredValue)
+        .map((sp) => ({
+          'Patient ID': sp.patientId,
+          Patient: sp.patientName,
+          'Cash Spent': money(sp.revenue),
+          'Package Delivered': money(sp.redeemed),
+          'Total Value': money(sp.deliveredValue),
+          Visits: sp.visits,
+          Invoices: sp.invoices,
+          'Last Visit': sp.lastVisit,
+          'First Visit': sp.firstVisit ?? '',
+          'Lifetime Cash': money(sp.lifetimeRevenue),
+        })),
+    },
     {
       name: 'Targets',
       rows: [...targetRows, targetTotal].map((t) => ({
@@ -741,6 +768,8 @@ export function ProviderAnalyticsDashboard({
       </div>
 
       <ProviderTargetsTable rows={targetRows} total={targetTotal} asOfISO={asOfISO} />
+
+      <TopSpendersTable summary={patientSpend} periodLabel={periodLabel} scopedProvider={selected} />
 
       <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />
 

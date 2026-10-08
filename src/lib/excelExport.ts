@@ -24,6 +24,7 @@ import {
   type ProviderRevenueByType,
 } from './providerRevenueByType';
 import { TARGET_STATUS_LABELS, type ProviderTargetProgress } from './providerTargets';
+import type { PatientSpendSummary } from './patientSpend';
 import { COLLECTION_METHOD_LABELS, isCashCollection, methodOf } from './collectionsParser';
 import {
   needsInvestigation,
@@ -51,6 +52,8 @@ export interface WorkbookParams {
   atRiskPatients: AtRiskPatient[];
   returnedPatients: ReturnedPatient[];
   revenueByType: ProviderRevenueByType[];
+  /** Every patient's spend in the period, ranked by the sheet rather than trimmed to a top N. */
+  patientSpend: PatientSpendSummary;
   /** Target progress for the calendar month the period ends in, plus the All Providers roll-up. */
   targetRows: ProviderTargetProgress[];
   targetTotal: ProviderTargetProgress;
@@ -350,6 +353,32 @@ function targetRows(p: WorkbookParams): Record<string, string | number>[] {
   return [...p.targetRows.map(row), row(p.targetTotal)];
 }
 
+/**
+ * One row per patient who spent anything in the period, biggest first.
+ *
+ * Not trimmed to the top N the screen shows: a spreadsheet is where someone asks "and who is
+ * number 60", and a list that stops at 25 cannot answer it.
+ */
+function patientSpendRows(p: WorkbookParams): Record<string, string | number>[] {
+  return [...p.patientSpend.patients]
+    .sort((a, b) => b.deliveredValue - a.deliveredValue)
+    .map((s) => ({
+      'Patient ID': s.patientId,
+      Patient: s.patientName,
+      'Cash Spent': money(s.revenue),
+      'Package Delivered': money(s.redeemed),
+      'Total Value': money(s.deliveredValue),
+      Visits: s.visits,
+      Invoices: s.invoices,
+      'Last Visit': s.lastVisit,
+      'Top Provider': s.topProvider,
+      'Share Of Patient (%)': pct(s.topProviderShare),
+      'Providers Seen': s.providerCount,
+      'First Visit': s.firstVisit ?? '',
+      'Lifetime Cash': money(s.lifetimeRevenue),
+    }));
+}
+
 export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> {
   const sheets: WorkbookSheet[] = [
     { name: 'Read Me', rows: readMeRows(p) },
@@ -372,6 +401,7 @@ export async function exportDashboardWorkbook(p: WorkbookParams): Promise<void> 
     },
     { name: 'Revenue By Type', rows: revenueByTypeRows(p) },
     { name: 'Provider Targets', rows: targetRows(p) },
+    { name: 'Patient Spend', rows: patientSpendRows(p) },
     ...(p.collectionSummary
       ? [
           { name: 'Collections', rows: collectionRows(p.collectionSummary) },

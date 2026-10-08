@@ -33,6 +33,8 @@ import {
 } from '../lib/collections';
 import { ProviderRevenueByTypeTable } from './ProviderRevenueByTypeTable';
 import { ProviderTargetsTable, TargetKpiCards } from './ProviderTargetsTable';
+import { TopSpendersTable } from './TopSpendersTable';
+import { computePatientSpend } from '../lib/patientSpend';
 import { computeProviderTargetProgress, totalTargetProgress, type ProviderTarget } from '../lib/providerTargets';
 import { monthKeyOf } from '../lib/months';
 import { RevenueReconciliationPanel } from './RevenueReconciliationPanel';
@@ -166,6 +168,13 @@ export function Dashboard({
     [targetRows, targetMonth, asOfISO],
   );
 
+  const periodLabel = `${PRESET_LABELS[preset]} (${range.start} to ${range.end})`;
+
+  const patientSpend = useMemo(
+    () => computePatientSpend(records, range, patients, providerGroups, providerAssignmentOverrides),
+    [records, range, patients, providerGroups, providerAssignmentOverrides],
+  );
+
   const redeemedPackages = useMemo(() => computeRedeemedPackages(records, range), [records, range]);
 
   const revenueByType = useMemo(
@@ -210,6 +219,7 @@ export function Dashboard({
         kpis, discountSummary, discountBreakdown, discountDetails,
         trend, services: serviceStats, redeemedPackages, revenueByType,
         targetRows, targetTotal,
+        patientSpend,
         invoiceAging, agingBucketSummary,
         atRiskPatients, returnedPatients,
         records, patients, providerGroups, providerAssignmentOverrides,
@@ -386,6 +396,8 @@ export function Dashboard({
       <ProviderTargetsTable rows={targetRows} total={targetTotal} asOfISO={asOfISO} />
 
       <ProviderRevenueByTypeTable data={revenueByType} collections={collectionSummary} />
+
+      <TopSpendersTable summary={patientSpend} periodLabel={periodLabel} />
 
       <RedeemedPackagesTable data={redeemedPackages} />
 
