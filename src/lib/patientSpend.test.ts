@@ -162,3 +162,44 @@ describe('spendConcentration', () => {
     }
   });
 });
+
+/**
+ * What reaches the list and what never does. The spend calculation itself applies no item-type
+ * filter at all - everything that happens to a patient counts - so the only omissions are the ones
+ * the caller has already made before handing the records over.
+ */
+describe('which purchases count towards a patient’s spend', () => {
+  it('counts services, products, packages and anything else alike', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-06-02', itemType: 'Service', serviceName: 'HydraFacial', amount: 100 }),
+      makeSale({ patientId: 'P1', date: '2026-06-03', itemType: 'Product', serviceName: 'Serum', amount: 45 }),
+      makeSale({ patientId: 'P1', date: '2026-06-04', itemType: 'Package', serviceName: 'Filler Pkg', amount: 900 }),
+      makeSale({ patientId: 'P1', date: '2026-06-05', itemType: 'Membership', serviceName: 'Gold', amount: 200 }),
+    ];
+    expect(find(rows, 'P1').revenue).toBe(1245);
+  });
+
+  it('counts a product bought on its own, with no service that day', () => {
+    const rows = [makeSale({ patientId: 'P1', date: '2026-06-02', itemType: 'Product', amount: 60 })];
+    expect(find(rows, 'P1')).toMatchObject({ revenue: 60, visits: 1 });
+  });
+
+  it('counts a service settled by gift or prepaid card in full', () => {
+    // The card purchase is dropped upstream because it is a means of payment, but the treatment it
+    // later pays for is a real sale and must appear against the patient who received it.
+    const rows = [makeSale({ patientId: 'P1', date: '2026-06-02', itemType: 'Service', amount: 500, paymentType: 'Gift Card(2190)' })];
+    expect(find(rows, 'P1').revenue).toBe(500);
+  });
+
+  it('loses a paid service when the YB111 toggle has already removed it', () => {
+    // The one omission worth knowing about: that toggle removes whole rows before this runs, so a
+    // high spender whose purchases are flagged reads low through no fault of the ranking.
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-06-02', amount: 400 }),
+      makeSale({ patientId: 'P1', date: '2026-06-03', amount: 600, invoiceNotes: 'YB111 correction' }),
+    ];
+    expect(find(rows, 'P1').revenue).toBe(1000);
+    const kept = rows.filter((r) => !r.invoiceNotes?.includes('YB111'));
+    expect(find(kept, 'P1').revenue).toBe(400);
+  });
+});
