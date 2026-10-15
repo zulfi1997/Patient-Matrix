@@ -55,11 +55,21 @@ export function usePackageBenefits() {
    * still refreshes immediately, since there is nothing to amortize.
    */
   const importPackageBenefitFiles = useCallback(
-    async (files: File[]): Promise<{ outcomes: PackageBenefitImportResult[]; errors: { fileName: string; error: unknown }[] }> => {
+    async (
+      files: File[],
+      /**
+       * Called before each file. Reading the store back only at the end means nothing on screen
+       * moves during a long run, which looks like a hang - so the caller is told where it is up to.
+       */
+      onProgress?: (done: number, total: number, fileName: string) => void,
+    ): Promise<{ outcomes: PackageBenefitImportResult[]; errors: { fileName: string; error: unknown }[] }> => {
       const outcomes: PackageBenefitImportResult[] = [];
       const errors: { fileName: string; error: unknown }[] = [];
       try {
-        for (const file of files) {
+        for (const [i, file] of files.entries()) {
+          onProgress?.(i, files.length, file.name);
+          // Lets the browser paint the progress before the next file's parse takes the main thread.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           try {
             outcomes.push(await importPackageBenefitFile(file, { deferRefresh: true }));
           } catch (error) {
@@ -67,6 +77,7 @@ export function usePackageBenefits() {
           }
         }
       } finally {
+        onProgress?.(files.length, files.length, '');
         // Even if a file threw, the ones before it are already stored and must become visible.
         await refresh();
       }

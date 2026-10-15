@@ -6,7 +6,10 @@ import { formatDate, formatNumber } from '../lib/format';
 
 interface PackageBenefitsSectionProps {
   batches: PackageBenefitBatch[];
-  importPackageBenefitFiles: (files: File[]) => Promise<{ outcomes: PackageBenefitImportResult[]; errors: { fileName: string; error: unknown }[] }>;
+  importPackageBenefitFiles: (
+    files: File[],
+    onProgress?: (done: number, total: number, fileName: string) => void,
+  ) => Promise<{ outcomes: PackageBenefitImportResult[]; errors: { fileName: string; error: unknown }[] }>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
   clearAllPackageBenefits: () => Promise<void>;
   /** Present only when signed in to OneDrive - pulls every file from the configured "Package Benefit Data" subfolder. */
@@ -22,6 +25,7 @@ export function PackageBenefitsSection({
 }: PackageBenefitsSectionProps) {
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<PackageBenefitImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -31,7 +35,10 @@ export function PackageBenefitsSection({
       setBusy(true);
       setError(null);
       setResults([]);
-      const { outcomes, errors } = await importPackageBenefitFiles(files);
+      const { outcomes, errors } = await importPackageBenefitFiles(files, (done, total) =>
+        setProgress(total > 1 ? { done, total } : null),
+      );
+      setProgress(null);
       setResults(outcomes);
       if (errors.length > 0) {
         setError(
@@ -103,7 +110,7 @@ export function PackageBenefitsSection({
             disabled={busy}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
           >
-            {busy ? 'Importing…' : 'Choose file'}
+            {busy ? progress ? `Importing ${progress.done} of ${progress.total}…` : 'Importing…' : 'Choose file'}
           </button>
           {onPullFromOneDrive && (
             <button
@@ -111,7 +118,7 @@ export function PackageBenefitsSection({
               disabled={busy}
               className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
             >
-              {busy ? 'Importing…' : 'Pull from OneDrive'}
+              {busy ? progress ? `Importing ${progress.done} of ${progress.total}…` : 'Importing…' : 'Pull from OneDrive'}
             </button>
           )}
         </div>
