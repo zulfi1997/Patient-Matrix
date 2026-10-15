@@ -80,3 +80,66 @@ describe('a first visit carrying a YB111 note while the toggle is off', () => {
     expect(conversionNew(rows(), rows())).toBe(0);
   });
 });
+
+/**
+ * The distinct-patient count that makes the gap readable on the page instead of inferred.
+ */
+const distinctOf = (visible: SaleRecord[], history: SaleRecord[]) =>
+  computeRangeConversion(
+    visible, summarizePatients(history), JUNE, buildInvoiceToPatientMap(visible), new Map(),
+  ).distinct;
+
+describe('distinct patients beside the patient-provider rows', () => {
+  it('counts one person and two rows when two providers share a first day', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', staff: 'Dr A', date: '2026-06-05', amount: 200 }),
+      makeSale({ patientId: 'P1', staff: 'Dr B', date: '2026-06-05', amount: 150 }),
+    ];
+    expect(distinctOf(rows, rows)).toMatchObject({ newPatients: 1, newRows: 2 });
+    // And that one person is exactly what the Dashboard reports.
+    expect(dashboardNew(rows, rows)).toBe(1);
+  });
+
+  it('leaves the two equal when nobody doubled up', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', staff: 'Dr A', date: '2026-06-05', amount: 200 }),
+      makeSale({ patientId: 'P2', staff: 'Dr A', date: '2026-06-06', amount: 150 }),
+    ];
+    expect(distinctOf(rows, rows)).toMatchObject({ newPatients: 2, newRows: 2 });
+  });
+
+  it('folds an assisting nurse into her doctor, so the day is one row again', () => {
+    // Why doubling up is rarer than it sounds: two people treating a patient resolve to one
+    // provider, so there is one group and one row.
+    const rows = [
+      makeSale({ patientId: 'P1', staff: 'Dr Obada', date: '2026-06-05', amount: 200 }),
+      makeSale({ patientId: 'P1', staff: 'Nurse Reni', date: '2026-06-05', amount: 150 }),
+    ];
+    const groups = [{ id: 'g1', canonicalName: 'Dr Obada', aliases: ['Nurse Reni'] }];
+    const summary = computeRangeConversion(
+      rows, summarizePatients(rows), JUNE, buildInvoiceToPatientMap(rows), new Map(), groups,
+    );
+    expect(summary.distinct).toMatchObject({ newPatients: 1, newRows: 1 });
+  });
+
+  it('counts a patient once however many days they came', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-06-05', amount: 200 }),
+      makeSale({ patientId: 'P1', date: '2026-06-12', amount: 100 }),
+      makeSale({ patientId: 'P1', date: '2026-06-20', amount: 100 }),
+    ];
+    expect(distinctOf(rows, rows)).toMatchObject({ newPatients: 1, newRows: 1, patients: 1 });
+  });
+
+  it('still falls short of the Dashboard when a first visit was filtered away', () => {
+    // The distinct count fixes the double-counting, not this: there is no row to count, because
+    // the day the patient would have been new is not in the data the tab can see.
+    const history = [
+      makeSale({ patientId: 'P1', date: '2026-06-01', amount: 100, invoiceNotes: 'YB111' }),
+      makeSale({ patientId: 'P1', date: '2026-06-10', amount: 300 }),
+    ];
+    const visible = excludeFlaggedRecords(history);
+    expect(distinctOf(visible, history).newPatients).toBe(0);
+    expect(dashboardNew(visible, history)).toBe(1);
+  });
+});

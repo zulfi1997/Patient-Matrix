@@ -153,6 +153,7 @@ export function ProviderConversionDashboard({
         providers: daily.providers,
         overall: daily.overall,
         patientRows: daily.patientRows,
+        distinct: daily.distinct,
       };
     }
     return computeRangeConversion(
@@ -361,6 +362,17 @@ export function ProviderConversionDashboard({
           label="Visits Classified"
           value={formatNumber(summary.overall.total)}
           help="Every patient-provider visit in the period, counted once per patient per provider per day - so a patient seen on five days appears five times. That is what the conversion rate is a rate of, and it is deliberately not a headcount: the Active Patients card counts distinct people, so the two will not agree and are not meant to."
+        />
+        <KpiCard
+          label="New Patients (people)"
+          value={formatNumber(summary.distinct.newPatients)}
+          hint={
+            summary.distinct.newRows === summary.distinct.newPatients
+              ? `${formatNumber(summary.distinct.newRows)} new rows, one each`
+              : `${formatNumber(summary.distinct.newRows)} new rows — ${formatNumber(summary.distinct.newRows - summary.distinct.newPatients)} saw a second provider that day`
+          }
+          help="Distinct people whose first-ever visit fell in this period, which is the figure comparable with the Dashboard's New Patients card. The New Unconverted and New Converted cards beside it count patient-provider rows instead, so a patient seen by two providers on their first day appears twice there and once here. The two can still differ from the Dashboard by one more thing: a first visit whose invoice was filtered out - by the YB111 toggle, say - leaves no row here to classify, while the Dashboard still knows the patient arrived this period."
+          tone="good"
         />
         <KpiCard
           label="New Unconverted"

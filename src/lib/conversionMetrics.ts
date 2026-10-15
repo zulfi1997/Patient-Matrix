@@ -163,12 +163,44 @@ export interface ProviderConversionStat {
   revenueAdjustment: number;
 }
 
+export interface DistinctPatientCounts {
+  /** Distinct patients classified as new, converted or not. Comparable with the Dashboard KPI. */
+  newPatients: number;
+  /** Distinct patients appearing anywhere in the period. */
+  patients: number;
+  /** Rows on the new lines, so the gap against newPatients is the double-counting itself. */
+  newRows: number;
+}
+
+/** People rather than patient-provider-days, counted off the classified rows themselves. */
+function countDistinct(patientRows: PatientConversionRow[]): DistinctPatientCounts {
+  const newPatientIds = new Set<string>();
+  const allPatientIds = new Set<string>();
+  let newRows = 0;
+  for (const row of patientRows) {
+    allPatientIds.add(row.patientId);
+    if (row.category === 'newConverted' || row.category === 'newUnconverted') {
+      newPatientIds.add(row.patientId);
+      newRows++;
+    }
+  }
+  return { newPatients: newPatientIds.size, patients: allPatientIds.size, newRows };
+}
+
 export interface DailyConversionSummary {
   date: string;
   snapshotUsed: SnapshotUsed | null;
   providers: ProviderConversionStat[];
   overall: ProviderConversionStat;
   patientRows: PatientConversionRow[];
+  /**
+   * People, where the stats above count patient-provider-days.
+   *
+   * The two differ whenever a patient sees more than one provider on the same day: that is one
+   * person and two rows, because each provider is judged on the patient in front of them. Without
+   * this, the New columns cannot be read against the Dashboard's New Patients, which counts people.
+   */
+  distinct: DistinctPatientCounts;
 }
 
 /**
@@ -343,7 +375,8 @@ export function computeDailyConversion(
     providers,
     overall,
     patientRows: patientRows.sort((a, b) => a.staff.localeCompare(b.staff) || a.patientName.localeCompare(b.patientName)),
-  };
+      distinct: countDistinct(patientRows),
+};
 }
 
 export interface ConversionTrendPoint {
@@ -400,6 +433,8 @@ export interface RangeConversionSummary {
   providers: ProviderConversionStat[];
   overall: ProviderConversionStat;
   patientRows: PatientConversionRow[];
+  /** People, where the stats above count patient-provider-days. See DistinctPatientCounts. */
+  distinct: DistinctPatientCounts;
 }
 
 /** Same classification as computeDailyConversion, aggregated across every day in the range - each day is still classified on its own terms (per the "for that particular day" logic), then summed per provider. */
@@ -478,5 +513,6 @@ export function computeRangeConversion(
     providers,
     overall,
     patientRows: patientRows.sort((a, b) => a.date.localeCompare(b.date) || a.staff.localeCompare(b.staff) || a.patientName.localeCompare(b.patientName)),
+    distinct: countDistinct(patientRows),
   };
 }
