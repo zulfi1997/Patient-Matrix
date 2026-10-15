@@ -192,7 +192,7 @@ export function PatientCohortTable({ analysis, basis, onBasisChange }: {
                     return (
                       <td
                         key={age}
-                        className="py-1.5 pr-3 text-right tabular-nums"
+                        className="py-1.5 pr-3 whitespace-nowrap text-right tabular-nums"
                         title={`${formatMonthLabel(cell.month)}${cell.partial ? ' (month still in progress)' : ''}`}
                         style={{
                           backgroundColor: negative
@@ -265,7 +265,7 @@ export function PatientCohortAgeCurve({ analysis, basis }: { analysis: CohortAna
             <tr>
               <th className="py-2 pr-3">Month</th>
               {ages.map((a) => (
-                <th key={a.monthIndex} className="py-2 pr-3 text-right tabular-nums">
+                <th key={a.monthIndex} className="py-2 pr-3 whitespace-nowrap text-right tabular-nums">
                   {a.monthIndex === 0 ? '0' : `+${a.monthIndex}`}
                 </th>
               ))}
@@ -275,7 +275,7 @@ export function PatientCohortAgeCurve({ analysis, basis }: { analysis: CohortAna
             <tr className="border-t border-zinc-100 dark:border-zinc-800">
               <td className="py-1.5 pr-3 font-medium">Per patient</td>
               {ages.map((a) => (
-                <td key={a.monthIndex} className="py-1.5 pr-3 text-right tabular-nums">
+                <td key={a.monthIndex} className="py-1.5 pr-3 whitespace-nowrap text-right tabular-nums">
                   {a.valuePerPatient === null ? '—' : formatCurrency(a.valuePerPatient)}
                 </td>
               ))}
@@ -291,7 +291,7 @@ export function PatientCohortAgeCurve({ analysis, basis }: { analysis: CohortAna
             <tr className="border-t border-zinc-100 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
               <td className="py-1.5 pr-3">Cohorts averaged</td>
               {ages.map((a) => (
-                <td key={a.monthIndex} className="py-1.5 pr-3 text-right tabular-nums">
+                <td key={a.monthIndex} className="py-1.5 pr-3 whitespace-nowrap text-right tabular-nums">
                   {formatNumber(a.cohorts)}
                 </td>
               ))}

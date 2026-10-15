@@ -72,7 +72,7 @@ export function ProviderRevenueByTypeTable({
                   {keys.map((k) => (
                     <td
                       key={k}
-                      className={`py-1.5 pr-2 text-right tabular-nums ${
+                      className={`py-1.5 pr-2 whitespace-nowrap text-right tabular-nums ${
                         row.amounts[k] < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-700 dark:text-zinc-300'
                       }`}
                       title={`${formatNumber(row.lines[k])} line item(s)`}
@@ -82,18 +82,18 @@ export function ProviderRevenueByTypeTable({
                   ))}
                   {showAdjustment && (
                     <td
-                      className={`py-1.5 pr-2 text-right tabular-nums ${row.adjustment < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-700 dark:text-zinc-300'}`}
+                      className={`py-1.5 pr-2 whitespace-nowrap text-right tabular-nums ${row.adjustment < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-700 dark:text-zinc-300'}`}
                       title="Master Control adjustments that named no item type"
                     >
                       {row.adjustment === 0 ? '\u2014' : formatCurrency(row.adjustment)}
                     </td>
                   )}
-                  <td className="py-1.5 pr-2 text-right font-semibold tabular-nums">{formatCurrency(row.netRevenue)}</td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums text-zinc-500 dark:text-zinc-400">{formatCurrency(row.redeemed)}</td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(row.deliveredValue)}</td>
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-right font-semibold tabular-nums">{formatCurrency(row.netRevenue)}</td>
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-zinc-500 dark:text-zinc-400">{formatCurrency(row.redeemed)}</td>
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums">{formatCurrency(row.deliveredValue)}</td>
                   {collections && (
                     <td
-                      className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400"
+                      className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-sky-700 dark:text-sky-400"
                       title={`${formatNumber(collectedFor(row.provider)?.invoices ?? 0)} invoice(s) · ${formatCurrency(collectedFor(row.provider)?.redemptionSettled ?? 0)} settled by package/card, not counted here`}
                     >
                       {formatCurrency(collectedFor(row.provider)?.collected ?? 0)}
@@ -101,14 +101,14 @@ export function ProviderRevenueByTypeTable({
                   )}
                   {showRefunds && (
                     <td
-                      className="py-1.5 pr-2 text-right tabular-nums text-rose-600 dark:text-rose-400"
+                      className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-rose-600 dark:text-rose-400"
                       title={`of which ${formatCurrency(collectedFor(row.provider)?.cardRefunds ?? 0)} is a gift or prepaid card handed back, paid for in an earlier period`}
                     >
                       {formatCurrency(collectedFor(row.provider)?.refunded ?? 0)}
                     </td>
                   )}
                   {collections && (
-                    <td className="py-1.5 pr-2 text-right font-semibold tabular-nums text-sky-700 dark:text-sky-400">
+                    <td className="py-1.5 pr-2 whitespace-nowrap text-right font-semibold tabular-nums text-sky-700 dark:text-sky-400">
                       {formatCurrency(collectedFor(row.provider)?.netCollected ?? 0)}
                     </td>
                   )}
@@ -119,26 +119,26 @@ export function ProviderRevenueByTypeTable({
               <tr className="border-t-2 border-zinc-200 font-semibold dark:border-zinc-700">
                 <td className="py-1.5 pr-2">All Providers</td>
                 {keys.map((k) => (
-                  <td key={k} className={`py-1.5 pr-2 text-right tabular-nums ${total.amounts[k] < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                  <td key={k} className={`py-1.5 pr-2 whitespace-nowrap text-right tabular-nums ${total.amounts[k] < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
                     {formatCurrency(total.amounts[k])}
                   </td>
                 ))}
-                {showAdjustment && <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.adjustment)}</td>}
-                <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.netRevenue)}</td>
-                <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.redeemed)}</td>
-                <td className="py-1.5 pr-2 text-right tabular-nums">{formatCurrency(total.deliveredValue)}</td>
+                {showAdjustment && <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums">{formatCurrency(total.adjustment)}</td>}
+                <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums">{formatCurrency(total.netRevenue)}</td>
+                <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums">{formatCurrency(total.redeemed)}</td>
+                <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums">{formatCurrency(total.deliveredValue)}</td>
                 {collections && (
-                  <td className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400">
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-sky-700 dark:text-sky-400">
                     {formatCurrency(collections.totalCollected)}
                   </td>
                 )}
                 {showRefunds && (
-                  <td className="py-1.5 pr-2 text-right tabular-nums text-rose-600 dark:text-rose-400">
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-rose-600 dark:text-rose-400">
                     {formatCurrency(collections.totalRefunded)}
                   </td>
                 )}
                 {collections && (
-                  <td className="py-1.5 pr-2 text-right tabular-nums text-sky-700 dark:text-sky-400">
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-sky-700 dark:text-sky-400">
                     {formatCurrency(collections.totalNetCollected)}
                   </td>
                 )}
