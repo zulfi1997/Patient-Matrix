@@ -231,3 +231,64 @@ describe('netAdjustmentForProvider', () => {
     expect(netAdjustmentForProvider('Dr A', RANGE, [adjustment({ fromProvider: 'Dr A', toProvider: 'Dr A' })], [], [])).toBe(0);
   });
 });
+
+describe('delivered value excludes the package sale', () => {
+  it('is service plus product plus their refunds plus sessions redeemed', () => {
+    // The clinic's own statement of the rule. Selling a package is money for work owed later, so
+    // counting its price and then the sessions it pays for books the same treatment twice.
+    const rows = [
+      makeSale({ staff: 'Dr A', itemType: 'Service', amount: 1000 }),
+      makeSale({ staff: 'Dr A', itemType: 'Service', amount: -100, qty: -1 }),
+      makeSale({ staff: 'Dr A', itemType: 'Product', amount: 200 }),
+      makeSale({ staff: 'Dr A', itemType: 'Product', amount: -50, qty: -1 }),
+      makeSale({ staff: 'Dr A', itemType: 'Package', amount: 5000 }),
+      makeSale({ staff: 'Dr A', itemType: 'Package', amount: -300, qty: -1 }),
+      makeSale({ staff: 'Dr A', itemType: 'Service', amount: 0, redeemedAmount: 800, packageName: 'Pkg' }),
+    ];
+    const [row] = compute(rows);
+    // Revenue still counts the package, because selling one is revenue.
+    expect(row.netRevenue).toBe(5750);
+    expect(row.redeemed).toBe(800);
+    // 1000 - 100 + 200 - 50 + 800. The 5,000 package and its 300 reversal stay out.
+    expect(row.deliveredValue).toBe(1850);
+  });
+
+  it('gives a provider who only sold packages no delivered value', () => {
+    const [row] = compute([makeSale({ staff: 'Dr A', itemType: 'Package', amount: 5000 })]);
+    expect(row).toMatchObject({ netRevenue: 5000, deliveredValue: 0 });
+  });
+
+  it('gives a provider who only worked through packages their full delivered value', () => {
+    const [row] = compute([makeSale({ staff: 'Dr B', itemType: 'Service', amount: 0, redeemedAmount: 900, packageName: 'Pkg' })]);
+    expect(row).toMatchObject({ netRevenue: 0, deliveredValue: 900 });
+  });
+
+  it('holds for the All Providers row too', () => {
+    const rows = [
+      makeSale({ staff: 'Dr A', itemType: 'Package', amount: 13_169.623 }),
+      makeSale({ staff: 'Dr A', itemType: 'Package', amount: -918.922, qty: -1 }),
+      makeSale({ staff: 'Dr A', itemType: 'Service', amount: 11_625.3 }),
+      makeSale({ staff: 'Dr B', itemType: 'Product', amount: 287.466 }),
+      makeSale({ staff: 'Dr B', itemType: 'Service', amount: 0, redeemedAmount: 13_576.534, packageName: 'Pkg' }),
+    ];
+    const total = totalRevenueByType(compute(rows));
+    expect(total.netRevenue).toBeCloseTo(24_163.467, 3);
+    // 11,625.300 + 287.466 + 13,576.534 - the two package columns excluded.
+    expect(total.deliveredValue).toBeCloseTo(25_489.3, 3);
+  });
+
+  it('leaves delivered value alone when an adjustment moves a package between providers', () => {
+    // Moving a prepayment says who gets the revenue, not who did the work.
+    const sales = [makeSale({ staff: 'Dr A', itemType: 'Package', amount: 1000 })];
+    const result = computeProviderRevenueByType(sales, RANGE, [], [], [adjustment({ itemType: 'package' })]);
+    expect(find(result, 'Dr A')).toMatchObject({ netRevenue: 800, deliveredValue: 0 });
+    expect(find(result, 'Dr B')).toMatchObject({ netRevenue: 200, deliveredValue: 0 });
+  });
+
+  it('still moves delivered value when an adjustment names work', () => {
+    const sales = [makeSale({ staff: 'Dr A', itemType: 'Service', amount: 1000 })];
+    const result = computeProviderRevenueByType(sales, RANGE, [], [], [adjustment({ itemType: 'service' })]);
+    expect(find(result, 'Dr A')).toMatchObject({ netRevenue: 800, deliveredValue: 800 });
+    expect(find(result, 'Dr B')).toMatchObject({ netRevenue: 200, deliveredValue: 200 });
+  });
+});

@@ -33,6 +33,14 @@ export interface ProviderRevenueByType {
    * the package was sold, so it is deliberately outside netRevenue and reported beside it.
    */
   redeemed: number;
+  /**
+   * What the provider actually performed: service and product columns, their refunds, and package
+   * sessions consumed.
+   *
+   * Selling a package is deliberately left out. A package is money taken now for work owed later,
+   * so counting its price here and then counting the sessions it pays for would book the same
+   * treatment twice over any period holding both - which is most periods, and every long one.
+   */
   /** netRevenue + redeemed: everything delivered, however it was paid for. */
   deliveredValue: number;
 }
@@ -86,7 +94,10 @@ export function computeProviderRevenueByType(
     row.lines[bucket] += 1;
     row.netRevenue += r.amount;
     row.redeemed += r.redeemedAmount;
-    row.deliveredValue += r.amount + r.redeemedAmount;
+    // Package sales and their reversals are a prepayment moving, not work done, so only the
+    // sessions they later pay for reach delivered value.
+    if (bucket !== 'package' && bucket !== 'packageRefund') row.deliveredValue += r.amount;
+    row.deliveredValue += r.redeemedAmount;
   }
 
   // The same manual corrections the Provider Conversion tab applies, so the two tabs agree on what
@@ -101,7 +112,9 @@ export function computeProviderRevenueByType(
       if (adj.itemType) row.amounts[adj.itemType] += delta;
       else row.adjustment += delta;
       row.netRevenue += delta;
-      row.deliveredValue += delta;
+      // Same rule as a sale: an adjustment naming a package moves a prepayment between providers
+      // and says nothing about who performed the work.
+      if (adj.itemType !== 'package' && adj.itemType !== 'packageRefund') row.deliveredValue += delta;
     }
   }
 

@@ -134,9 +134,12 @@ describe('computePatientCohorts', () => {
     ];
     const may = cohortFor(build(rows), '2026-05-01');
     expect(may.cells.map((c) => c.revenue)).toEqual([900, 0, 0, 0]);
-    expect(may.cells.map((c) => c.deliveredValue)).toEqual([900, 300, 300, 0]);
+    // Nothing delivered in May: the 900 bought that month is work owed, not work done. Counting
+    // its price here as well as the sessions it pays for would credit the cohort with 1,500 of
+    // treatment against 900 of package.
+    expect(may.cells.map((c) => c.deliveredValue)).toEqual([0, 300, 300, 0]);
     expect(may.totalRevenue).toBe(900);
-    expect(may.totalDeliveredValue).toBe(1500);
+    expect(may.totalDeliveredValue).toBe(600);
     expect(may.repeatRevenue).toBe(0);
     expect(may.repeatDeliveredValue).toBe(600);
   });
@@ -317,5 +320,32 @@ describe('basis selectors', () => {
     expect(cellValue(may.cells[0], 'deliveredValue')).toBe(140);
     expect(cohortTotal(may, 'deliveredValue')).toBe(140);
     expect(cohortRepeatTotal(may, 'revenue')).toBe(0);
+  });
+});
+
+describe('a cohort is not credited twice for one package', () => {
+  it('counts the sessions, never the package price', () => {
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-05-10', itemType: 'Package', amount: 900 }),
+      makeSale({ patientId: 'P1', date: '2026-06-10', amount: 0, redeemedAmount: 300, packageName: 'Pkg' }),
+      makeSale({ patientId: 'P1', date: '2026-07-10', amount: 0, redeemedAmount: 300, packageName: 'Pkg' }),
+    ];
+    const may = cohortFor(build(rows, '2026-07-31'), '2026-05-01');
+    expect(may.totalRevenue).toBe(900);
+    expect(may.totalDeliveredValue).toBe(600);
+  });
+
+  it('keeps the row totals equal to the cells above them', () => {
+    // They used to be computed separately, which is how the two could disagree.
+    const rows = [
+      makeSale({ patientId: 'P1', date: '2026-05-10', itemType: 'Package', amount: 900 }),
+      makeSale({ patientId: 'P1', date: '2026-05-11', itemType: 'Service', amount: 120 }),
+      makeSale({ patientId: 'P1', date: '2026-06-10', amount: 0, redeemedAmount: 300, packageName: 'Pkg' }),
+      makeSale({ patientId: 'P2', date: '2026-06-01', itemType: 'Product', amount: 60 }),
+    ];
+    for (const cohort of build(rows, '2026-07-31').cohorts) {
+      const fromCells = cohort.cells.reduce((sum, c) => sum + c.deliveredValue, 0);
+      expect(cohort.totalDeliveredValue).toBeCloseTo(fromCells, 6);
+    }
   });
 });

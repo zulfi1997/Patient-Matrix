@@ -15,8 +15,9 @@ import { addMonths, lastDayOfMonth, monthKeyOf, monthsBetween } from './months';
 /**
  * Which money a cell counts.
  *
- * `revenue` is new cash, the same basis as the dashboard Revenue figure. `deliveredValue` adds the
- * value of package sessions consumed. The distinction matters more here than anywhere else in the
+ * `revenue` is new cash, the same basis as the dashboard Revenue figure. `deliveredValue` is the
+ * treatment performed: services and products, plus package sessions consumed, with the price of
+ * packages sold left out so a cohort is not credited twice for the same work. The distinction matters more here than anywhere else in the
  * app: a package sold in May and used up over the following four months books all of its cash in
  * May, so on a cash basis that cohort looks like it stopped spending immediately, while the clinic
  * is in fact still delivering to it. Delivered value spreads the same sale across the months the
@@ -127,6 +128,8 @@ export function computePatientCohorts(
   interface Bucket {
     revenue: number;
     redeemed: number;
+    /** Service and product value performed, excluding package sales - see `deliveredValue`. */
+    delivered: number;
     active: Set<string>;
   }
   // cohortMonth -> calendarMonth -> bucket
@@ -157,11 +160,15 @@ export function computePatientCohorts(
     }
     let bucket = row.get(recordMonth);
     if (!bucket) {
-      bucket = { revenue: 0, redeemed: 0, active: new Set() };
+      bucket = { revenue: 0, redeemed: 0, delivered: 0, active: new Set() };
       row.set(recordMonth, bucket);
     }
     bucket.revenue += r.amount;
     bucket.redeemed += r.redeemedAmount;
+    // Selling a package is a prepayment, not work: counting its price here and the sessions it
+    // pays for in later months would credit a cohort with the same treatment twice.
+    if (r.itemType !== 'Package') bucket.delivered += r.amount;
+    bucket.delivered += r.redeemedAmount;
     bucket.active.add(r.patientId);
   }
 
@@ -178,29 +185,32 @@ export function computePatientCohorts(
     let totalRevenue = 0;
     let totalRedeemed = 0;
     let repeatRevenue = 0;
-    let repeatRedeemed = 0;
+    let totalDelivered = 0;
+    let repeatDelivered = 0;
 
     for (let m = cohortMonth; m <= lastMonth; m = addMonths(m, 1)) {
       const bucket = row.get(m);
       const monthIndex = monthsBetween(cohortMonth, m);
       const revenue = bucket?.revenue ?? 0;
       const redeemed = bucket?.redeemed ?? 0;
+      const delivered = bucket?.delivered ?? 0;
 
       cells.push({
         month: m,
         monthIndex,
         revenue,
         redeemed,
-        deliveredValue: revenue + redeemed,
+        deliveredValue: delivered,
         activePatients: bucket?.active.size ?? 0,
         partial: lastDayOfMonth(m) > asOf,
       });
 
       totalRevenue += revenue;
       totalRedeemed += redeemed;
+      totalDelivered += delivered;
       if (monthIndex > 0) {
         repeatRevenue += revenue;
-        repeatRedeemed += redeemed;
+        repeatDelivered += delivered;
         if (bucket) for (const id of bucket.active) repeatIds.add(id);
       }
       if (monthIndex > maxMonthIndex) maxMonthIndex = monthIndex;
@@ -212,9 +222,9 @@ export function computePatientCohorts(
       cells,
       totalRevenue,
       totalRedeemed,
-      totalDeliveredValue: totalRevenue + totalRedeemed,
+      totalDeliveredValue: totalDelivered,
       repeatRevenue,
-      repeatDeliveredValue: repeatRevenue + repeatRedeemed,
+      repeatDeliveredValue: repeatDelivered,
       repeatPatients: repeatIds.size,
       censored: cohortMonth === firstMonth,
     });
