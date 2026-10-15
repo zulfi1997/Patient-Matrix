@@ -6,7 +6,7 @@ import { formatDate, formatNumber } from '../lib/format';
 
 interface PackageBenefitsSectionProps {
   batches: PackageBenefitBatch[];
-  importPackageBenefitFile: (file: File) => Promise<PackageBenefitImportResult>;
+  importPackageBenefitFiles: (files: File[]) => Promise<{ outcomes: PackageBenefitImportResult[]; errors: { fileName: string; error: unknown }[] }>;
   removePackageBenefitSnapshot: (snapshotDate: string) => Promise<void>;
   clearAllPackageBenefits: () => Promise<void>;
   /** Present only when signed in to OneDrive - pulls every file from the configured "Package Benefit Data" subfolder. */
@@ -15,7 +15,7 @@ interface PackageBenefitsSectionProps {
 
 export function PackageBenefitsSection({
   batches,
-  importPackageBenefitFile,
+  importPackageBenefitFiles,
   removePackageBenefitSnapshot,
   clearAllPackageBenefits,
   onPullFromOneDrive,
@@ -31,24 +31,24 @@ export function PackageBenefitsSection({
       setBusy(true);
       setError(null);
       setResults([]);
-      const outcomes: PackageBenefitImportResult[] = [];
-      const errors: string[] = [];
-      for (const file of files) {
-        try {
-          outcomes.push(await importPackageBenefitFile(file));
-        } catch (e) {
-          const message =
-            e instanceof PackageBenefitSchemaError || e instanceof PackageBenefitSnapshotDateError || e instanceof Error
-              ? e.message
-              : 'Failed to read this file.';
-          errors.push(`${file.name}: ${message}`);
-        }
-      }
+      const { outcomes, errors } = await importPackageBenefitFiles(files);
       setResults(outcomes);
-      if (errors.length > 0) setError(errors.join('\n'));
+      if (errors.length > 0) {
+        setError(
+          errors
+            .map(({ fileName, error: e }) => {
+              const message =
+                e instanceof PackageBenefitSchemaError || e instanceof PackageBenefitSnapshotDateError || e instanceof Error
+                  ? e.message
+                  : 'Failed to read this file.';
+              return `${fileName}: ${message}`;
+            })
+            .join('\n'),
+        );
+      }
       setBusy(false);
     },
-    [importPackageBenefitFile],
+    [importPackageBenefitFiles],
   );
 
   const onDrop = useCallback(

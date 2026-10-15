@@ -43,7 +43,7 @@ function App() {
   const {
     packageBenefits,
     packageBenefitBatches,
-    importPackageBenefitFile,
+    importPackageBenefitFiles,
     removePackageBenefitSnapshot,
     clearAllPackageBenefits,
     refresh: refreshPackageBenefits,
@@ -369,7 +369,7 @@ function App() {
             removeTransactionsByIds={removeTransactionsByIds}
             packageBenefits={packageBenefits}
             packageBenefitBatches={packageBenefitBatches}
-            importPackageBenefitFile={importPackageBenefitFile}
+            importPackageBenefitFiles={importPackageBenefitFiles}
             removePackageBenefitSnapshot={removePackageBenefitSnapshot}
             clearAllPackageBenefits={clearAllPackageBenefits}
             collectionBatches={collectionBatches}

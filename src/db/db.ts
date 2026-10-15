@@ -185,18 +185,22 @@ export async function addBatch(
     }
   }
 
+  // Issued together rather than one awaited round trip per row. IndexedDB pipelines requests made
+  // in the same tick, so a file of several thousand rows settles in two passes instead of several
+  // thousand - which is what made importing a month of daily files take minutes.
   let added = 0;
   let refreshed = 0;
-  for (const record of records) {
-    const existing = await store.get(record.id);
+  const existingById = await Promise.all(records.map((record) => store.get(record.id)));
+  const writes = records.map((record, i) => {
+    const existing = existingById[i];
     if (existing) {
-      await store.put({ ...record, importBatchId: existing.importBatchId });
       refreshed++;
-      continue;
+      return store.put({ ...record, importBatchId: existing.importBatchId });
     }
-    await store.put(record);
     added++;
-  }
+    return store.put(record);
+  });
+  await Promise.all(writes);
 
   await tx
     .objectStore('batches')
@@ -256,9 +260,7 @@ export async function addPackageBenefitSnapshot(
     await cursor.delete();
     cursor = await cursor.continue();
   }
-  for (const record of records) {
-    await store.put(record);
-  }
+  await Promise.all(records.map((record) => store.put(record)));
 
   await tx.objectStore('packageBenefitBatches').put(batch);
   await tx.done;
@@ -300,9 +302,7 @@ export async function addPnlBatch(batch: PnlImportBatch, records: PnlLineRecord[
     await cursor.delete();
     cursor = await cursor.continue();
   }
-  for (const record of records) {
-    await store.put(record);
-  }
+  await Promise.all(records.map((record) => store.put(record)));
 
   await tx.objectStore('pnlBatches').put(batch);
   await tx.done;
@@ -399,9 +399,8 @@ export async function importServiceDepartmentBatch(batch: DepartmentMappingBatch
   const db = await getDB();
   const tx = db.transaction(['serviceDepartments', 'departmentMappingBatch'], 'readwrite');
   await tx.objectStore('serviceDepartments').clear();
-  for (const record of records) {
-    await tx.objectStore('serviceDepartments').put(record);
-  }
+  const departmentStore = tx.objectStore('serviceDepartments');
+  await Promise.all(records.map((record) => departmentStore.put(record)));
   await tx.objectStore('departmentMappingBatch').put(batch, 'current');
   await tx.done;
 }
@@ -449,7 +448,7 @@ export async function addCollectionBatch(
     cursor = await cursor.continue();
   }
 
-  for (const record of records) await store.put(record);
+  await Promise.all(records.map((record) => store.put(record)));
   await tx.objectStore('collectionBatches').put(batch);
   await tx.done;
   return { added: records.length, superseded };

@@ -27,7 +27,7 @@ export function usePackageBenefits() {
   }, [refresh]);
 
   const importPackageBenefitFile = useCallback(
-    async (file: File): Promise<PackageBenefitImportResult> => {
+    async (file: File, { deferRefresh = false }: { deferRefresh?: boolean } = {}): Promise<PackageBenefitImportResult> => {
       const buffer = await file.arrayBuffer();
       const { snapshotDate, records } = await parsePackageBenefitWorkbook(buffer);
 
@@ -39,11 +39,40 @@ export function usePackageBenefits() {
       };
 
       await db.addPackageBenefitSnapshot(batch, records);
-      await refresh();
+      if (!deferRefresh) await refresh();
 
       return { fileName: file.name, snapshotDate, rowCount: records.length };
     },
     [refresh],
+  );
+
+  /**
+   * Several files in one go, reading the store back once at the end.
+   *
+   * Refreshing per file re-read every snapshot already stored and pushed it all through React, so
+   * importing a month of dailies re-read the earlier days over and over - by the last file that is
+   * the whole table, and the cost grows with the square of the number of files. One file at a time
+   * still refreshes immediately, since there is nothing to amortize.
+   */
+  const importPackageBenefitFiles = useCallback(
+    async (files: File[]): Promise<{ outcomes: PackageBenefitImportResult[]; errors: { fileName: string; error: unknown }[] }> => {
+      const outcomes: PackageBenefitImportResult[] = [];
+      const errors: { fileName: string; error: unknown }[] = [];
+      try {
+        for (const file of files) {
+          try {
+            outcomes.push(await importPackageBenefitFile(file, { deferRefresh: true }));
+          } catch (error) {
+            errors.push({ fileName: file.name, error });
+          }
+        }
+      } finally {
+        // Even if a file threw, the ones before it are already stored and must become visible.
+        await refresh();
+      }
+      return { outcomes, errors };
+    },
+    [importPackageBenefitFile, refresh],
   );
 
   const clearAllPackageBenefits = useCallback(async () => {
@@ -64,6 +93,7 @@ export function usePackageBenefits() {
     packageBenefitBatches,
     loading,
     importPackageBenefitFile,
+    importPackageBenefitFiles,
     removePackageBenefitSnapshot,
     clearAllPackageBenefits,
     refresh,
