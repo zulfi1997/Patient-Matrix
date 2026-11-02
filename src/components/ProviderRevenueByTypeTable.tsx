@@ -30,6 +30,24 @@ export function ProviderRevenueByTypeTable({
   const collectedFor = (provider: string) => collections?.providers.find((p) => p.provider === provider);
   const showRefunds = !!collections && collections.totalRefunded !== 0;
 
+  /**
+   * Providers who took money in this period but sold nothing in it, so the revenue side has no row
+   * for them.
+   *
+   * Revenue is counted by sale date and collection by payment date, so an instalment against an
+   * older invoice, or a provider on leave whose earlier work is still being paid off, lands here.
+   * Without these rows their cash sat inside the All Providers total and in nobody's line, which is
+   * exactly the "where is this money" question. "Unassigned" shows up here too: an invoice whose
+   * sales lines name no one at all.
+   */
+  const collectionOnly = useMemo(() => {
+    if (!collections) return [];
+    const withRevenue = new Set(data.map((row) => row.provider));
+    return collections.providers.filter(
+      (p) => !withRevenue.has(p.provider) && (p.collected !== 0 || p.refunded !== 0),
+    );
+  }, [collections, data]);
+
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm print:break-inside-avoid dark:border-zinc-800 dark:bg-zinc-900">
       <h3 className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
@@ -112,6 +130,40 @@ export function ProviderRevenueByTypeTable({
                       {formatCurrency(collectedFor(row.provider)?.netCollected ?? 0)}
                     </td>
                   )}
+                </tr>
+              ))}
+              {collectionOnly.map((p) => (
+                <tr key={`collection-only-${p.provider}`} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <td className="py-1.5 pr-2 font-medium">
+                    {p.provider}
+                    <span
+                      className="ml-1 cursor-help text-xs font-normal text-zinc-400 dark:text-zinc-500"
+                      title="Took money in this period but sold nothing in it - an instalment against an older invoice, or work sold before this window. Revenue counts by sale date and collection by payment date, so the two do not have to line up."
+                    >
+                      collection only
+                    </span>
+                  </td>
+                  {keys.map((k) => (
+                    <td key={k} className="py-1.5 pr-2 text-right text-zinc-400 dark:text-zinc-600">—</td>
+                  ))}
+                  {showAdjustment && <td className="py-1.5 pr-2 text-right text-zinc-400 dark:text-zinc-600">—</td>}
+                  <td className="py-1.5 pr-2 text-right text-zinc-400 dark:text-zinc-600">—</td>
+                  <td className="py-1.5 pr-2 text-right text-zinc-400 dark:text-zinc-600">—</td>
+                  <td className="py-1.5 pr-2 text-right text-zinc-400 dark:text-zinc-600">—</td>
+                  <td
+                    className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-sky-700 dark:text-sky-400"
+                    title={`${formatNumber(p.invoices)} invoice(s) · ${formatCurrency(p.redemptionSettled)} settled by package/card, not counted here`}
+                  >
+                    {formatCurrency(p.collected)}
+                  </td>
+                  {showRefunds && (
+                    <td className="py-1.5 pr-2 whitespace-nowrap text-right tabular-nums text-rose-600 dark:text-rose-400">
+                      {formatCurrency(p.refunded)}
+                    </td>
+                  )}
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-right font-semibold tabular-nums text-sky-700 dark:text-sky-400">
+                    {formatCurrency(p.netCollected)}
+                  </td>
                 </tr>
               ))}
             </tbody>

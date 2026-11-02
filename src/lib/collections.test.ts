@@ -8,6 +8,7 @@ import {
   invoiceNumberRanges,
   needsInvestigation,
   salesDateSpan,
+  UNASSIGNED,
 } from './collections';
 import { classifyPaymentMethod, isCashCollection, methodOf } from './collectionsParser';
 import { makeSale } from '../test/fixtures';
@@ -612,5 +613,49 @@ describe('classification is derived, never read back from storage', () => {
 
   it('falls back to the stored method when there is no payment type to read', () => {
     expect(methodOf({ paymentType: '', method: 'bankTransfer' })).toBe('bankTransfer');
+  });
+});
+
+/**
+ * A provider can take money in a period without selling anything in it: revenue is counted by sale
+ * date and collection by payment date. The Revenue by Type table builds its rows from the revenue
+ * side, so these providers used to have no row at all and their cash sat inside the All Providers
+ * total and in nobody's line - which reads as money going missing.
+ */
+describe('collection in a period against a sale from before it', () => {
+  const soldInJune = () => [makeSale({ invoiceNo: 'TBC-OLD', staff: 'Dr A', date: '2026-06-15', amount: 900 })];
+
+  it('still attributes the payment to whoever sold the invoice', () => {
+    const result = computeProviderCollections(
+      [payment({ invoiceNo: 'TBC-OLD', amount: 300, date: '2026-07-10' })],
+      shares(soldInJune()),
+      RANGE,
+    );
+    const drA = result.providers.find((p) => p.provider === 'Dr A')!;
+    expect(drA.collected).toBe(300);
+    expect(result.unattributedCollected).toBe(0);
+  });
+
+  it('is not unattributed, since the invoice is in the sales data', () => {
+    // The distinction the table has to draw: this provider has a figure and needs a row. An
+    // unattributed payment has no provider at all and belongs in the note instead.
+    const result = computeProviderCollections(
+      [payment({ invoiceNo: 'TBC-OLD', amount: 300, date: '2026-07-10' }),
+       payment({ id: 'c2', invoiceNo: 'TBC-NOWHERE', amount: 50, date: '2026-07-11' })],
+      shares(soldInJune()),
+      RANGE,
+    );
+    expect(result.providers.map((p) => p.provider)).toEqual(['Dr A']);
+    expect(result.unattributedCollected).toBe(50);
+    expect(result.totalCollected).toBe(350);
+  });
+
+  it('gives an invoice with no seller named to Unassigned rather than dropping it', () => {
+    const result = computeProviderCollections(
+      [payment({ invoiceNo: 'TBC-NOSTAFF', amount: 120 })],
+      shares([makeSale({ invoiceNo: 'TBC-NOSTAFF', staff: null, date: '2026-07-02', amount: 120 })]),
+      RANGE,
+    );
+    expect(result.providers.find((p) => p.provider === UNASSIGNED)?.collected).toBe(120);
   });
 });
